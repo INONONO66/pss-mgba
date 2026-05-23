@@ -161,10 +161,11 @@ pnpm run dev
 
 `pnpm run dev` starts a local viewer at `http://127.0.0.1:8787` and runs the harness as a shared `run --policy openai --mode full-game --vision` session. The generated run id appears in the terminal output, and evidence still goes under `runs/<runId>/` by default, or under `EVIDENCE_DIR/<runId>/` when configured. The page shows the live mGBA screenshot on the left and the latest 1-3 processed files from `runs/<runId>/vision/` on the right, which are the same images currently available to the LLM context. It does not reprocess viewer screenshots, write emulator memory, bundle ROM assets, or persist base64 image data.
 
-You can override run options after the script name. `pnpm run dev` still owns exactly one generated run id for the session, so use the general `pnpm run harness` command if you need to target a specific `--run-id` manually.
+You can override run options after the script name. Normal `pnpm run dev` generates one shared run id for the session, and you can pass an explicit `--run-id` after the script name when you want a named dev run.
 
 ```bash
 pnpm run dev --policy heuristic --max-steps 3
+pnpm run dev --run-id manual
 ```
 
 Inline terminal debug logs are enabled for `run` by default. They are safe summaries of decisions, actions, errors, and run-finished events. They are not raw chain-of-thought, prompts, model responses, screenshots, API keys, tokens, or base64 image data. Set `HARNESS_INLINE_DEBUG_LOGS=0`, `false`, `no`, or `off` to disable them.

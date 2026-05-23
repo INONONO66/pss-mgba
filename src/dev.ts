@@ -20,8 +20,8 @@ const DEFAULT_IO: CliIo = {
 
 export async function runDev(args: readonly string[] = process.argv.slice(2), io: CliIo = DEFAULT_IO, dependencies: DevDependencies = {}): Promise<number> {
   const normalizedArgs = stripSeparator(args);
-  const runId = nonEmpty(process.env.PSS_DEV_RUN_ID) ?? createRunId(dependencies.now?.() ?? new Date());
   const harnessArgs = buildDevHarnessArgs(normalizedArgs);
+  const runId = optionValue(harnessArgs, "--run-id") ?? nonEmpty(process.env.PSS_DEV_RUN_ID) ?? createRunId(dependencies.now?.() ?? new Date());
   const config = loadDevConfig(harnessArgs, runId, dependencies.loadConfig ?? loadConfig);
   const viewer = await (dependencies.startViewer ?? startViewer)(config);
 
@@ -44,9 +44,6 @@ export async function runDev(args: readonly string[] = process.argv.slice(2), io
 
 export function buildDevHarnessArgs(args: readonly string[]): string[] {
   const normalizedArgs = stripSeparator(args);
-  if (optionValue(normalizedArgs, "--run-id") !== undefined) {
-    throw new Error("pnpm run dev uses one generated run id per session; do not pass --run-id");
-  }
   const forwarded = normalizedArgs[0] === "run" ? normalizedArgs.slice(1) : [...normalizedArgs];
   const result = ["run", ...forwarded];
   ensureOption(result, "--policy", "openai");

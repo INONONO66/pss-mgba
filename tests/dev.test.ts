@@ -35,8 +35,17 @@ describe("dev command", () => {
     ]);
   });
 
-  it("rejects manual run id switching in dev mode", () => {
-    expect(() => buildDevHarnessArgs(["--run-id", "manual"])).toThrow(/do not pass --run-id/);
+  it("preserves explicit run id overrides in harness args", () => {
+    expect(buildDevHarnessArgs(["--run-id", "manual"])).toEqual([
+      "run",
+      "--run-id",
+      "manual",
+      "--policy",
+      "openai",
+      "--mode",
+      "full-game",
+      "--vision"
+    ]);
   });
 
   it("ignores a package-manager argument separator", () => {
@@ -87,6 +96,51 @@ describe("dev command", () => {
       "viewer:closed"
     ]);
     expect(io.out.join("\n")).toContain("Dev viewer: http://127.0.0.1:8787");
+  });
+
+  it("uses an explicit run id for the viewer, config, and harness session", async () => {
+    const events: string[] = [];
+    const previous = process.env.HARNESS_RUN_ID;
+    process.env.HARNESS_RUN_ID = "prior-run";
+    try {
+      const exitCode = await runDev(["--run-id", "manual"], createIo(), {
+        now: () => new Date("2026-05-23T00:00:00.000Z"),
+        loadConfig(env) {
+          return fakeConfig({
+            harnessRunId: env.HARNESS_RUN_ID ?? "missing",
+            llmVisionEnabled: env.LLM_VISION_ENABLED === "true"
+          });
+        },
+        async startViewer(config) {
+          events.push(`viewer:${config.harnessRunId}:${config.llmVisionEnabled}`);
+          return {
+            url: "http://127.0.0.1:8787",
+            server: {} as never,
+            async close() {
+              events.push("viewer:closed");
+            }
+          };
+        },
+        async runCli(args) {
+          events.push(`run:${args.join(" ")}:${process.env.HARNESS_RUN_ID ?? "missing"}`);
+          return 0;
+        }
+      });
+
+      expect(exitCode).toBe(0);
+      expect(events).toEqual([
+        "viewer:manual:true",
+        "run:run --run-id manual --policy openai --mode full-game --vision:manual",
+        "viewer:closed"
+      ]);
+      expect(process.env.HARNESS_RUN_ID).toBe("prior-run");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.HARNESS_RUN_ID;
+      } else {
+        process.env.HARNESS_RUN_ID = previous;
+      }
+    }
   });
 
   it("generates a run id when HARNESS_RUN_ID is blank", async () => {
