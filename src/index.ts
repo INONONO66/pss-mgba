@@ -9,6 +9,7 @@ import { MGBA_BUTTONS } from "./mgba/MgbaTypes.js";
 import { HarnessActionSchema } from "./control/ActionSchema.js";
 import { loadConfig, type AiProvider, type HarnessConfig, type HarnessMode } from "./config.js";
 import { EvidenceRecorder } from "./evidence/EvidenceRecorder.js";
+import { formatDebugEvent } from "./evidence/EventFormatter.js";
 import { redactSecrets } from "./evidence/redaction.js";
 import { HarnessError } from "./errors.js";
 import { HarnessRunner } from "./loop/HarnessRunner.js";
@@ -54,6 +55,7 @@ export interface CliRunner {
 
 interface RunnerCommandOptions {
   readonly maxSteps?: number;
+  readonly debugEventSink?: (event: Parameters<typeof formatDebugEvent>[0]) => void;
 }
 
 interface ParsedOptionResult {
@@ -86,7 +88,9 @@ export function getHarnessHelp(): string {
     "  smoke      Opt-in mGBA smoke: preflight, snapshot, press B, snapshot.",
     "",
     "Options:",
-    "  --vision   Enable LLM image input for this command when the selected provider/model supports it.",
+    "  --vision       Enable LLM image input for this command when the selected provider/model supports it.",
+    "  --max-steps N  Optional step cap override. Omit it and LOOP_MAX_STEPS for no step cap.",
+    "  --run-id ID    Optional HARNESS_RUN_ID override for evidence paths. Omit it to generate a run id.",
     "",
     "Safe buttons: A, B, Start, Select, Up, Down, Left, Right"
   ].join("\n");
@@ -244,7 +248,17 @@ async function handlePreflight(options: CliOptions, io: CliIo, factories: CliFac
 
 async function handleRun(options: CliOptions, io: CliIo, factories: CliFactories): Promise<number> {
   const config = loadCommandConfig(options, factories);
-  const runner = (factories.createRunner ?? createRunner)(config, { maxSteps: options.maxSteps });
+  const runner = (factories.createRunner ?? createRunner)(config, {
+    maxSteps: options.maxSteps,
+    debugEventSink: inlineDebugLogsEnabled(process.env.HARNESS_INLINE_DEBUG_LOGS)
+      ? (event) => {
+        const line = formatDebugEvent(event);
+        if (line !== undefined) {
+          io.stderr(line);
+        }
+      }
+      : undefined
+  });
   const result = await runner.run();
   io.stdout(redactSecrets({ command: "run", result }));
   return result.status === "completed" ? 0 : 1;
@@ -333,8 +347,16 @@ function createRunner(config: HarnessConfig, options: RunnerCommandOptions): Cli
     evidence,
     detector: createDetector(config),
     visionProcessor,
-    budgets: { maxSteps: options.maxSteps }
+    budgets: { maxSteps: options.maxSteps },
+    debugEventSink: options.debugEventSink
   });
+}
+
+function inlineDebugLogsEnabled(value: string | undefined): boolean {
+  if (value === undefined) {
+    return true;
+  }
+  return !new Set(["0", "false", "no", "off"]).has(value.trim().toLowerCase());
 }
 
 function createVisionProcessor(config: HarnessConfig, outputDir: string): ScreenshotProcessor {

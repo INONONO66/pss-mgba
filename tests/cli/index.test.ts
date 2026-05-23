@@ -23,6 +23,8 @@ describe("CLI", () => {
     const harnessHelp = getHarnessHelp();
     expect(output).toBe(harnessHelp);
     expect(harnessHelp.slice(harnessHelp.indexOf("Usage:"), harnessHelp.indexOf("\n\nCommands:"))).toBe(usageBlock);
+    expect(harnessHelp).toContain("--max-steps N  Optional step cap override. Omit it and LOOP_MAX_STEPS for no step cap.");
+    expect(harnessHelp).toContain("--run-id ID    Optional HARNESS_RUN_ID override for evidence paths. Omit it to generate a run id.");
   });
 
   it("parses commands and common options without a CLI framework", () => {
@@ -169,6 +171,129 @@ describe("CLI", () => {
     expect(seen[0]?.config.harnessRunId).toBe("cli-test");
     expect(seen[0]?.maxSteps).toBe(2);
     expect(io.out.join("\n")).toContain("completed");
+  });
+
+  it("streams debug logs to stderr while keeping the run result on stdout", async () => {
+    const io = createIo();
+
+    const exitCode = await withEnv({ HARNESS_INLINE_DEBUG_LOGS: undefined }, () => runCli(["run", "--policy", "heuristic"], io, {
+      createRunner(_config, options) {
+        return {
+          async snapshot() {
+            throw new Error("snapshot should not run");
+          },
+          async run() {
+            options.debugEventSink?.({
+              type: "decision",
+              timestamp: "2026-05-22T00:00:00.000Z",
+              payload: { step: 1, frame: 2, decision: { action: { type: "wait", frames: 1 }, confidence: 0.7, rationale: "safe choice" } }
+            });
+            options.debugEventSink?.({
+              type: "action",
+              timestamp: "2026-05-22T00:00:01.000Z",
+              payload: { step: 1, frame: 2, action: { type: "wait", frames: 1 }, confidence: 0.7, rationale: "safe choice" }
+            });
+            options.debugEventSink?.({
+              type: "error",
+              timestamp: "2026-05-22T00:00:02.000Z",
+              payload: { error: { code: "LLM_UNAVAILABLE", message: `api key s${"k"}-unit-test-token leaked` } }
+            });
+            options.debugEventSink?.({
+              type: "run_finished",
+              timestamp: "2026-05-22T00:00:03.000Z",
+              payload: { runId: "cli-debug", status: "completed", counts: { decisions: 1, actions: 1, errors: 1 }, result: { status: "completed" } }
+            });
+            return { status: "completed" };
+          }
+        };
+      }
+    }));
+
+    const stdout = io.out.join("\n");
+    const stderr = io.err.join("\n");
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('"command": "run"');
+    expect(stdout).toContain('"status": "completed"');
+    expect(stdout).not.toContain("decision");
+    expect(stderr).toContain("decision step=1 frame=2 action=");
+    expect(stderr).toContain("action step=1 frame=2 action=");
+    expect(stderr).toContain("error error=");
+    expect(stderr).toContain("run_finished status=completed runId=cli-debug");
+    expect(stderr).toContain("[REDACTED]");
+    expect(stderr).not.toContain(`s${"k"}-unit-test-token`);
+  });
+
+  it("disables debug logs when HARNESS_INLINE_DEBUG_LOGS uses an off value", async () => {
+    for (const disabledValue of ["0", "false", "no", "off", " OFF "]) {
+      const io = createIo();
+      const exitCode = await withEnv({ HARNESS_INLINE_DEBUG_LOGS: disabledValue }, () => runCli(["run", "--policy", "heuristic"], io, {
+        createRunner(_config, options) {
+          expect(options.debugEventSink).toBeUndefined();
+          return {
+            async snapshot() {
+              throw new Error("snapshot should not run");
+            },
+            async run() {
+              return { status: "completed" };
+            }
+          };
+        }
+      }));
+
+      expect(exitCode).toBe(0);
+      expect(io.err).toEqual([]);
+      expect(io.out.join("\n")).toContain('"command": "run"');
+    }
+  });
+
+  it("constructs run dependencies without run-id or max steps", async () => {
+    const io = createIo();
+    const seen: Array<{ config: HarnessConfig; maxSteps?: number }> = [];
+    const exitCode = await withEnv({ HARNESS_RUN_ID: undefined }, () => runCli(["run", "--policy", "heuristic"], io, {
+      createRunner(config, options) {
+        seen.push({ config, maxSteps: options.maxSteps });
+        return {
+          async snapshot() {
+            throw new Error("snapshot should not run");
+          },
+          async run() {
+            return { status: "completed" };
+          }
+        };
+      }
+    }));
+
+    expect(exitCode).toBe(0);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.config.aiProvider).toBe("heuristic");
+    expect(seen[0]?.config.harnessRunId).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(seen[0]?.config.harnessRunId.length).toBeGreaterThan(0);
+    expect(seen[0]?.maxSteps).toBeUndefined();
+    expect(io.out.join("\n")).toContain("completed");
+  });
+
+  it("preserves env run id when run omits run-id and max steps", async () => {
+    const io = createIo();
+    const seen: Array<{ config: HarnessConfig; maxSteps?: number }> = [];
+    const exitCode = await withEnv({ HARNESS_RUN_ID: "env-run" }, () => runCli(["run", "--policy", "heuristic"], io, {
+      createRunner(config, options) {
+        seen.push({ config, maxSteps: options.maxSteps });
+        return {
+          async snapshot() {
+            throw new Error("snapshot should not run");
+          },
+          async run() {
+            return { status: "completed" };
+          }
+        };
+      }
+    }));
+
+    expect(exitCode).toBe(0);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.config.aiProvider).toBe("heuristic");
+    expect(seen[0]?.config.harnessRunId).toBe("env-run");
+    expect(seen[0]?.maxSteps).toBeUndefined();
   });
 
   it("validates press through the action schema before executing", async () => {

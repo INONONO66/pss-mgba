@@ -1,4 +1,4 @@
-const SECRET_KEY_PATTERN = /(["']?(?:OPENAI_API_KEY|API_KEY|TOKEN|SECRET|PASSWORD)["']?\s*[:=]\s*["']?)([^"'\s,}]+)/gi;
+const SECRET_KEY_PATTERN = /(["']?(?:OPENAI_API_KEY|API_KEY|TOKEN|SECRET|PASSWORD|AUTHORIZATION|CREDENTIAL)["']?\s*[:=]\s*["']?)([^"',}\n]+)/gi;
 const OPENAI_SECRET_PATTERN = /sk-[A-Za-z0-9_-]+/g;
 
 export function redactSecrets(value: unknown): string {

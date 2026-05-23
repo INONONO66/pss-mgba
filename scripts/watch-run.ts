@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { formatDebugEvent } from "../src/evidence/EventFormatter.js";
 
 type WatchMode = "decisions" | "vision" | "summary";
 
@@ -104,28 +105,7 @@ async function renderDecisions(eventsFile: string): Promise<void> {
     .slice(-12);
 
   for (const event of interesting) {
-    if (event.type === "decision") {
-      const payload = asRecord(event.payload);
-      const decision = asRecord(payload.decision);
-      console.log(`${event.timestamp} decision step=${payload.step ?? "?"} frame=${payload.frame ?? "?"}`);
-      console.log(`  action: ${JSON.stringify(decision.action ?? null)}`);
-      console.log(`  rationale: ${String(decision.rationale ?? "").slice(0, 180)}`);
-      continue;
-    }
-
-    if (event.type === "action") {
-      const payload = asRecord(event.payload);
-      console.log(`${event.timestamp} action step=${payload.step ?? "?"} ${JSON.stringify(payload.action ?? null)}`);
-      continue;
-    }
-
-    if (event.type === "error") {
-      const payload = asRecord(event.payload);
-      console.log(`${event.timestamp} error ${JSON.stringify(payload.error ?? payload)}`);
-      continue;
-    }
-
-    console.log(`${event.timestamp} ${event.type} ${JSON.stringify(event.payload).slice(0, 220)}`);
+    console.log(formatDebugEvent(event) ?? `${event.timestamp} ${event.type}`);
   }
 }
 
@@ -183,10 +163,6 @@ async function readEvents(eventsFile: string): Promise<EvidenceEvent[]> {
     }
     throw error;
   }
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
 }
 
 function isNotFound(error: unknown): boolean {
