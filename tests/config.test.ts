@@ -11,9 +11,9 @@ describe("loadConfig", () => {
       pokemonVersion: "red",
       evidenceDir: "runs",
       logLevel: "info",
-      loopMaxSteps: 1000,
+      loopMaxSteps: undefined,
       loopStepDelayMs: 250,
-      maxLlmCalls: 400,
+      maxLlmCalls: undefined,
       llmTimeoutMs: 20000,
       llmMaxRetries: 1,
       defaultTapFrames: 5,
@@ -81,6 +81,23 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ LLM_VISION_MAX_IMAGES: "0" })).toThrow(/LLM_VISION_MAX_IMAGES must be at least 1/);
     expect(() => loadConfig({ LLM_VISION_MAX_WIDTH: "0" })).toThrow(/LLM_VISION_MAX_WIDTH must be at least 1/);
     expect(() => loadConfig({ LLM_VISION_QUALITY: "101" })).toThrow(/LLM_VISION_QUALITY must be at most 100/);
+  });
+
+  it("loads and validates optional budget settings", () => {
+    expect(loadConfig({ LOOP_MAX_STEPS: "12", MAX_LLM_CALLS: "34" })).toMatchObject({
+      loopMaxSteps: 12,
+      maxLlmCalls: 34
+    });
+
+    expect(loadConfig({ LOOP_MAX_STEPS: "", MAX_LLM_CALLS: "" })).toMatchObject({
+      loopMaxSteps: undefined,
+      maxLlmCalls: undefined
+    });
+    expect(loadConfig({ MAX_LLM_CALLS: "0" }).maxLlmCalls).toBe(0);
+    expect(() => loadConfig({ LOOP_MAX_STEPS: "-1" })).toThrow(/LOOP_MAX_STEPS must be at least 1/);
+    expect(() => loadConfig({ MAX_LLM_CALLS: "-1" })).toThrow(/MAX_LLM_CALLS must be at least 0/);
+    expect(() => loadConfig({ LOOP_MAX_STEPS: "abc" })).toThrow(/LOOP_MAX_STEPS must be a number/);
+    expect(() => loadConfig({ MAX_LLM_CALLS: "abc" })).toThrow(/MAX_LLM_CALLS must be a number/);
   });
 
   it("loads and validates optional LLM vision settings", () => {

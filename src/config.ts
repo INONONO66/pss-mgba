@@ -39,6 +39,16 @@ const integerFromEnv = (name: string, defaultValue: number, minimum: number) =>
     .min(minimum, `${name} must be at least ${minimum}`)
     .default(defaultValue);
 
+const optionalIntegerFromEnv = (name: string, minimum: number) =>
+  z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.coerce
+      .number({ error: `${name} must be a number` })
+      .int(`${name} must be an integer`)
+      .min(minimum, `${name} must be at least ${minimum}`)
+      .optional()
+  );
+
 const boundedIntegerFromEnv = (name: string, defaultValue: number, minimum: number, maximum: number) =>
   integerFromEnv(name, defaultValue, minimum).pipe(z.number().max(maximum, `${name} must be at most ${maximum}`));
 
@@ -80,9 +90,9 @@ const rawConfigSchema = z
     HARNESS_RUN_ID: optionalNonEmptyString,
     HARNESS_MODE: harnessModeSchema.default("stage1"),
     LOG_LEVEL: logLevelSchema.default("info"),
-    LOOP_MAX_STEPS: integerFromEnv("LOOP_MAX_STEPS", 1000, 1),
+    LOOP_MAX_STEPS: optionalIntegerFromEnv("LOOP_MAX_STEPS", 1),
     LOOP_STEP_DELAY_MS: integerFromEnv("LOOP_STEP_DELAY_MS", 250, 0),
-    MAX_LLM_CALLS: integerFromEnv("MAX_LLM_CALLS", 400, 0),
+    MAX_LLM_CALLS: optionalIntegerFromEnv("MAX_LLM_CALLS", 0),
     LLM_TIMEOUT_MS: integerFromEnv("LLM_TIMEOUT_MS", 20000, 1),
     LLM_MAX_RETRIES: integerFromEnv("LLM_MAX_RETRIES", 1, 0),
     DEFAULT_TAP_FRAMES: integerFromEnv("DEFAULT_TAP_FRAMES", 5, 1),
@@ -141,9 +151,9 @@ export interface HarnessConfig {
   harnessRunId: string;
   harnessMode: HarnessMode;
   logLevel: LogLevel;
-  loopMaxSteps: number;
+  loopMaxSteps?: number;
   loopStepDelayMs: number;
-  maxLlmCalls: number;
+  maxLlmCalls?: number;
   llmTimeoutMs: number;
   llmMaxRetries: number;
   defaultTapFrames: number;

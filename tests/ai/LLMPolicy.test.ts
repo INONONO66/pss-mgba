@@ -394,6 +394,27 @@ describe("LLMPolicy", () => {
     expect(policy.getCallCount()).toBe(1);
     expect(fallbackErrors.map((error) => error.code)).toEqual(["BUDGET_EXCEEDED"]);
   });
+
+  it("treats omitted max LLM calls as unlimited", async () => {
+    const requests: ChatCompletionRequest[] = [];
+    const fallbackErrors: HarnessError[] = [];
+    const policy = createPolicy({
+      maxLlmCalls: undefined,
+      client: fakeClient(async (request) => {
+        requests.push(request);
+        return JSON.stringify(validDecision);
+      }),
+      onFallback: (error) => fallbackErrors.push(error)
+    });
+
+    await expect(policy.chooseAction(policyInput)).resolves.toEqual(validDecision);
+    await expect(policy.chooseAction(policyInput)).resolves.toEqual(validDecision);
+    await expect(policy.chooseAction(policyInput)).resolves.toEqual(validDecision);
+
+    expect(requests).toHaveLength(3);
+    expect(policy.getCallCount()).toBe(3);
+    expect(fallbackErrors).toHaveLength(0);
+  });
 });
 
 function createPolicy(overrides: {
@@ -410,7 +431,7 @@ function createPolicy(overrides: {
     timeoutMs: 1000,
     maxRetries: 0,
     temperature: 0.1,
-    maxLlmCalls: overrides.maxLlmCalls ?? 10,
+    maxLlmCalls: overrides.maxLlmCalls,
     harnessMode: overrides.harnessMode,
     visionDetail: overrides.visionDetail,
     fallbackPolicy: createFallbackPolicy(),

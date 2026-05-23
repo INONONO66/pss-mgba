@@ -54,7 +54,7 @@ export interface LLMPolicyOptions {
   timeoutMs: number;
   maxRetries: number;
   temperature: number;
-  maxLlmCalls: number;
+  maxLlmCalls?: number;
   harnessMode?: HarnessMode;
   visionDetail?: LlmVisionDetail;
   visionRequired?: boolean;
@@ -68,7 +68,7 @@ export class LLMPolicy implements Policy {
   private readonly client: ChatCompletionsClient;
   private readonly model: string;
   private readonly temperature: number;
-  private readonly maxLlmCalls: number;
+  private readonly maxLlmCalls: number | undefined;
   private readonly harnessMode: HarnessMode;
   private readonly visionDetail: LlmVisionDetail;
   private readonly visionRequired: boolean;
@@ -117,7 +117,7 @@ export class LLMPolicy implements Policy {
   }
 
   async chooseAction(input: PolicyInput): Promise<PolicyDecision> {
-    if (this.calls >= this.maxLlmCalls) {
+    if (this.maxLlmCalls !== undefined && this.calls >= this.maxLlmCalls) {
       return this.fallback(input, new HarnessError("BUDGET_EXCEEDED", "Maximum LLM call budget reached", {
         context: { maxLlmCalls: this.maxLlmCalls }
       }));
