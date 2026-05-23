@@ -7,21 +7,17 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:integration": "vitest run tests/integration",
-    "check:secrets": "tsx scripts/check-no-secrets.ts",
-    "harness": "tsx src/index.ts",
-    "dev": "tsx src/dev.ts",
-    "dev:tmux": "tsx scripts/dev-tmux.ts",
-    "smoke:mgba": "tsx src/index.ts smoke",
+    "dev": "tsx src/index.ts",
     "build": "tsc -p tsconfig.json"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "3.0.0-canary.48",
+    "@minpeter/pss-runtime": "^0.0.5",
+    "@t3-oss/env-core": "^0.13.11",
     "dotenv": "latest",
-    "openai": "latest",
-    "sharp": "^0.34.5",
     "zod": "latest"
   },
   "devDependencies": {
