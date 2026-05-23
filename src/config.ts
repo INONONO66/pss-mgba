@@ -16,6 +16,14 @@ const harnessModeSchema = z.enum(["stage1", "full-game"], {
   error: "HARNESS_MODE must be one of: stage1, full-game"
 });
 
+const llmVisionFormatSchema = z.enum(["jpeg", "webp", "png"], {
+  error: "LLM_VISION_FORMAT must be one of: jpeg, webp, png"
+});
+
+const llmVisionDetailSchema = z.enum(["low", "high", "auto"], {
+  error: "LLM_VISION_DETAIL must be one of: low, high, auto"
+});
+
 const optionalNonEmptyString = z.preprocess(
   (value) => (value === "" ? undefined : value),
   z.string().optional()
@@ -30,6 +38,30 @@ const integerFromEnv = (name: string, defaultValue: number, minimum: number) =>
     .int(`${name} must be an integer`)
     .min(minimum, `${name} must be at least ${minimum}`)
     .default(defaultValue);
+
+const boundedIntegerFromEnv = (name: string, defaultValue: number, minimum: number, maximum: number) =>
+  integerFromEnv(name, defaultValue, minimum).pipe(z.number().max(maximum, `${name} must be at most ${maximum}`));
+
+const booleanFromEnv = (name: string, defaultValue: boolean) =>
+  z.preprocess((value) => {
+    if (value === undefined) {
+      return defaultValue;
+    }
+    if (typeof value === "boolean") {
+      return value;
+    }
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      if (["1", "true", "yes", "on"].includes(normalized)) {
+        return true;
+      }
+      if (["0", "false", "no", "off", ""].includes(normalized)) {
+        return false;
+      }
+    }
+
+    return value;
+  }, z.boolean({ error: `${name} must be a boolean` }).default(defaultValue));
 
 const numberFromEnv = (name: string, defaultValue: number, minimum: number, maximum?: number) => {
   const schema = z.coerce
@@ -59,7 +91,18 @@ const rawConfigSchema = z
     OPENAI_BASE_URL: urlString("OPENAI_BASE_URL").default("https://api.openai.com/v1"),
     OPENAI_API_KEY: optionalNonEmptyString,
     OPENAI_MODEL: z.string().min(1, "OPENAI_MODEL must not be empty").default("gpt-5.5"),
-    OPENAI_TEMPERATURE: numberFromEnv("OPENAI_TEMPERATURE", 0.2, 0, 2)
+    OPENAI_TEMPERATURE: numberFromEnv("OPENAI_TEMPERATURE", 0.2, 0, 2),
+    LLM_VISION_ENABLED: booleanFromEnv("LLM_VISION_ENABLED", false),
+    LLM_VISION_MAX_IMAGES: integerFromEnv("LLM_VISION_MAX_IMAGES", 3, 1),
+    LLM_VISION_CROP_LEFT: integerFromEnv("LLM_VISION_CROP_LEFT", 0, 0),
+    LLM_VISION_CROP_TOP: integerFromEnv("LLM_VISION_CROP_TOP", 0, 0),
+    LLM_VISION_CROP_WIDTH: integerFromEnv("LLM_VISION_CROP_WIDTH", 0, 0),
+    LLM_VISION_CROP_HEIGHT: integerFromEnv("LLM_VISION_CROP_HEIGHT", 0, 0),
+    LLM_VISION_MAX_WIDTH: integerFromEnv("LLM_VISION_MAX_WIDTH", 512, 1),
+    LLM_VISION_MAX_HEIGHT: integerFromEnv("LLM_VISION_MAX_HEIGHT", 384, 1),
+    LLM_VISION_FORMAT: llmVisionFormatSchema.default("jpeg"),
+    LLM_VISION_QUALITY: boundedIntegerFromEnv("LLM_VISION_QUALITY", 70, 1, 100),
+    LLM_VISION_DETAIL: llmVisionDetailSchema.default("low")
   })
   .superRefine((config, context) => {
     if (config.AI_PROVIDER === "openai" && config.OPENAI_API_KEY === undefined) {
@@ -67,6 +110,16 @@ const rawConfigSchema = z
         code: "custom",
         path: ["OPENAI_API_KEY"],
         message: "OPENAI_API_KEY is required when AI_PROVIDER=openai"
+      });
+    }
+
+    const hasCropWidth = config.LLM_VISION_CROP_WIDTH > 0;
+    const hasCropHeight = config.LLM_VISION_CROP_HEIGHT > 0;
+    if (hasCropWidth !== hasCropHeight) {
+      context.addIssue({
+        code: "custom",
+        path: [hasCropWidth ? "LLM_VISION_CROP_HEIGHT" : "LLM_VISION_CROP_WIDTH"],
+        message: "LLM_VISION_CROP_WIDTH and LLM_VISION_CROP_HEIGHT must both be positive to enable cropping"
       });
     }
   });
@@ -77,6 +130,8 @@ export type PokemonVersion = RawHarnessConfig["POKEMON_VERSION"];
 export type LogLevel = RawHarnessConfig["LOG_LEVEL"];
 export type AiProvider = RawHarnessConfig["AI_PROVIDER"];
 export type HarnessMode = RawHarnessConfig["HARNESS_MODE"];
+export type LlmVisionFormat = RawHarnessConfig["LLM_VISION_FORMAT"];
+export type LlmVisionDetail = RawHarnessConfig["LLM_VISION_DETAIL"];
 
 export interface HarnessConfig {
   mgbaHttpBaseUrl: string;
@@ -98,6 +153,17 @@ export interface HarnessConfig {
   openaiApiKey?: string;
   openaiModel: string;
   openaiTemperature: number;
+  llmVisionEnabled: boolean;
+  llmVisionMaxImages: number;
+  llmVisionCropLeft: number;
+  llmVisionCropTop: number;
+  llmVisionCropWidth: number;
+  llmVisionCropHeight: number;
+  llmVisionMaxWidth: number;
+  llmVisionMaxHeight: number;
+  llmVisionFormat: LlmVisionFormat;
+  llmVisionQuality: number;
+  llmVisionDetail: LlmVisionDetail;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): HarnessConfig {
@@ -135,7 +201,18 @@ function toHarnessConfig(config: RawHarnessConfig): HarnessConfig {
     openaiBaseUrl: config.OPENAI_BASE_URL,
     openaiApiKey: config.OPENAI_API_KEY,
     openaiModel: config.OPENAI_MODEL,
-    openaiTemperature: config.OPENAI_TEMPERATURE
+    openaiTemperature: config.OPENAI_TEMPERATURE,
+    llmVisionEnabled: config.LLM_VISION_ENABLED,
+    llmVisionMaxImages: config.LLM_VISION_MAX_IMAGES,
+    llmVisionCropLeft: config.LLM_VISION_CROP_LEFT,
+    llmVisionCropTop: config.LLM_VISION_CROP_TOP,
+    llmVisionCropWidth: config.LLM_VISION_CROP_WIDTH,
+    llmVisionCropHeight: config.LLM_VISION_CROP_HEIGHT,
+    llmVisionMaxWidth: config.LLM_VISION_MAX_WIDTH,
+    llmVisionMaxHeight: config.LLM_VISION_MAX_HEIGHT,
+    llmVisionFormat: config.LLM_VISION_FORMAT,
+    llmVisionQuality: config.LLM_VISION_QUALITY,
+    llmVisionDetail: config.LLM_VISION_DETAIL
   };
 }
 
