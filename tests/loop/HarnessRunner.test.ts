@@ -1,19 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { HarnessRunner, type RunnerEvidenceRecorder } from "../../src/loop/HarnessRunner.js";
-import type { Policy, PolicyInput, PokemonStateSnapshot } from "../../src/ai/Policy.js";
+import { HarnessRunner, type RunnerEvidenceRecorder, type RunnerVisionProcessor } from "../../src/loop/HarnessRunner.js";
+import type { Policy, PolicyInput, PokemonStateSnapshot, VisionImageInput } from "../../src/ai/Policy.js";
 import type { PolicyDecision } from "../../src/control/ActionTypes.js";
 import { HarnessError } from "../../src/errors.js";
 import { Stage1Detector } from "../../src/pokemon/Stage1Detector.js";
 import { FullGameDetector } from "../../src/pokemon/FullGameDetector.js";
 import type { HarnessConfig } from "../../src/config.js";
 
-const baseConfig: Pick<HarnessConfig, "harnessRunId" | "harnessMode" | "loopMaxSteps" | "loopStepDelayMs" | "maxLlmCalls" | "aiProvider"> = {
+const baseConfig: Pick<HarnessConfig, "harnessRunId" | "harnessMode" | "loopMaxSteps" | "loopStepDelayMs" | "maxLlmCalls" | "aiProvider" | "llmVisionEnabled" | "llmVisionMaxImages"> = {
   harnessRunId: "runner-test",
   harnessMode: "stage1",
   loopMaxSteps: 20,
   loopStepDelayMs: 0,
   maxLlmCalls: 5,
-  aiProvider: "heuristic"
+  aiProvider: "heuristic",
+  llmVisionEnabled: false,
+  llmVisionMaxImages: 3
 };
 
 const waitDecision: PolicyDecision = {
@@ -40,11 +42,11 @@ describe("HarnessRunner", () => {
       step: 3,
       frame: 42,
       stateFile: "state-1.json",
-      screenshot: { path: "/tmp/shot.png", frame: 42, step: 3, note: "runner_snapshot" },
+      screenshot: { path: "/tmp/fake-run/raw-screenshots/000003.png", frame: 42, step: 3, note: "runner_snapshot" },
       screenshotEvidenceFile: "screenshot-1.json"
     });
     expect(evidence.states[0]).toMatchObject({ step: 3, frame: 42, state: state() });
-    expect(evidence.screenshots[0]).toEqual({ path: "/tmp/shot.png", frame: 42, step: 3, note: "runner_snapshot" });
+    expect(evidence.screenshots[0]).toEqual({ path: "/tmp/fake-run/raw-screenshots/000003.png", frame: 42, step: 3, note: "runner_snapshot" });
   });
 
   it("runs until Stage 1 completion and writes checkpoint summary", async () => {
@@ -81,6 +83,104 @@ describe("HarnessRunner", () => {
     expect(policyInputs[1]).toMatchObject({ step: 2 });
     expect(policyInputs[1]?.recentStates).toHaveLength(2);
     expect(policyInputs[1]?.recentActions).toHaveLength(1);
+    expect(policyInputs.every((input) => input.visionImages === undefined)).toBe(true);
+  });
+
+  it("stores raw runner screenshots under the active run evidence directory", async () => {
+    const evidence = new FakeEvidenceRecorder();
+    const runner = createRunner({ evidence, budgets: { maxSteps: 1, repeatedStateThreshold: 10 } });
+
+    await runner.run();
+
+    expect(evidence.screenshotTargets).toEqual(["/tmp/fake-run/raw-screenshots/000001.png"]);
+    expect(evidence.screenshots[0]).toMatchObject({ path: "/tmp/fake-run/raw-screenshots/000001.png" });
+  });
+
+  it("passes only the latest configured processed vision images when enabled", async () => {
+    const policyInputs: PolicyInput[] = [];
+    const visionProcessor = new FakeVisionProcessor();
+    const runner = createRunner({
+      config: { ...baseConfig, llmVisionEnabled: true, llmVisionMaxImages: 3 },
+      policy: {
+        async chooseAction(input) {
+          policyInputs.push(input);
+          return waitDecision;
+        }
+      },
+      visionProcessor,
+      states: [
+        state({ wYCoord: 1 }),
+        state({ wYCoord: 2 }),
+        state({ wYCoord: 3 }),
+        state({ wYCoord: 4 })
+      ],
+      budgets: { maxSteps: 4, repeatedStateThreshold: 10 },
+      detector: new Stage1Detector({ stuckStepThreshold: 50 })
+    });
+
+    const result = await runner.run();
+
+    expect(result.status).toBe("failed_timeout");
+    expect(visionProcessor.inputs.map((input) => input.step)).toEqual([1, 2, 3, 4]);
+    expect(policyInputs[0]?.visionImages?.map((image) => image.step)).toEqual([1]);
+    expect(policyInputs[1]?.visionImages?.map((image) => image.step)).toEqual([1, 2]);
+    expect(policyInputs[2]?.visionImages?.map((image) => image.step)).toEqual([1, 2, 3]);
+    expect(policyInputs[3]?.visionImages?.map((image) => image.step)).toEqual([2, 3, 4]);
+    expect(JSON.stringify(policyInputs[3]?.visionImages)).not.toContain("base64");
+    expect(JSON.stringify(policyInputs[3]?.visionImages)).not.toContain("data:image");
+  });
+
+  it("passes processed vision images to an OpenAI policy input on the first decision", async () => {
+    const policyInputs: PolicyInput[] = [];
+    const visionProcessor = new FakeVisionProcessor();
+    const runner = createRunner({
+      config: { ...baseConfig, aiProvider: "openai", llmVisionEnabled: true, llmVisionMaxImages: 3 },
+      policy: {
+        async chooseAction(input) {
+          policyInputs.push(input);
+          return waitDecision;
+        }
+      },
+      visionProcessor,
+      states: [state({ wYCoord: 1 })],
+      budgets: { maxSteps: 1, repeatedStateThreshold: 10 },
+      detector: new Stage1Detector({ stuckStepThreshold: 50 })
+    });
+
+    const result = await runner.run();
+
+    expect(result.status).toBe("failed_timeout");
+    expect(policyInputs).toHaveLength(1);
+    expect(policyInputs[0]?.visionImages).toEqual([expect.objectContaining({
+      path: "/tmp/vision-1.jpg",
+      mediaType: "image/jpeg",
+      width: 160,
+      height: 144,
+      step: 1,
+      frame: 1
+    })]);
+  });
+
+  it("fails before policy selection when vision is enabled without a processor", async () => {
+    const policyInputs: PolicyInput[] = [];
+    const runner = createRunner({
+      config: { ...baseConfig, llmVisionEnabled: true, llmVisionMaxImages: 3 },
+      policy: {
+        async chooseAction(input) {
+          policyInputs.push(input);
+          return waitDecision;
+        }
+      },
+      states: [state({ wYCoord: 1 })],
+      budgets: { maxSteps: 1, repeatedStateThreshold: 10 },
+      detector: new Stage1Detector({ stuckStepThreshold: 50 })
+    });
+
+    const result = await runner.run();
+
+    expect(result.status).toBe("failed_mgba");
+    expect(result.errorCode).toBe("SCREENSHOT_FAILED");
+    expect(policyInputs).toHaveLength(0);
   });
 
   it("accepts a full-game detector contract and records harness mode in start config", async () => {
@@ -204,7 +304,7 @@ async function expectFailure(
 }
 
 function createRunner(overrides: {
-  config?: Pick<HarnessConfig, "harnessRunId" | "harnessMode" | "loopMaxSteps" | "loopStepDelayMs" | "maxLlmCalls" | "aiProvider">;
+  config?: Pick<HarnessConfig, "harnessRunId" | "harnessMode" | "loopMaxSteps" | "loopStepDelayMs" | "maxLlmCalls" | "aiProvider" | "llmVisionEnabled" | "llmVisionMaxImages">;
   evidence?: FakeEvidenceRecorder;
   controller?: FakeController;
   policy?: Policy;
@@ -213,6 +313,7 @@ function createRunner(overrides: {
   frames?: number[];
   screenshots?: string[];
   budgets?: { maxSteps?: number; repeatedStateThreshold?: number; maxLlmCalls?: number };
+  visionProcessor?: RunnerVisionProcessor;
   frameError?: HarnessError;
   stateError?: HarnessError;
   policyError?: HarnessError;
@@ -238,7 +339,13 @@ function createRunner(overrides: {
 
         return frames[Math.min(frameIndex++, frames.length - 1)] ?? 1;
       },
-      async screenshot() {
+      async screenshot(targetPath) {
+        if (targetPath !== undefined && "screenshotTargets" in evidence) {
+          evidence.screenshotTargets.push(targetPath);
+          screenshotIndex += 1;
+          return targetPath;
+        }
+
         return screenshots[Math.min(screenshotIndex++, screenshots.length - 1)] ?? "/tmp/shot.png";
       }
     },
@@ -255,6 +362,7 @@ function createRunner(overrides: {
     controller,
     evidence,
     detector: overrides.detector ?? new Stage1Detector({ stuckStepThreshold: 50 }),
+    visionProcessor: overrides.visionProcessor,
     budgets: { stepDelayMs: 0, ...overrides.budgets },
     sleep: async () => {},
     now: fixedNow
@@ -299,11 +407,12 @@ class FakeController {
 }
 
 class FakeEvidenceRecorder implements RunnerEvidenceRecorder {
-  readonly paths = { runId: "fake-run" };
+  readonly paths = { runId: "fake-run", visionDir: "/tmp/fake-run/vision", rawScreenshotsDir: "/tmp/fake-run/raw-screenshots" };
   readonly states: unknown[] = [];
   readonly decisions: unknown[] = [];
   readonly actions: unknown[] = [];
   readonly screenshots: unknown[] = [];
+  readonly screenshotTargets: string[] = [];
   readonly errors: unknown[] = [];
   started: unknown;
   finished: { status: string; result: unknown } | undefined;
@@ -338,6 +447,26 @@ class FakeEvidenceRecorder implements RunnerEvidenceRecorder {
   async finishRun(status: string, result?: unknown): Promise<unknown> {
     this.finished = { status, result };
     return this.finished;
+  }
+}
+
+class FakeVisionProcessor implements RunnerVisionProcessor {
+  readonly inputs: Array<{ sourcePath: string; step: number; frame: number }> = [];
+
+  async process(input: { readonly sourcePath: string; readonly step: number; readonly frame: number }): Promise<VisionImageInput> {
+    this.inputs.push(input);
+    return {
+      path: `/tmp/vision-${input.step}.jpg`,
+      sourcePath: input.sourcePath,
+      mediaType: "image/jpeg",
+      width: 160,
+      height: 144,
+      step: input.step,
+      frame: input.frame,
+      crop: { left: 0, top: 0, width: 160, height: 144 },
+      bytes: 100 + input.step,
+      detail: "low"
+    };
   }
 }
 

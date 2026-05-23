@@ -1,5 +1,7 @@
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
 import type { HarnessConfig } from "../config.js";
-import type { Policy, PolicyInput, PokemonStateSnapshot, RecentStateSnapshot } from "../ai/Policy.js";
+import type { Policy, PolicyInput, PokemonStateSnapshot, RecentStateSnapshot, VisionImageInput } from "../ai/Policy.js";
 import type { PolicyDecision } from "../control/ActionTypes.js";
 import type { ScreenshotMetadata } from "../evidence/EvidenceRecorder.js";
 import { HarnessError, type SerializedHarnessError } from "../errors.js";
@@ -20,7 +22,7 @@ export interface RunnerController {
 }
 
 export interface RunnerEvidenceRecorder {
-  readonly paths?: { readonly runId?: string };
+  readonly paths?: { readonly runId?: string; readonly visionDir?: string; readonly rawScreenshotsDir?: string };
   startRun(config: unknown): Promise<void>;
   recordState(state: unknown): Promise<string>;
   recordDecision(decision: unknown): Promise<void>;
@@ -38,7 +40,7 @@ export interface RunnerBudgets {
 }
 
 export interface HarnessRunnerOptions<TState = PokemonStateSnapshot> {
-  readonly config: Pick<HarnessConfig, "harnessRunId" | "harnessMode" | "loopMaxSteps" | "loopStepDelayMs" | "maxLlmCalls" | "aiProvider">;
+  readonly config: Pick<HarnessConfig, "harnessRunId" | "harnessMode" | "loopMaxSteps" | "loopStepDelayMs" | "maxLlmCalls" | "aiProvider" | "llmVisionEnabled" | "llmVisionMaxImages">;
   readonly client: RunnerClient;
   readonly stateReader: RunnerStateReader<TState>;
   readonly policy: Policy;
@@ -48,6 +50,11 @@ export interface HarnessRunnerOptions<TState = PokemonStateSnapshot> {
   readonly budgets?: RunnerBudgets;
   readonly sleep?: (ms: number) => Promise<void>;
   readonly now?: () => Date;
+  readonly visionProcessor?: RunnerVisionProcessor;
+}
+
+export interface RunnerVisionProcessor {
+  process(input: { readonly sourcePath: string; readonly step: number; readonly frame: number }): Promise<VisionImageInput>;
 }
 
 export interface HarnessSnapshot<TState = PokemonStateSnapshot> {
@@ -105,7 +112,9 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
   private readonly repeatedStateThreshold: number;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly now: () => Date;
+  private readonly visionProcessor?: RunnerVisionProcessor;
   private readonly recentStates: RecentStateSnapshot[] = [];
+  private readonly recentVisionImages: VisionImageInput[] = [];
   private readonly recentStateHashes: string[] = [];
   private readonly last20Actions: RecordedActionSummary[] = [];
   private startedAt: string | undefined;
@@ -127,6 +136,7 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
     this.repeatedStateThreshold = options.budgets?.repeatedStateThreshold ?? DEFAULT_REPEATED_STATE_THRESHOLD;
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.now = options.now ?? (() => new Date());
+    this.visionProcessor = options.visionProcessor;
   }
 
   async snapshot(step = this.step): Promise<HarnessSnapshot<TState>> {
@@ -134,9 +144,11 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
     const state = await this.stateReader.readState();
     const stateHash = stableHash(state);
     const stateFile = await this.evidence.recordState({ step, frame, state, stateHash });
-    const screenshotPath = await this.client.screenshot();
+    const screenshotPath = await this.client.screenshot(await this.rawScreenshotPath(step));
     const screenshot = { path: screenshotPath, frame, step, note: "runner_snapshot" };
     const screenshotEvidenceFile = await this.evidence.recordScreenshot(screenshot);
+
+    await this.recordVisionImage(screenshotPath, step, frame);
 
     this.finalFrame = frame;
     return { step, frame, state, stateFile, screenshot, screenshotEvidenceFile, stateHash };
@@ -224,8 +236,32 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
       currentState: snapshot.state,
       recentStates: [...this.recentStates],
       recentActions: [...this.last20Actions],
+      ...(this.config.llmVisionEnabled && this.recentVisionImages.length > 0 ? { visionImages: [...this.recentVisionImages] } : {}),
       step: this.step
     };
+  }
+
+  private async recordVisionImage(sourcePath: string, step: number, frame: FrameNumber): Promise<void> {
+    if (!this.config.llmVisionEnabled) {
+      return;
+    }
+    if (this.visionProcessor === undefined) {
+      throw new HarnessError("SCREENSHOT_FAILED", "LLM vision is enabled but no screenshot processor is configured");
+    }
+
+    const image = await this.visionProcessor.process({ sourcePath, step, frame });
+    this.recentVisionImages.push(image);
+    trimToLimit(this.recentVisionImages, this.config.llmVisionMaxImages);
+  }
+
+  private async rawScreenshotPath(step: number): Promise<string | undefined> {
+    const rawScreenshotsDir = this.evidence.paths?.rawScreenshotsDir;
+    if (rawScreenshotsDir === undefined) {
+      return undefined;
+    }
+
+    await mkdir(rawScreenshotsDir, { recursive: true });
+    return path.join(rawScreenshotsDir, `${formatSequence(step)}.png`);
   }
 
   private recordRecentState(snapshot: HarnessSnapshot<TState>): void {
@@ -304,6 +340,8 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
       loopMaxSteps: this.maxSteps,
       loopStepDelayMs: this.stepDelayMs,
       maxLlmCalls: this.maxLlmCalls,
+      llmVisionEnabled: this.config.llmVisionEnabled,
+      llmVisionMaxImages: this.config.llmVisionMaxImages,
       repeatedStateThreshold: this.repeatedStateThreshold
     };
   }
@@ -393,4 +431,8 @@ function trimToLimit<T>(items: T[], limit: number): void {
   if (items.length > limit) {
     items.splice(0, items.length - limit);
   }
+}
+
+function formatSequence(sequence: number): string {
+  return sequence.toString().padStart(6, "0");
 }
