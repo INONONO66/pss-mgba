@@ -18,6 +18,7 @@ import { runMgbaPreflight, type MgbaPreflightReport } from "./mgba/preflight.js"
 import { PokemonStateReader } from "./pokemon/PokemonStateReader.js";
 import { FullGameDetector } from "./pokemon/FullGameDetector.js";
 import { Stage1Detector } from "./pokemon/Stage1Detector.js";
+import { ScreenshotProcessor } from "./vision/ScreenshotProcessor.js";
 
 type HarnessCommand = "snapshot" | "preflight" | "run" | "press" | "smoke";
 
@@ -27,6 +28,7 @@ export interface CliOptions {
   readonly help: boolean;
   readonly policy?: AiProvider;
   readonly mode?: HarnessMode;
+  readonly vision: boolean;
   readonly maxSteps?: number;
   readonly runId?: string;
   readonly pressButton?: string;
@@ -69,12 +71,12 @@ export function getHarnessHelp(): string {
     "Pokemon Red/Blue AI harness CLI",
     "",
     "Usage:",
-    "  npm run harness -- --help",
-    "  npm run harness -- snapshot [--dry-run] [--policy heuristic|openai] [--mode stage1|full-game] [--max-steps N] [--run-id ID]",
-    "  npm run harness -- preflight [--policy heuristic|openai] [--mode stage1|full-game] [--run-id ID]",
-    "  npm run harness -- run [--policy heuristic|openai] [--mode stage1|full-game] [--max-steps N] [--run-id ID]",
-    "  npm run harness -- press BUTTON [--frames N] [--run-id ID]",
-    "  npm run smoke:mgba",
+    "  pnpm run harness --help",
+    "  pnpm run harness snapshot [--dry-run] [--policy heuristic|openai] [--mode stage1|full-game] [--vision] [--max-steps N] [--run-id ID]",
+    "  pnpm run harness preflight [--policy heuristic|openai] [--mode stage1|full-game] [--vision] [--run-id ID]",
+    "  pnpm run harness run [--policy heuristic|openai] [--mode stage1|full-game] [--vision] [--max-steps N] [--run-id ID]",
+    "  pnpm run harness press BUTTON [--frames N] [--run-id ID]",
+    "  pnpm run smoke:mgba",
     "",
     "Commands:",
     "  snapshot   Record one runner snapshot, or print config only with --dry-run.",
@@ -83,13 +85,16 @@ export function getHarnessHelp(): string {
     "  press      Send one safe Game Boy button press for smoke checks.",
     "  smoke      Opt-in mGBA smoke: preflight, snapshot, press B, snapshot.",
     "",
+    "Options:",
+    "  --vision   Enable LLM image input for this command when the selected provider/model supports it.",
+    "",
     "Safe buttons: A, B, Start, Select, Up, Down, Left, Right"
   ].join("\n");
 }
 
 export function parseCliArgs(args: readonly string[]): ParsedOptionResult {
   const errors: string[] = [];
-  const options: MutableCliOptions = { dryRun: false, help: false };
+  const options: MutableCliOptions = { dryRun: false, help: false, vision: false };
   const rest: string[] = [];
 
   for (let index = 0; index < args.length; index += 1) {
@@ -107,6 +112,9 @@ export function parseCliArgs(args: readonly string[]): ParsedOptionResult {
         break;
       case "--mode":
         options.mode = parseMode(args[++index], errors);
+        break;
+      case "--vision":
+        options.vision = true;
         break;
       case "--max-steps":
         options.maxSteps = parsePositiveInteger(args[++index], "--max-steps", errors);
@@ -203,6 +211,9 @@ function loadCommandConfig(options: CliOptions, factories: CliFactories, dryRun 
   if (options.runId !== undefined) {
     env.HARNESS_RUN_ID = options.runId;
   }
+  if (options.vision) {
+    env.LLM_VISION_ENABLED = "true";
+  }
   if (dryRun && !hasProviderApiKey(env)) {
     env.AI_PROVIDER = "heuristic";
   }
@@ -269,8 +280,9 @@ async function handleSmoke(options: CliOptions, io: CliIo): Promise<number> {
 }
 
 function createSmokeDependencies(config: HarnessConfig): MgbaSmokeWorkflowDependencies {
-  const client = new MgbaHttpClient({ baseUrl: config.mgbaHttpBaseUrl });
   const evidence = new EvidenceRecorder({ evidenceDir: config.evidenceDir, runId: config.harnessRunId });
+  const client = new MgbaHttpClient({ baseUrl: config.mgbaHttpBaseUrl, screenshotDir: evidence.paths.rawScreenshotsDir });
+  const visionProcessor = config.llmVisionEnabled ? createVisionProcessor(config, evidence.paths.visionDir) : undefined;
   const controller = new Controller({
     client,
     defaultTapFrames: config.defaultTapFrames,
@@ -284,6 +296,7 @@ function createSmokeDependencies(config: HarnessConfig): MgbaSmokeWorkflowDepend
     controller,
     evidence,
     detector: createDetector(config),
+    visionProcessor,
     budgets: { maxSteps: 1 }
   });
 
@@ -299,11 +312,13 @@ function createSmokeDependencies(config: HarnessConfig): MgbaSmokeWorkflowDepend
 }
 
 function createRunner(config: HarnessConfig, options: RunnerCommandOptions): CliRunner {
-  const client = new MgbaHttpClient({ baseUrl: config.mgbaHttpBaseUrl });
+  const evidence = new EvidenceRecorder({ evidenceDir: config.evidenceDir, runId: config.harnessRunId });
+  const client = new MgbaHttpClient({ baseUrl: config.mgbaHttpBaseUrl, screenshotDir: evidence.paths.rawScreenshotsDir });
   const heuristicPolicy = new HeuristicPolicy();
   const policy = isLlmProvider(config.aiProvider)
     ? LLMPolicy.fromConfig(config, heuristicPolicy)
     : heuristicPolicy;
+  const visionProcessor = config.llmVisionEnabled ? createVisionProcessor(config, evidence.paths.visionDir) : undefined;
 
   return new HarnessRunner({
     config,
@@ -315,9 +330,25 @@ function createRunner(config: HarnessConfig, options: RunnerCommandOptions): Cli
       defaultTapFrames: config.defaultTapFrames,
       defaultHoldFrames: config.defaultHoldFrames
     }),
-    evidence: new EvidenceRecorder({ evidenceDir: config.evidenceDir, runId: config.harnessRunId }),
+    evidence,
     detector: createDetector(config),
+    visionProcessor,
     budgets: { maxSteps: options.maxSteps }
+  });
+}
+
+function createVisionProcessor(config: HarnessConfig, outputDir: string): ScreenshotProcessor {
+  return new ScreenshotProcessor({
+    outputDir,
+    cropLeft: config.llmVisionCropLeft,
+    cropTop: config.llmVisionCropTop,
+    cropWidth: config.llmVisionCropWidth,
+    cropHeight: config.llmVisionCropHeight,
+    maxWidth: config.llmVisionMaxWidth,
+    maxHeight: config.llmVisionMaxHeight,
+    format: config.llmVisionFormat,
+    quality: config.llmVisionQuality,
+    detail: config.llmVisionDetail
   });
 }
 
@@ -346,6 +377,19 @@ function formatConfigSummary(config: HarnessConfig): string {
     defaultTapFrames: config.defaultTapFrames,
     defaultHoldFrames: config.defaultHoldFrames,
     aiProvider: config.aiProvider,
+    llmVisionEnabled: config.llmVisionEnabled,
+    ...(config.llmVisionEnabled ? {
+      llmVisionMaxImages: config.llmVisionMaxImages,
+      llmVisionCropLeft: config.llmVisionCropLeft,
+      llmVisionCropTop: config.llmVisionCropTop,
+      llmVisionCropWidth: config.llmVisionCropWidth,
+      llmVisionCropHeight: config.llmVisionCropHeight,
+      llmVisionMaxWidth: config.llmVisionMaxWidth,
+      llmVisionMaxHeight: config.llmVisionMaxHeight,
+      llmVisionFormat: config.llmVisionFormat,
+      llmVisionQuality: config.llmVisionQuality,
+      llmVisionDetail: config.llmVisionDetail
+    } : {}),
     ...(config.aiProvider === "openai" ? {
       openaiBaseUrl: config.openaiBaseUrl,
       hasOpenaiApiKey: config.openaiApiKey !== undefined,
@@ -447,6 +491,7 @@ interface MutableCliOptions {
   help: boolean;
   policy?: AiProvider;
   mode?: HarnessMode;
+  vision: boolean;
   maxSteps?: number;
   runId?: string;
   pressButton?: string;

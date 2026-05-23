@@ -10,19 +10,26 @@ describe("CLI", () => {
     const exitCode = await runCli(["--help"], io);
 
     expect(exitCode).toBe(0);
-    expect(io.out.join("\n")).toContain("snapshot");
-    expect(io.out.join("\n")).toContain("preflight");
-    expect(io.out.join("\n")).toContain("run");
-    expect(io.out.join("\n")).toContain("press");
-    expect(io.out.join("\n")).toContain("heuristic|openai");
-    expect(io.out.join("\n")).toContain("stage1|full-game");
+    const usageBlock = [
+      "Usage:",
+      "  pnpm run harness --help",
+      "  pnpm run harness snapshot [--dry-run] [--policy heuristic|openai] [--mode stage1|full-game] [--vision] [--max-steps N] [--run-id ID]",
+      "  pnpm run harness preflight [--policy heuristic|openai] [--mode stage1|full-game] [--vision] [--run-id ID]",
+      "  pnpm run harness run [--policy heuristic|openai] [--mode stage1|full-game] [--vision] [--max-steps N] [--run-id ID]",
+      "  pnpm run harness press BUTTON [--frames N] [--run-id ID]",
+      "  pnpm run smoke:mgba"
+    ].join("\n");
+    const output = io.out.join("\n");
+    const harnessHelp = getHarnessHelp();
+    expect(output).toBe(harnessHelp);
+    expect(harnessHelp.slice(harnessHelp.indexOf("Usage:"), harnessHelp.indexOf("\n\nCommands:"))).toBe(usageBlock);
   });
 
   it("parses commands and common options without a CLI framework", () => {
-    const parsed = parseCliArgs(["run", "--policy", "openai", "--mode", "full-game", "--max-steps", "9", "--run-id", "manual"]);
+    const parsed = parseCliArgs(["run", "--policy", "openai", "--mode", "full-game", "--vision", "--max-steps", "9", "--run-id", "manual"]);
 
     expect(parsed.errors).toEqual([]);
-    expect(parsed.options).toMatchObject({ command: "run", policy: "openai", mode: "full-game", maxSteps: 9, runId: "manual" });
+    expect(parsed.options).toMatchObject({ command: "run", policy: "openai", mode: "full-game", vision: true, maxSteps: 9, runId: "manual" });
   });
 
   it("rejects unsupported policy names", () => {
@@ -69,6 +76,15 @@ describe("CLI", () => {
     expect(io.out.join("\n")).toContain('"harnessMode": "full-game"');
   });
 
+  it("passes --vision into loaded config and dry-run summary", async () => {
+    const io = createIo();
+
+    const exitCode = await runCli(["snapshot", "--dry-run", "--vision"], io);
+
+    expect(exitCode).toBe(0);
+    expect(io.out.join("\n")).toContain('"llmVisionEnabled": true');
+  });
+
   it("prints a secret-safe OpenAI-compatible dry-run summary for custom base URLs", async () => {
     const io = createIo();
 
@@ -90,8 +106,10 @@ describe("CLI", () => {
 
   it("formats preflight failures as guidance without stack noise", async () => {
     const io = createIo();
-    const exitCode = await runCli(["preflight"], io, {
-      async runPreflight(): Promise<MgbaPreflightReport> {
+    const seenConfigs: HarnessConfig[] = [];
+    const exitCode = await runCli(["preflight", "--vision"], io, {
+      async runPreflight(config): Promise<MgbaPreflightReport> {
+        seenConfigs.push(config);
         return {
           ok: false,
           checks: [
@@ -113,12 +131,13 @@ describe("CLI", () => {
     expect(output).toContain("Start mGBA manually");
     expect(output).not.toContain("Error:");
     expect(output).not.toContain("    at ");
+    expect(seenConfigs[0]?.llmVisionEnabled).toBe(true);
   });
 
   it("constructs run dependencies through the runner factory", async () => {
     const io = createIo();
     const seen: Array<{ config: HarnessConfig; maxSteps?: number }> = [];
-    const exitCode = await withEnv({ OPENAI_API_KEY: "unit-test-key" }, () => runCli(["run", "--policy", "openai", "--mode", "full-game", "--max-steps", "2", "--run-id", "cli-test"], io, {
+    const exitCode = await withEnv({ OPENAI_API_KEY: "unit-test-key" }, () => runCli(["run", "--policy", "openai", "--mode", "full-game", "--vision", "--max-steps", "2", "--run-id", "cli-test"], io, {
       createRunner(config, options) {
         seen.push({ config, maxSteps: options.maxSteps });
         return {
@@ -146,6 +165,7 @@ describe("CLI", () => {
     expect(seen).toHaveLength(1);
     expect(seen[0]?.config.aiProvider).toBe("openai");
     expect(seen[0]?.config.harnessMode).toBe("full-game");
+    expect(seen[0]?.config.llmVisionEnabled).toBe(true);
     expect(seen[0]?.config.harnessRunId).toBe("cli-test");
     expect(seen[0]?.maxSteps).toBe(2);
     expect(io.out.join("\n")).toContain("completed");
