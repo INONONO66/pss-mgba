@@ -117,26 +117,41 @@ pnpm run harness preflight
 Start the Stage 1 harness loop with the local heuristic policy:
 
 ```bash
-pnpm run harness run --policy heuristic --mode stage1 --max-steps 100 --run-id local-stage1
+pnpm run harness run --policy heuristic --mode stage1
 ```
 
 Start a live Stage 1 LLM run through the configured OpenAI-compatible endpoint after setting `OPENAI_API_KEY` privately in `.env`:
 
 ```bash
-pnpm run harness run --policy openai --max-steps 100 --run-id local-stage1-openai
+pnpm run harness run --policy openai
 ```
 
 Add `--vision` to require processed screenshot images in each LLM request. With `--vision`, the runner writes the processed files under `runs/<runId>/vision/` and the LLM policy refuses to send a text-only request if no processed image is available for the current decision.
 
 ```bash
-pnpm run harness run --policy openai --vision --max-steps 100 --run-id local-stage1-openai-vision
+pnpm run harness run --policy openai --vision
 ```
 
 Start an opt-in full-game run. Completion is recorded only after observing Hall of Fame map id `0x76` through RAM-derived map state:
 
 ```bash
-pnpm run harness run --mode full-game --policy openai --max-steps 1000 --run-id local-full-game
+pnpm run harness run --mode full-game --policy openai
 ```
+
+When `--run-id` is omitted, the harness generates one and prints it in the run output. Evidence still goes under `runs/<runId>/` by default, or under `EVIDENCE_DIR/<runId>/` when you configure a different evidence directory.
+
+Omitted step and LLM call caps mean uncapped by that budget. Leaving out `--max-steps` and `LOOP_MAX_STEPS` leaves the loop without a step limit, and leaving out `MAX_LLM_CALLS` leaves LLM calls without a call limit. Safety still comes from the selected detector outcome, repeated-state and stuck detection, explicit caps when you set them, and manual stop.
+
+Caps are opt in. Use them when you want a bounded local check:
+
+```bash
+pnpm run harness run --policy heuristic --max-steps 100
+LOOP_MAX_STEPS=100 pnpm run harness run --policy openai
+MAX_LLM_CALLS=25 pnpm run harness run --policy openai
+MAX_LLM_CALLS=0 pnpm run harness run --policy heuristic
+```
+
+`--max-steps` overrides `LOOP_MAX_STEPS`. `--run-id` overrides `HARNESS_RUN_ID`. Explicit env caps apply when the matching CLI override is omitted.
 
 Start the integrated dev viewer and full-game vision loop together:
 
@@ -144,13 +159,15 @@ Start the integrated dev viewer and full-game vision loop together:
 pnpm run dev
 ```
 
-`pnpm run dev` starts a local viewer at `http://127.0.0.1:8787` and runs the harness as a shared `run --policy openai --mode full-game --vision --max-steps 1000` session. The page shows the live mGBA screenshot on the left and the latest 1-3 processed files from `runs/<runId>/vision/` on the right, which are the same images currently available to the LLM context. It does not reprocess viewer screenshots, write emulator memory, bundle ROM assets, or persist base64 image data.
+`pnpm run dev` starts a local viewer at `http://127.0.0.1:8787` and runs the harness as a shared `run --policy openai --mode full-game --vision` session. The generated run id appears in the terminal output, and evidence still goes under `runs/<runId>/` by default, or under `EVIDENCE_DIR/<runId>/` when configured. The page shows the live mGBA screenshot on the left and the latest 1-3 processed files from `runs/<runId>/vision/` on the right, which are the same images currently available to the LLM context. It does not reprocess viewer screenshots, write emulator memory, bundle ROM assets, or persist base64 image data.
 
-You can override run options after the script name, for example:
+You can override run options after the script name. `pnpm run dev` still owns exactly one generated run id for the session, so use the general `pnpm run harness` command if you need to target a specific `--run-id` manually.
 
 ```bash
-pnpm run dev --policy heuristic --max-steps 3 --run-id local-dev-viewer
+pnpm run dev --policy heuristic --max-steps 3
 ```
+
+Inline terminal debug logs are enabled for `run` by default. They are safe summaries of decisions, actions, errors, and run-finished events. They are not raw chain-of-thought, prompts, model responses, screenshots, API keys, tokens, or base64 image data. Set `HARNESS_INLINE_DEBUG_LOGS=0`, `false`, `no`, or `off` to disable them.
 
 To launch the same workflow in a tmux grid:
 
@@ -158,15 +175,15 @@ To launch the same workflow in a tmux grid:
 pnpm run dev:tmux
 ```
 
-The tmux launcher still depends on mGBA-http. It creates panes for the mGBA-http process, mGBA with `mGBASocketServer.lua`, the harness/dev viewer, a live decision watcher, and a live processed-vision watcher. It reads `.env`, uses `POKEMON_ROM_PATH` for the mGBA pane, defaults to the workspace-local `.local-tools/mgba-http/` install, and passes one shared run id through every pane. Use `START_MGBA_HTTP=0` or `START_MGBA=0` when those processes are already running elsewhere. The launcher treats mGBA-http as ready only when `/core/currentframe` succeeds; if a stale server is listening but the emulator is not connected, panes stay open with that diagnostic. Add `--fresh` to stop an existing tmux session and restart local mGBA-http/mGBA processes before launching.
+The tmux launcher still depends on mGBA-http. It creates panes for the mGBA-http process, mGBA with `mGBASocketServer.lua`, the harness/dev viewer, a live decision watcher, and a live processed-vision watcher. It reads `.env`, uses `POKEMON_ROM_PATH` for the mGBA pane, defaults to the workspace-local `.local-tools/mgba-http/` install, and passes one shared run id through every pane. The harness pane disables inline terminal debug logs because the watcher panes already show the same safe summaries without duplicates. Use `START_MGBA_HTTP=0` or `START_MGBA=0` when those processes are already running elsewhere. The launcher treats mGBA-http as ready only when `/core/currentframe` succeeds; if a stale server is listening but the emulator is not connected, panes stay open with that diagnostic. Add `--fresh` to stop an existing tmux session and restart local mGBA-http/mGBA processes before launching.
 
 Useful launcher examples:
 
 ```bash
 pnpm run dev:tmux --print
-pnpm run dev:tmux --session pss-live --run-id local-live --policy heuristic
-pnpm run dev:tmux --fresh --run-id clean-local-live
-START_MGBA_HTTP=0 START_MGBA=0 pnpm run dev:tmux --run-id attach-existing
+pnpm run dev:tmux --session pss-live --policy heuristic
+pnpm run dev:tmux --fresh
+START_MGBA_HTTP=0 START_MGBA=0 pnpm run dev:tmux
 ```
 
 Send one safe button press for manual smoke checks:
@@ -192,10 +209,14 @@ Supported common options:
 --mode stage1          Use the default Stage 1 detector.
 --mode full-game       Use the opt-in full-game detector.
 --vision               Enable and require processed LLM image input for snapshot, preflight, or run.
---max-steps N          Override LOOP_MAX_STEPS for snapshot or run.
---run-id ID            Override HARNESS_RUN_ID for evidence paths.
+--max-steps N          Optional step cap override for snapshot or run. Omit it and LOOP_MAX_STEPS for no step cap.
+--run-id ID            Optional HARNESS_RUN_ID override for evidence paths. Omit it to generate a run id.
 --fresh                In dev:tmux, stop an existing session and local emulator bridge processes first.
 DEV_VIEWER_PORT        Override the integrated dev viewer port; default is 8787.
+LOOP_MAX_STEPS=N       Optional env step cap. Omit it for no step cap.
+MAX_LLM_CALLS=N        Optional env LLM call cap. Omit it for no call cap; 0 allows zero LLM calls.
+HARNESS_INLINE_DEBUG_LOGS=0|false|no|off
+                       Disable inline terminal debug summaries for run.
 START_MGBA_HTTP=0      In dev:tmux, do not start the mGBA-http pane process.
 START_MGBA=0           In dev:tmux, do not start the mGBA emulator pane process.
 ```
