@@ -55,9 +55,18 @@ describe("DevViewerServer", () => {
       expect(html).toContain("#live-frame");
       expect(html).toContain(".vision-grid");
       expect(html).toContain(".vision-cell");
-      expect(html).toContain("aspect-ratio: 1 / 1");
-      expect(html).toContain("grid-template-columns: minmax(0, 3fr) minmax(0, 1fr)");
+      expect(html).toContain("--gb-screen-aspect: 10 / 9");
+      expect(html).toContain("--live-screen-aspect: 1.111111");
+      expect(html).toContain("--vision-screen-aspect: 1.111111");
+      expect(html).toContain("grid-template-columns: minmax(0, var(--live-column-fr)) minmax(0, var(--vision-column-fr))");
+      expect(html).toContain("aspect-ratio: var(--live-screen-aspect)");
+      expect(html).toContain("aspect-ratio: var(--vision-screen-aspect)");
+      expect(html).toContain("function refreshAspectVars()");
+      expect(html).toContain("imageAspect(liveFrame, 10 / 9)");
+      expect(html).toContain("img.addEventListener('load', refreshAspectVars, { once: true })");
       expect(html).toContain("repeat(3, minmax(0, 1fr))");
+      expect(html).not.toContain("aspect-ratio: 1 / 1");
+      expect(html).not.toContain("grid-template-columns: minmax(0, 3fr) minmax(0, 1fr)");
       expect(html).not.toContain("base64");
       expect(html).not.toContain("data:image");
 

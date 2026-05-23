@@ -144,28 +144,43 @@ function renderPage(runId: string, visionImageLimit: number): string {
       --text-label: 12px;
       --text-title: 18px;
       --line-thin: 1px solid var(--color-line);
+      --page-pad: clamp(var(--space-3), 4vw, var(--space-5));
+      --gb-screen-aspect: 10 / 9;
+      --live-screen-aspect: 1.111111;
+      --vision-screen-aspect: 1.111111;
+      --viewer-stage-aspect: 1.481481;
+      --mobile-stage-aspect: 0.833333;
+      --live-column-fr: 1.111111fr;
+      --vision-column-fr: 0.37037fr;
+      --live-row-fr: 0.9fr;
+      --vision-row-fr: 0.3fr;
+      --vision-stack-aspect: 0.37037;
+      --vision-row-aspect: 3.333333;
     }
     html, body { margin: 0; min-height: 100%; background: var(--color-page); color: var(--color-text); font-family: var(--font-ui); }
-    body { box-sizing: border-box; min-height: 100vh; padding: clamp(var(--space-3), 4vw, var(--space-5)); display: grid; align-items: center; }
-    main { width: min(100%, calc((100vh - (clamp(var(--space-3), 4vw, var(--space-5)) * 2)) * 4 / 3)); margin: 0 auto; }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { min-height: 100dvh; padding: var(--page-pad); display: grid; place-items: center; overflow: hidden; }
+    main { width: min(calc(100vw - (var(--page-pad) * 2)), calc((100dvh - (var(--page-pad) * 2)) * var(--viewer-stage-aspect))); aspect-ratio: var(--viewer-stage-aspect); margin: 0 auto; }
     h1, h2 { margin: 0; font-size: var(--text-title); font-weight: 600; letter-spacing: -0.02em; }
     p { margin: var(--space-2) 0 0; color: var(--color-muted); font-size: var(--text-label); line-height: 1.35; }
     code { color: var(--color-text); font-family: inherit; }
-    .layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); gap: 0; align-items: stretch; }
-    .image-cell, .vision-wall { position: relative; overflow: hidden; background: var(--color-surface); border: var(--line-thin); }
-    .image-cell { aspect-ratio: 1 / 1; }
+    .layout { position: relative; display: grid; width: 100%; height: 100%; grid-template-columns: minmax(0, var(--live-column-fr)) minmax(0, var(--vision-column-fr)); gap: 0; align-items: stretch; }
+    .layout::before { content: ""; position: absolute; inset: 0; z-index: 3; border: var(--line-thin); pointer-events: none; }
+    .image-cell, .vision-wall { position: relative; overflow: hidden; background: var(--color-surface); }
+    .image-cell { min-width: 0; height: 100%; aspect-ratio: var(--live-screen-aspect); }
     #live-frame { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; background: var(--color-surface); }
     .overlay { position: absolute; left: 0; right: 0; z-index: 1; padding: var(--space-3); background: linear-gradient(180deg, var(--color-overlay), rgba(5, 5, 4, 0)); pointer-events: none; }
     .overlay-top { top: 0; }
     .overlay-bottom { bottom: 0; background: linear-gradient(0deg, var(--color-overlay), rgba(5, 5, 4, 0)); }
-    .vision-wall { aspect-ratio: 1 / 3; border-left: 0; }
+    .vision-wall { min-width: 0; height: 100%; aspect-ratio: var(--vision-stack-aspect); }
+    .vision-wall::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; z-index: 3; border-left: var(--line-thin); pointer-events: none; }
     .vision-grid { display: grid; grid-template-columns: 1fr; grid-template-rows: repeat(3, minmax(0, 1fr)); height: 100%; }
-    .vision-cell { position: relative; min-height: 0; aspect-ratio: 1 / 1; border-top: var(--line-thin); }
-    .vision-cell:first-child { border-top: 0; }
+    .vision-cell { position: relative; min-height: 0; aspect-ratio: var(--vision-screen-aspect); }
+    .vision-cell + .vision-cell::before { content: ""; position: absolute; top: 0; left: 0; right: 0; z-index: 3; border-top: var(--line-thin); pointer-events: none; }
     .vision-cell img { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; background: var(--color-surface); }
     .meta { color: var(--color-muted); font-size: var(--text-label); line-height: 1.4; word-break: break-word; }
     .empty { box-sizing: border-box; display: grid; grid-column: 1 / -1; grid-row: 1 / -1; height: 100%; place-items: center; padding: var(--space-5); color: var(--color-muted); font-size: var(--text-label); text-align: center; }
-    @media (max-width: 700px) { body { align-items: start; } main { width: min(100%, calc((100vh - (clamp(var(--space-3), 4vw, var(--space-5)) * 2)) * 3 / 4)); } .layout { grid-template-columns: 1fr; } .vision-wall { aspect-ratio: 3 / 1; border-left: var(--line-thin); border-top: 0; } .vision-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: 1fr; } .vision-cell { border-top: 0; border-left: var(--line-thin); } .vision-cell:first-child { border-left: 0; } }
+    @media (max-width: 700px) { body { place-items: start center; overflow: auto; } main { width: min(calc(100vw - (var(--page-pad) * 2)), calc((100dvh - (var(--page-pad) * 2)) * var(--mobile-stage-aspect))); aspect-ratio: var(--mobile-stage-aspect); } .layout { grid-template-columns: 1fr; grid-template-rows: minmax(0, var(--live-row-fr)) minmax(0, var(--vision-row-fr)); } .vision-wall { width: 100%; height: 100%; aspect-ratio: var(--vision-row-aspect); } .vision-wall::before { inset: 0 0 auto 0; border-left: 0; border-top: var(--line-thin); } .vision-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: 1fr; } .vision-cell + .vision-cell::before { top: 0; bottom: 0; left: 0; right: auto; border-top: 0; border-left: var(--line-thin); } }
   </style>
 </head>
 <body>
@@ -194,6 +209,31 @@ function renderPage(runId: string, visionImageLimit: number): string {
 
     function text(node, value) { node.appendChild(document.createTextNode(value)); }
 
+    function setAspectVars(liveAspect, visionAspect) {
+      const live = Number.isFinite(liveAspect) && liveAspect > 0 ? liveAspect : 10 / 9;
+      const vision = Number.isFinite(visionAspect) && visionAspect > 0 ? visionAspect : 10 / 9;
+      const root = document.documentElement.style;
+      root.setProperty('--live-screen-aspect', live.toFixed(6));
+      root.setProperty('--vision-screen-aspect', vision.toFixed(6));
+      root.setProperty('--viewer-stage-aspect', (live + (vision / 3)).toFixed(6));
+      root.setProperty('--mobile-stage-aspect', (live / (1 + (live / (vision * 3)))).toFixed(6));
+      root.setProperty('--live-column-fr', live.toFixed(6) + 'fr');
+      root.setProperty('--vision-column-fr', (vision / 3).toFixed(6) + 'fr');
+      root.setProperty('--live-row-fr', (1 / live).toFixed(6) + 'fr');
+      root.setProperty('--vision-row-fr', (1 / (vision * 3)).toFixed(6) + 'fr');
+      root.setProperty('--vision-stack-aspect', (vision / 3).toFixed(6));
+      root.setProperty('--vision-row-aspect', (vision * 3).toFixed(6));
+    }
+
+    function imageAspect(image, fallback) {
+      return image.naturalWidth > 0 && image.naturalHeight > 0 ? image.naturalWidth / image.naturalHeight : fallback;
+    }
+
+    function refreshAspectVars() {
+      const visionImage = visionGrid.querySelector('.vision-cell img');
+      setAspectVars(imageAspect(liveFrame, 10 / 9), visionImage ? imageAspect(visionImage, 10 / 9) : 10 / 9);
+    }
+
     async function refreshLiveFrame() {
       liveFrame.src = '/api/live-frame?nonce=' + Date.now();
     }
@@ -216,6 +256,7 @@ function renderPage(runId: string, visionImageLimit: number): string {
         const img = document.createElement('img');
         img.src = image.url;
         img.alt = 'LLM context image ' + image.fileName;
+        img.addEventListener('load', refreshAspectVars, { once: true });
         card.appendChild(img);
 
         const meta = document.createElement('div');
@@ -232,6 +273,7 @@ function renderPage(runId: string, visionImageLimit: number): string {
       await Promise.allSettled([refreshLiveFrame(), refreshVisionImages()]);
     }
 
+    liveFrame.addEventListener('load', refreshAspectVars);
     setInterval(tick, 1000);
     tick();
   </script>
