@@ -60,7 +60,7 @@ function main(args = process.argv.slice(2)): void {
 
 function parseArgs(args: readonly string[]): LauncherOptions {
   let sessionName = process.env.TMUX_SESSION ?? "pss-mgba";
-  let runId = nonEmpty(process.env.HARNESS_RUN_ID) ?? createRunId();
+  let runId = createRunId();
   let evidenceDir = process.env.EVIDENCE_DIR ?? "runs";
   let attach = process.env.TMUX_ATTACH !== "0";
   let printOnly = false;
@@ -76,8 +76,9 @@ function parseArgs(args: readonly string[]): LauncherOptions {
         sessionName = args[++index] ?? sessionName;
         break;
       case "--run-id":
-        runId = nonEmpty(args[++index]) ?? runId;
-        break;
+        throw new Error("dev:tmux uses one generated run id per session; do not pass --run-id");
+      case arg?.startsWith("--run-id=") ? arg : "":
+        throw new Error("dev:tmux uses one generated run id per session; do not pass --run-id");
       case "--evidence-dir":
         evidenceDir = args[++index] ?? evidenceDir;
         break;
@@ -111,17 +112,18 @@ function buildPanes(options: LauncherOptions): PaneSpec[] {
   const runner = packageRunner();
   const tsx = path.join(rootDir, "node_modules", ".bin", "tsx");
   const watch = existsSync(tsx) ? q(tsx) : `${runner} exec tsx`;
-  const runEnv = `HARNESS_RUN_ID=${q(options.runId)} EVIDENCE_DIR=${q(options.evidenceDir)}`;
-  const harnessArgs = ["--run-id", options.runId, ...options.harnessArgs].map(q).join(" ");
+  const watcherEnv = `HARNESS_RUN_ID=${q(options.runId)} EVIDENCE_DIR=${q(options.evidenceDir)}`;
+  const harnessRunEnv = `PSS_DEV_RUN_ID=${q(options.runId)} EVIDENCE_DIR=${q(options.evidenceDir)} HARNESS_INLINE_DEBUG_LOGS=0`;
+  const harnessArgs = options.harnessArgs.map(q).join(" ");
   const baseUrl = process.env.MGBA_HTTP_BASE_URL ?? "http://127.0.0.1:5001";
-  const harnessCommand = `cd ${q(rootDir)} && ${runEnv} ${runner} run dev ${harnessArgs}`;
+  const harnessCommand = `cd ${q(rootDir)} && ${harnessRunEnv} ${runner} run dev ${harnessArgs}`;
 
   return [
     { title: "mgba-http", command: mgbaHttpCommand(options.startMgbaHttp) },
     { title: "mGBA", command: mgbaCommand(options.startMgba) },
     { title: "harness + viewer", command: holdWhenNotReady(mgbaReadyCommand(baseUrl), `mGBA-http is not ready at ${baseUrl}; check mGBA, ROM, mGBASocketServer.lua, and RAM read endpoints`, harnessCommand) },
-    { title: "decisions", command: `cd ${q(rootDir)} && ${runEnv} ${watch} scripts/watch-run.ts decisions --run-id ${q(options.runId)} --evidence-dir ${q(options.evidenceDir)}` },
-    { title: "vision", command: `cd ${q(rootDir)} && ${runEnv} ${watch} scripts/watch-run.ts vision --run-id ${q(options.runId)} --evidence-dir ${q(options.evidenceDir)}` }
+    { title: "decisions", command: `cd ${q(rootDir)} && ${watcherEnv} ${watch} scripts/watch-run.ts decisions --evidence-dir ${q(options.evidenceDir)}` },
+    { title: "vision", command: `cd ${q(rootDir)} && ${watcherEnv} ${watch} scripts/watch-run.ts vision --evidence-dir ${q(options.evidenceDir)}` }
   ];
 }
 
@@ -234,10 +236,6 @@ function printExitStatus(): string {
 
 function q(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
-}
-
-function nonEmpty(value: string | undefined): string | undefined {
-  return value === undefined || value.trim() === "" ? undefined : value;
 }
 
 function createRunId(): string {
