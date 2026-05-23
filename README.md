@@ -8,7 +8,7 @@ This project does not bundle a ROM. You must provide your own legal Pokemon Red 
 
 If an API key was ever pasted into chat, rotate it now. Treat it as exposed. Put new keys only in `.env`, never in source, tests, shell history, README edits, or evidence files.
 
-Run `npm run check:secrets` before sharing changes. The scanner checks project text files for OpenAI-style `sk-` values while skipping generated, dependency, run, and orchestration evidence directories such as `node_modules`, `.git`, `runs`, `coverage`, `dist`, and `.omo`.
+Run `pnpm run check:secrets` before sharing changes. The scanner checks project text files for OpenAI-style `sk-` values while skipping generated, dependency, run, and orchestration evidence directories such as `node_modules`, `.git`, `runs`, `coverage`, `dist`, and `.omo`.
 
 The harness never writes emulator memory. It uses safe Game Boy inputs only: `A`, `B`, `Start`, `Select`, `Up`, `Down`, `Left`, and `Right`.
 
@@ -18,7 +18,7 @@ The harness never writes emulator memory. It uses safe Game Boy inputs only: `A`
 2. Install dependencies.
 
 ```bash
-npm install
+pnpm install
 ```
 
 3. Copy the example env file.
@@ -68,57 +68,120 @@ OPENAI_TEMPERATURE=0.2
 
 Heuristic mode does not need an API key. `AI_PROVIDER=openai` requires `OPENAI_API_KEY` and sends it only to `OPENAI_BASE_URL`. If `OPENAI_BASE_URL` points at a third-party OpenAI-compatible endpoint, put that provider's key in `OPENAI_API_KEY`; do not send a real OpenAI key to a third-party endpoint. `OPENAI_TEMPERATURE` is the non-secret sampling setting.
 
+### Optional Vision Input
+
+The harness is text-only by default. Set `LLM_VISION_ENABLED=true` only when the selected OpenAI-compatible provider and model support Chat Completions image inputs.
+
+When enabled, each runner step takes the raw screenshot already captured by `snapshot()`, creates a processed image under the run's `vision/` directory, and passes only the latest `LLM_VISION_MAX_IMAGES` processed images to the LLM. The default rolling window is 3 images to keep context and cost bounded.
+
+Vision settings:
+
+```text
+LLM_VISION_ENABLED=false
+LLM_VISION_MAX_IMAGES=3
+LLM_VISION_CROP_LEFT=0
+LLM_VISION_CROP_TOP=0
+LLM_VISION_CROP_WIDTH=0
+LLM_VISION_CROP_HEIGHT=0
+LLM_VISION_MAX_WIDTH=512
+LLM_VISION_MAX_HEIGHT=384
+LLM_VISION_FORMAT=jpeg
+LLM_VISION_QUALITY=70
+LLM_VISION_DETAIL=low
+```
+
+When crop width and height are `0`, the processor automatically trims black padding around the inner game image before resizing, falling back to the full screenshot only when the content area is ambiguous. Explicit crop settings override auto-crop and are applied before resizing. Processed images are resized to fit inside `LLM_VISION_MAX_WIDTH` by `LLM_VISION_MAX_HEIGHT` without enlargement, then encoded as `jpeg`, `webp`, or `png`. `LLM_VISION_QUALITY` applies to JPEG and WebP. Use explicit crop settings only when auto-crop cannot isolate the emulator core content cleanly.
+
+Evidence and policy metadata store only file paths, dimensions, crop rectangles, byte counts, frame, step, media type, and detail. Base64 data URLs are created transiently in memory inside `LLMPolicy` for the outgoing Chat Completions request and are not written to events, decisions, summaries, errors, or tests snapshots.
+
 ## CLI Commands
 
 Show help:
 
 ```bash
-npm run harness -- --help
+pnpm run harness --help
 ```
 
 Print a redacted config summary without constructing mGBA or OpenAI clients:
 
 ```bash
-npm run harness -- snapshot --dry-run
+pnpm run harness snapshot --dry-run
 ```
 
 Run mGBA preflight against your already running mGBA-http service:
 
 ```bash
-npm run harness -- preflight
+pnpm run harness preflight
 ```
 
 Start the Stage 1 harness loop with the local heuristic policy:
 
 ```bash
-npm run harness -- run --policy heuristic --mode stage1 --max-steps 100 --run-id local-stage1
+pnpm run harness run --policy heuristic --mode stage1 --max-steps 100 --run-id local-stage1
 ```
 
 Start a live Stage 1 LLM run through the configured OpenAI-compatible endpoint after setting `OPENAI_API_KEY` privately in `.env`:
 
 ```bash
-npm run harness -- run --policy openai --max-steps 100 --run-id local-stage1-openai
+pnpm run harness run --policy openai --max-steps 100 --run-id local-stage1-openai
+```
+
+Add `--vision` to require processed screenshot images in each LLM request. With `--vision`, the runner writes the processed files under `runs/<runId>/vision/` and the LLM policy refuses to send a text-only request if no processed image is available for the current decision.
+
+```bash
+pnpm run harness run --policy openai --vision --max-steps 100 --run-id local-stage1-openai-vision
 ```
 
 Start an opt-in full-game run. Completion is recorded only after observing Hall of Fame map id `0x76` through RAM-derived map state:
 
 ```bash
-npm run harness -- run --mode full-game --policy openai --max-steps 1000 --run-id local-full-game
+pnpm run harness run --mode full-game --policy openai --max-steps 1000 --run-id local-full-game
+```
+
+Start the integrated dev viewer and full-game vision loop together:
+
+```bash
+pnpm run dev
+```
+
+`pnpm run dev` starts a local viewer at `http://127.0.0.1:8787` and runs the harness as a shared `run --policy openai --mode full-game --vision --max-steps 1000` session. The page shows the live mGBA screenshot on the left and the latest 1-3 processed files from `runs/<runId>/vision/` on the right, which are the same images currently available to the LLM context. It does not reprocess viewer screenshots, write emulator memory, bundle ROM assets, or persist base64 image data.
+
+You can override run options after the script name, for example:
+
+```bash
+pnpm run dev --policy heuristic --max-steps 3 --run-id local-dev-viewer
+```
+
+To launch the same workflow in a tmux grid:
+
+```bash
+pnpm run dev:tmux
+```
+
+The tmux launcher still depends on mGBA-http. It creates panes for the mGBA-http process, mGBA with `mGBASocketServer.lua`, the harness/dev viewer, a live decision watcher, and a live processed-vision watcher. It reads `.env`, uses `POKEMON_ROM_PATH` for the mGBA pane, defaults to the workspace-local `.local-tools/mgba-http/` install, and passes one shared run id through every pane. Use `START_MGBA_HTTP=0` or `START_MGBA=0` when those processes are already running elsewhere. The launcher treats mGBA-http as ready only when `/core/currentframe` succeeds; if a stale server is listening but the emulator is not connected, panes stay open with that diagnostic. Add `--fresh` to stop an existing tmux session and restart local mGBA-http/mGBA processes before launching.
+
+Useful launcher examples:
+
+```bash
+pnpm run dev:tmux --print
+pnpm run dev:tmux --session pss-live --run-id local-live --policy heuristic
+pnpm run dev:tmux --fresh --run-id clean-local-live
+START_MGBA_HTTP=0 START_MGBA=0 pnpm run dev:tmux --run-id attach-existing
 ```
 
 Send one safe button press for manual smoke checks:
 
 ```bash
-npm run harness -- press A --frames 5
+pnpm run harness press A --frames 5
 ```
 
 Run the opt-in real mGBA smoke workflow against an already running mGBA-http service:
 
 ```bash
-RUN_MGBA_INTEGRATION=1 MGBA_HTTP_BASE_URL=http://127.0.0.1:5001 npm run smoke:mgba
+RUN_MGBA_INTEGRATION=1 MGBA_HTTP_BASE_URL=http://127.0.0.1:5001 pnpm run smoke:mgba
 ```
 
-`npm run smoke:mgba` refuses to contact mGBA unless both `RUN_MGBA_INTEGRATION=1` and `MGBA_HTTP_BASE_URL` are set. When enabled, it runs preflight, records a snapshot, presses safe `B` once, then records a second snapshot. It does not press `A`, start mGBA, open ROMs, load ROMs, or validate ROM files beyond the existing config summary showing whether `POKEMON_ROM_PATH` is present. Evidence is written under `runs/<runId>/` by default, or under `EVIDENCE_DIR/<runId>/` when configured.
+`pnpm run smoke:mgba` refuses to contact mGBA unless both `RUN_MGBA_INTEGRATION=1` and `MGBA_HTTP_BASE_URL` are set. When enabled, it runs preflight, records a snapshot, presses safe `B` once, then records a second snapshot. It does not press `A`, start mGBA, open ROMs, load ROMs, or validate ROM files beyond the existing config summary showing whether `POKEMON_ROM_PATH` is present. Evidence is written under `runs/<runId>/` by default, or under `EVIDENCE_DIR/<runId>/` when configured.
 
 Supported common options:
 
@@ -128,8 +191,13 @@ Supported common options:
 --policy openai        Use the OpenAI-compatible policy. Requires OPENAI_API_KEY.
 --mode stage1          Use the default Stage 1 detector.
 --mode full-game       Use the opt-in full-game detector.
+--vision               Enable and require processed LLM image input for snapshot, preflight, or run.
 --max-steps N          Override LOOP_MAX_STEPS for snapshot or run.
 --run-id ID            Override HARNESS_RUN_ID for evidence paths.
+--fresh                In dev:tmux, stop an existing session and local emulator bridge processes first.
+DEV_VIEWER_PORT        Override the integrated dev viewer port; default is 8787.
+START_MGBA_HTTP=0      In dev:tmux, do not start the mGBA-http pane process.
+START_MGBA=0           In dev:tmux, do not start the mGBA emulator pane process.
 ```
 
 `press` also accepts `--frames N`.
@@ -169,15 +237,15 @@ The LLM full-game prompt treats badges as progress only, forbids memory writes a
 Run the default checks:
 
 ```bash
-npm run check:secrets
-npm run typecheck
-npm test
+pnpm run check:secrets
+pnpm run typecheck
+pnpm test
 ```
 
 Integration tests are opt in so the default suite never contacts mGBA, OpenAI, ROMs, or the network:
 
 ```bash
-RUN_MGBA_INTEGRATION=1 MGBA_HTTP_BASE_URL=http://127.0.0.1:5001 npm run test:integration
+RUN_MGBA_INTEGRATION=1 MGBA_HTTP_BASE_URL=http://127.0.0.1:5001 pnpm run test:integration
 ```
 
 Only enable integration tests when mGBA-http is already running with your ROM loaded.
