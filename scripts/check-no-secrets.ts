@@ -30,9 +30,6 @@ const SKIP_DIRECTORIES = new Set([
   "runs"
 ]);
 const SKIP_FILENAMES = new Set([
-  "package-lock.json",
-  "npm-shrinkwrap.json",
-  "yarn.lock",
   "pnpm-lock.yaml"
 ]);
 const TEXT_EXTENSIONS = new Set([
