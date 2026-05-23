@@ -6,7 +6,7 @@
   "packageManager": "pnpm@11.2.2",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "dev": "tsx src/index.ts",
     "build": "tsc -p tsconfig.json"
   },
@@ -17,13 +17,13 @@
     "@ai-sdk/openai-compatible": "3.0.0-canary.48",
     "@minpeter/pss-runtime": "^0.0.5",
     "@t3-oss/env-core": "^0.13.11",
-    "dotenv": "latest",
-    "zod": "latest"
+    "dotenv": "17.4.2",
+    "zod": "4.4.3"
   },
   "devDependencies": {
-    "@types/node": "latest",
-    "tsx": "latest",
-    "typescript": "latest",
-    "vitest": "latest"
+    "@types/node": "25.9.1",
+    "tsx": "4.22.3",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7"
   }
 }

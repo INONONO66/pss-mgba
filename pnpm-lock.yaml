@@ -18,23 +18,23 @@ importers:
         specifier: ^0.13.11
         version: 0.13.11(typescript@6.0.3)(zod@4.4.3)
       dotenv:
-        specifier: latest
+        specifier: 17.4.2
         version: 17.4.2
       zod:
-        specifier: latest
+        specifier: 4.4.3
         version: 4.4.3
     devDependencies:
       '@types/node':
-        specifier: latest
+        specifier: 25.9.1
         version: 25.9.1
       tsx:
-        specifier: latest
+        specifier: 4.22.3
         version: 4.22.3
       typescript:
-        specifier: latest
+        specifier: 6.0.3
         version: 6.0.3
       vitest:
-        specifier: latest
+        specifier: 4.1.7
         version: 4.1.7(@types/node@25.9.1)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(tsx@4.22.3))
 
 packages:
