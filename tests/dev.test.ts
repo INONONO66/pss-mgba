@@ -4,54 +4,57 @@ import type { AiProvider, HarnessConfig, HarnessMode } from "../src/config.js";
 
 describe("dev command", () => {
   it("builds a full-game OpenAI vision run by default", () => {
-    expect(buildDevHarnessArgs([], "dev-run")).toEqual([
+    expect(buildDevHarnessArgs([])).toEqual([
       "run",
       "--policy",
       "openai",
       "--mode",
       "full-game",
-      "--max-steps",
-      "1000",
-      "--run-id",
-      "dev-run",
       "--vision"
     ]);
   });
 
+  it("hides generated run id and omitted max steps from default harness args", () => {
+    const args = buildDevHarnessArgs([]);
+
+    expect(args.join(" ")).toContain("run --policy openai --mode full-game --vision");
+    expect(args).not.toContain("--run-id");
+    expect(args).not.toContain("--max-steps");
+  });
+
   it("preserves explicit user run options while forcing vision", () => {
-    expect(buildDevHarnessArgs(["--policy", "heuristic", "--max-steps", "3", "--run-id", "manual"], "generated")).toEqual([
+    expect(buildDevHarnessArgs(["--policy", "heuristic", "--max-steps", "3"])).toEqual([
       "run",
       "--policy",
       "heuristic",
       "--max-steps",
       "3",
-      "--run-id",
-      "manual",
       "--mode",
       "full-game",
       "--vision"
     ]);
+  });
+
+  it("rejects manual run id switching in dev mode", () => {
+    expect(() => buildDevHarnessArgs(["--run-id", "manual"])).toThrow(/do not pass --run-id/);
   });
 
   it("ignores a package-manager argument separator", () => {
-    expect(buildDevHarnessArgs(["--", "--policy", "heuristic", "--run-id", "manual"], "generated")).toEqual([
+    expect(buildDevHarnessArgs(["--", "--policy", "heuristic"])).toEqual([
       "run",
       "--policy",
       "heuristic",
-      "--run-id",
-      "manual",
       "--mode",
       "full-game",
-      "--max-steps",
-      "1000",
       "--vision"
     ]);
   });
 
-  it("starts the viewer with the same run id and closes it after the harness exits", async () => {
+  it("starts the viewer with one generated run id and closes it after the harness exits", async () => {
     const events: string[] = [];
     const io = createIo();
-    const exitCode = await runDev(["--policy", "heuristic", "--max-steps", "2", "--run-id", "dev-test"], io, {
+    const exitCode = await runDev(["--policy", "heuristic", "--max-steps", "2"], io, {
+      now: () => new Date("2026-05-23T00:00:00.000Z"),
       loadConfig(env) {
         return fakeConfig({
           aiProvider: parseAiProvider(env.AI_PROVIDER),
@@ -72,15 +75,15 @@ describe("dev command", () => {
         };
       },
       async runCli(args) {
-        events.push(`run:${args.join(" ")}`);
+        events.push(`run:${args.join(" ")}:${process.env.HARNESS_RUN_ID ?? "missing"}`);
         return 0;
       }
     });
 
     expect(exitCode).toBe(0);
     expect(events).toEqual([
-      "viewer:dev-test:true",
-      "run:run --policy heuristic --max-steps 2 --run-id dev-test --mode full-game --vision",
+      "viewer:2026-05-23T00-00-00-000Z:true",
+      "run:run --policy heuristic --max-steps 2 --mode full-game --vision:2026-05-23T00-00-00-000Z",
       "viewer:closed"
     ]);
     expect(io.out.join("\n")).toContain("Dev viewer: http://127.0.0.1:8787");
@@ -94,7 +97,11 @@ describe("dev command", () => {
       const exitCode = await runDev([], createIo(), {
         now: () => new Date("2026-05-23T00:00:00.000Z"),
         loadConfig(env) {
-          return fakeConfig({ harnessRunId: env.HARNESS_RUN_ID ?? "missing", llmVisionEnabled: env.LLM_VISION_ENABLED === "true" });
+          return fakeConfig({
+            harnessRunId: env.HARNESS_RUN_ID ?? "missing",
+            llmVisionEnabled: env.LLM_VISION_ENABLED === "true",
+            loopMaxSteps: Number(env.LOOP_MAX_STEPS ?? 0)
+          });
         },
         async startViewer(config) {
           events.push(`viewer:${config.harnessRunId}`);
@@ -105,7 +112,7 @@ describe("dev command", () => {
           };
         },
         async runCli(args) {
-          events.push(`run:${args.join(" ")}`);
+          events.push(`run:${args.join(" ")}:${process.env.HARNESS_RUN_ID ?? "missing"}`);
           return 0;
         }
       });
@@ -113,8 +120,51 @@ describe("dev command", () => {
       expect(exitCode).toBe(0);
       expect(events).toEqual([
         "viewer:2026-05-23T00-00-00-000Z",
-        "run:run --policy openai --mode full-game --max-steps 1000 --run-id 2026-05-23T00-00-00-000Z --vision"
+        "run:run --policy openai --mode full-game --vision:2026-05-23T00-00-00-000Z"
       ]);
+      expect(process.env.HARNESS_RUN_ID).toBe("");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.HARNESS_RUN_ID;
+      } else {
+        process.env.HARNESS_RUN_ID = previous;
+      }
+    }
+  });
+
+  it("does not use HARNESS_RUN_ID as a dev session override", async () => {
+    const events: string[] = [];
+    const previous = process.env.HARNESS_RUN_ID;
+    process.env.HARNESS_RUN_ID = "manual-env-run";
+    try {
+      const exitCode = await runDev([], createIo(), {
+        now: () => new Date("2026-05-23T00:00:00.000Z"),
+        loadConfig(env) {
+          return fakeConfig({
+            harnessRunId: env.HARNESS_RUN_ID ?? "missing",
+            llmVisionEnabled: env.LLM_VISION_ENABLED === "true"
+          });
+        },
+        async startViewer(config) {
+          events.push(`viewer:${config.harnessRunId}`);
+          return {
+            url: "http://127.0.0.1:8787",
+            server: {} as never,
+            async close() {}
+          };
+        },
+        async runCli(args) {
+          events.push(`run:${args.join(" ")}:${process.env.HARNESS_RUN_ID ?? "missing"}`);
+          return 0;
+        }
+      });
+
+      expect(exitCode).toBe(0);
+      expect(events).toEqual([
+        "viewer:2026-05-23T00-00-00-000Z",
+        "run:run --policy openai --mode full-game --vision:2026-05-23T00-00-00-000Z"
+      ]);
+      expect(process.env.HARNESS_RUN_ID).toBe("manual-env-run");
     } finally {
       if (previous === undefined) {
         delete process.env.HARNESS_RUN_ID;

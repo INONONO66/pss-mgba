@@ -20,29 +20,37 @@ const DEFAULT_IO: CliIo = {
 
 export async function runDev(args: readonly string[] = process.argv.slice(2), io: CliIo = DEFAULT_IO, dependencies: DevDependencies = {}): Promise<number> {
   const normalizedArgs = stripSeparator(args);
-  const runId = nonEmpty(optionValue(normalizedArgs, "--run-id")) ?? nonEmpty(process.env.HARNESS_RUN_ID) ?? createRunId(dependencies.now?.() ?? new Date());
-  const harnessArgs = buildDevHarnessArgs(normalizedArgs, runId);
-  const config = loadDevConfig(harnessArgs, dependencies.loadConfig ?? loadConfig);
+  const runId = nonEmpty(process.env.PSS_DEV_RUN_ID) ?? createRunId(dependencies.now?.() ?? new Date());
+  const harnessArgs = buildDevHarnessArgs(normalizedArgs);
+  const config = loadDevConfig(harnessArgs, runId, dependencies.loadConfig ?? loadConfig);
   const viewer = await (dependencies.startViewer ?? startViewer)(config);
 
   io.stdout(`Dev viewer: ${viewer.url}`);
   io.stdout(`Run ID: ${config.harnessRunId}`);
 
+  const previousRunId = process.env.HARNESS_RUN_ID;
+  process.env.HARNESS_RUN_ID = config.harnessRunId;
   try {
     return await (dependencies.runCli ?? runCli)(harnessArgs, io);
   } finally {
+    if (previousRunId === undefined) {
+      delete process.env.HARNESS_RUN_ID;
+    } else {
+      process.env.HARNESS_RUN_ID = previousRunId;
+    }
     await viewer.close();
   }
 }
 
-export function buildDevHarnessArgs(args: readonly string[], runId: string): string[] {
+export function buildDevHarnessArgs(args: readonly string[]): string[] {
   const normalizedArgs = stripSeparator(args);
+  if (optionValue(normalizedArgs, "--run-id") !== undefined) {
+    throw new Error("pnpm run dev uses one generated run id per session; do not pass --run-id");
+  }
   const forwarded = normalizedArgs[0] === "run" ? normalizedArgs.slice(1) : [...normalizedArgs];
   const result = ["run", ...forwarded];
   ensureOption(result, "--policy", "openai");
   ensureOption(result, "--mode", "full-game");
-  ensureOption(result, "--max-steps", "1000");
-  ensureOption(result, "--run-id", runId);
   ensureFlag(result, "--vision");
   return result;
 }
@@ -57,12 +65,11 @@ async function startViewer(config: HarnessConfig): Promise<StartedDevViewerServe
   });
 }
 
-function loadDevConfig(args: readonly string[], loader: (env: NodeJS.ProcessEnv) => HarnessConfig): HarnessConfig {
+function loadDevConfig(args: readonly string[], runId: string, loader: (env: NodeJS.ProcessEnv) => HarnessConfig): HarnessConfig {
   const env: NodeJS.ProcessEnv = { ...process.env };
   const policy = optionValue(args, "--policy");
   const mode = optionValue(args, "--mode");
   const maxSteps = optionValue(args, "--max-steps");
-  const runId = optionValue(args, "--run-id");
 
   if (policy !== undefined) {
     env.AI_PROVIDER = policy;
@@ -73,9 +80,7 @@ function loadDevConfig(args: readonly string[], loader: (env: NodeJS.ProcessEnv)
   if (maxSteps !== undefined) {
     env.LOOP_MAX_STEPS = maxSteps;
   }
-  if (runId !== undefined) {
-    env.HARNESS_RUN_ID = runId;
-  }
+  env.HARNESS_RUN_ID = runId;
   env.LLM_VISION_ENABLED = "true";
 
   return loader(env);
