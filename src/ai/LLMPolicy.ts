@@ -1,13 +1,22 @@
+import { readFile } from "node:fs/promises";
 import OpenAI from "openai";
-import type { HarnessConfig, HarnessMode } from "../config.js";
+import type { HarnessConfig, HarnessMode, LlmVisionDetail } from "../config.js";
 import type { PolicyDecision } from "../control/ActionTypes.js";
 import { PolicyDecisionSchema, createPolicyDecisionJsonSchema } from "../control/ActionSchema.js";
 import { HarnessError } from "../errors.js";
-import type { Policy, PolicyInput } from "./Policy.js";
+import type { Policy, PolicyInput, VisionImageInput } from "./Policy.js";
 
 interface ChatMessage {
   content: string | null;
 }
+
+export type ChatCompletionContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string; detail?: LlmVisionDetail } };
+
+type ChatCompletionRequestMessage =
+  | { role: "system"; content: string }
+  | { role: "user"; content: string | ChatCompletionContentPart[] };
 
 interface ChatChoice {
   message?: ChatMessage;
@@ -28,7 +37,7 @@ export interface ChatCompletionsClient {
 export interface ChatCompletionRequest {
   model: string;
   temperature: number;
-  messages: Array<{ role: "system" | "user"; content: string }>;
+  messages: ChatCompletionRequestMessage[];
 }
 
 export interface OpenAIClientOptions {
@@ -47,6 +56,8 @@ export interface LLMPolicyOptions {
   temperature: number;
   maxLlmCalls: number;
   harnessMode?: HarnessMode;
+  visionDetail?: LlmVisionDetail;
+  visionRequired?: boolean;
   fallbackPolicy: Policy;
   client?: ChatCompletionsClient;
   createClient?: (options: OpenAIClientOptions) => ChatCompletionsClient;
@@ -59,6 +70,8 @@ export class LLMPolicy implements Policy {
   private readonly temperature: number;
   private readonly maxLlmCalls: number;
   private readonly harnessMode: HarnessMode;
+  private readonly visionDetail: LlmVisionDetail;
+  private readonly visionRequired: boolean;
   private readonly fallbackPolicy: Policy;
   private readonly onFallback?: (error: HarnessError) => void;
   private calls = 0;
@@ -74,6 +87,8 @@ export class LLMPolicy implements Policy {
     this.temperature = options.temperature;
     this.maxLlmCalls = options.maxLlmCalls;
     this.harnessMode = options.harnessMode ?? "stage1";
+    this.visionDetail = options.visionDetail ?? "low";
+    this.visionRequired = options.visionRequired ?? false;
     this.fallbackPolicy = options.fallbackPolicy;
     this.onFallback = options.onFallback;
   }
@@ -90,6 +105,8 @@ export class LLMPolicy implements Policy {
       temperature: config.openaiTemperature,
       maxLlmCalls: config.maxLlmCalls,
       harnessMode: config.harnessMode,
+      visionDetail: config.llmVisionDetail,
+      visionRequired: config.llmVisionEnabled,
       fallbackPolicy,
       ...overrides
     });
@@ -109,10 +126,15 @@ export class LLMPolicy implements Policy {
     this.calls += 1;
 
     try {
+      if (this.visionRequired && (input.visionImages === undefined || input.visionImages.length === 0)) {
+        return this.fallback(input, new HarnessError("LLM_UNAVAILABLE", "LLM vision input is required but no processed vision images were available"));
+      }
+
+      const messages = await buildMessages(input, this.harnessMode, this.visionDetail);
       const completion = await this.client.chat.completions.create({
         model: this.model,
         temperature: this.temperature,
-        messages: buildMessages(input, this.harnessMode)
+        messages
       });
       const content = completion.choices[0]?.message?.content;
 
@@ -167,9 +189,21 @@ function createOpenAIClient(options: OpenAIClientOptions): ChatCompletionsClient
   return new OpenAI(options);
 }
 
-function buildMessages(input: PolicyInput, harnessMode: HarnessMode): ChatCompletionRequest["messages"] {
+async function buildMessages(input: PolicyInput, harnessMode: HarnessMode, defaultVisionDetail: LlmVisionDetail): Promise<ChatCompletionRequest["messages"]> {
+  const userText = harnessMode === "full-game" ? buildFullGameUserText(input) : buildStage1UserText(input);
+  const userContent = await buildUserContent(userText, input.visionImages, defaultVisionDetail);
+
   if (harnessMode === "full-game") {
-    return buildFullGameMessages(input);
+    return [
+      {
+        role: "system",
+        content: "You are a Pokemon Red/Blue full-game controller for an mGBA harness. Choose only safe Game Boy actions from the supplied schema. Never invent buttons, memory writes, emulator RAM mutation, shell commands, code execution, ROM assets, walkthrough text, or a hardcoded global input timeline."
+      },
+      {
+        role: "user",
+        content: userContent
+      }
+    ];
   }
 
   return [
@@ -179,43 +213,58 @@ function buildMessages(input: PolicyInput, harnessMode: HarnessMode): ChatComple
     },
     {
       role: "user",
-      content: [
-        "Role: Pokemon Red/Blue controller for an mGBA harness.",
-        "Stage 1 objective: progress from the Pallet start through Oak/starter flow, starter acquisition, Rival battle entry, and Rival battle exit using only current observed state.",
-        `Current RAM-derived state JSON: ${stableJson(input.currentState ?? input.state)}`,
-        `Recent actions summary: ${stableJson(input.recentActions ?? input.recentStates ?? [])}`,
-        stage1RouteFacts(),
-        `Allowed action schema: ${stableJson(createPolicyDecisionJsonSchema())}`,
-        "Anti-hardcoding rule: base each decision on the current state and recent action results only; do not follow or emit a precomputed global input timeline.",
-        "Output only one JSON object matching the allowed policy decision schema. Do not include markdown, comments, or extra text."
-      ].join("\n")
+      content: userContent
     }
   ];
 }
 
-function buildFullGameMessages(input: PolicyInput): ChatCompletionRequest["messages"] {
+function buildStage1UserText(input: PolicyInput): string {
   return [
-    {
-      role: "system",
-      content: "You are a Pokemon Red/Blue full-game controller for an mGBA harness. Choose only safe Game Boy actions from the supplied schema. Never invent buttons, memory writes, emulator RAM mutation, shell commands, code execution, ROM assets, walkthrough text, or a hardcoded global input timeline."
-    },
-    {
-      role: "user",
-      content: [
-        "Role: Pokemon Red/Blue controller for an mGBA harness.",
-        "Full-game objective: progress through the game using only current observed state and safe controller inputs.",
-        "Final detector goal: completion can be claimed only when the current observed map is Hall of Fame (map id 0x76) or hallOfFameComplete is true.",
-        "Badges are read-only progress signals only; wObtainedBadges, badgeCount, and badgesObtained are not completion by themselves.",
-        "Do not request or imply memory writes, emulator RAM mutation APIs, ROM-derived assets, map graphics, walkthrough text, or precomputed global input timelines.",
-        "Do not claim route facts alone, Rival battle exit, or all badges as full-game completion without Hall of Fame observation.",
-        `Current RAM-derived state JSON: ${stableJson(input.currentState ?? input.state)}`,
-        `Recent actions summary: ${stableJson(input.recentActions ?? input.recentStates ?? [])}`,
-        `Allowed action schema: ${stableJson(createPolicyDecisionJsonSchema())}`,
-        "Anti-hardcoding rule: base each decision on the current state and recent action results only; do not follow or emit a precomputed global input timeline.",
-        "Output only one JSON object matching the allowed policy decision schema. Do not include markdown, comments, or extra text."
-      ].join("\n")
-    }
-  ];
+    "Role: Pokemon Red/Blue controller for an mGBA harness.",
+    "Stage 1 objective: progress from the Pallet start through Oak/starter flow, starter acquisition, Rival battle entry, and Rival battle exit using only current observed state.",
+    `Current RAM-derived state JSON: ${stableJson(input.currentState ?? input.state)}`,
+    `Recent actions summary: ${stableJson(input.recentActions ?? input.recentStates ?? [])}`,
+    stage1RouteFacts(),
+    `Allowed action schema: ${stableJson(createPolicyDecisionJsonSchema())}`,
+    "Anti-hardcoding rule: base each decision on the current state and recent action results only; do not follow or emit a precomputed global input timeline.",
+    "Output only one JSON object matching the allowed policy decision schema. Do not include markdown, comments, or extra text."
+  ].join("\n");
+}
+
+function buildFullGameUserText(input: PolicyInput): string {
+  return [
+    "Role: Pokemon Red/Blue controller for an mGBA harness.",
+    "Full-game objective: progress through the game using only current observed state and safe controller inputs.",
+    "Final detector goal: completion can be claimed only when the current observed map is Hall of Fame (map id 0x76) or hallOfFameComplete is true.",
+    "Badges are read-only progress signals only; wObtainedBadges, badgeCount, and badgesObtained are not completion by themselves.",
+    "Do not request or imply memory writes, emulator RAM mutation APIs, ROM-derived assets, map graphics, walkthrough text, or precomputed global input timelines.",
+    "Do not claim route facts alone, Rival battle exit, or all badges as full-game completion without Hall of Fame observation.",
+    `Current RAM-derived state JSON: ${stableJson(input.currentState ?? input.state)}`,
+    `Recent actions summary: ${stableJson(input.recentActions ?? input.recentStates ?? [])}`,
+    `Allowed action schema: ${stableJson(createPolicyDecisionJsonSchema())}`,
+    "Anti-hardcoding rule: base each decision on the current state and recent action results only; do not follow or emit a precomputed global input timeline.",
+    "Output only one JSON object matching the allowed policy decision schema. Do not include markdown, comments, or extra text."
+  ].join("\n");
+}
+
+async function buildUserContent(text: string, visionImages: readonly VisionImageInput[] | undefined, defaultDetail: LlmVisionDetail): Promise<string | ChatCompletionContentPart[]> {
+  if (visionImages === undefined || visionImages.length === 0) {
+    return text;
+  }
+
+  const parts: ChatCompletionContentPart[] = [{ type: "text", text }];
+  for (const image of visionImages) {
+    const bytes = await readFile(image.path);
+    parts.push({
+      type: "image_url",
+      image_url: {
+        url: `data:${image.mediaType};base64,${bytes.toString("base64")}`,
+        detail: image.detail ?? defaultDetail
+      }
+    });
+  }
+
+  return parts;
 }
 
 function stage1RouteFacts(): string {

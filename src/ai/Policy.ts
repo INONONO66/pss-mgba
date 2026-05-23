@@ -1,4 +1,23 @@
 import type { PolicyDecision } from "../control/ActionTypes.js";
+import type { LlmVisionDetail } from "../config.js";
+
+export interface VisionImageInput {
+  readonly path: string;
+  readonly sourcePath: string;
+  readonly mediaType: "image/jpeg" | "image/webp" | "image/png";
+  readonly width: number;
+  readonly height: number;
+  readonly step: number;
+  readonly frame: number;
+  readonly crop: {
+    readonly left: number;
+    readonly top: number;
+    readonly width: number;
+    readonly height: number;
+  };
+  readonly bytes: number;
+  readonly detail?: LlmVisionDetail;
+}
 
 export interface PokemonStateSnapshot {
   wIsInBattle?: number | boolean;
@@ -38,6 +57,7 @@ export interface PolicyInput {
   currentState?: unknown;
   recentActions?: readonly unknown[];
   recentStates?: readonly RecentStateSnapshot[];
+  visionImages?: readonly VisionImageInput[];
   step?: number;
 }
 

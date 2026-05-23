@@ -1,3 +1,6 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../../src/config.js";
 import type { PolicyDecision } from "../../src/control/ActionTypes.js";
@@ -46,12 +49,146 @@ describe("LLMPolicy", () => {
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({ model: "unit-test-model", temperature: 0.1 });
     expect(requests[0]?.messages[0]?.role).toBe("system");
-    expect(requests[0]?.messages[1]?.content).toContain("Current RAM-derived state JSON");
-    expect(requests[0]?.messages[1]?.content).toContain("Stage 1 objective");
-    expect(requests[0]?.messages[1]?.content).toContain("Stage 1 route facts");
-    expect(requests[0]?.messages[1]?.content).toContain("Anti-hardcoding rule");
-    expect(requests[0]?.messages[1]?.content).toContain("Output only one JSON object");
-    expect(requests[0]?.messages[1]?.content).toContain("Allowed action schema");
+    const prompt = getUserText(requests[0]);
+    expect(prompt).toContain("Current RAM-derived state JSON");
+    expect(prompt).toContain("Stage 1 objective");
+    expect(prompt).toContain("Stage 1 route facts");
+    expect(prompt).toContain("Anti-hardcoding rule");
+    expect(prompt).toContain("Output only one JSON object");
+    expect(prompt).toContain("Allowed action schema");
+  });
+
+  it("keeps text-only requests as string content when no vision images are provided", async () => {
+    const requests: ChatCompletionRequest[] = [];
+    const client = fakeClient(async (request) => {
+      requests.push(request);
+      return JSON.stringify(validDecision);
+    });
+    const policy = createPolicy({ client });
+
+    await expect(policy.chooseAction(policyInput)).resolves.toEqual(validDecision);
+
+    expect(typeof requests[0]?.messages[1]?.content).toBe("string");
+    expect(JSON.stringify(requests[0])).not.toContain("data:image");
+  });
+
+  it("does not send a text-only request when config requires vision images", async () => {
+    const requests: ChatCompletionRequest[] = [];
+    const fallbackErrors: HarnessError[] = [];
+    const client = fakeClient(async (request) => {
+      requests.push(request);
+      return JSON.stringify(validDecision);
+    });
+    const config = loadConfig({
+      AI_PROVIDER: "openai",
+      OPENAI_API_KEY: "unit-test-key",
+      LLM_VISION_ENABLED: "true"
+    });
+    const policy = LLMPolicy.fromConfig(config, createFallbackPolicy(), {
+      client,
+      onFallback(error) {
+        fallbackErrors.push(error);
+      }
+    });
+
+    const decision = await policy.chooseAction(policyInput);
+
+    expect(requests).toHaveLength(0);
+    expect(fallbackErrors).toHaveLength(1);
+    expect(fallbackErrors[0]).toMatchObject({ code: "LLM_UNAVAILABLE" });
+    expect(decision.rationale).toContain("LLM fallback after LLM_UNAVAILABLE");
+    expect(JSON.stringify(decision)).not.toContain("data:image");
+  });
+
+  it("builds transient multimodal content parts from provided vision images", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "llm-policy-vision-"));
+    const imagePath = path.join(root, "frame.jpg");
+    await writeFile(imagePath, Buffer.from([1, 2, 3, 4]));
+    const requests: ChatCompletionRequest[] = [];
+    const client = fakeClient(async (request) => {
+      requests.push(request);
+      return JSON.stringify(validDecision);
+    });
+    const policy = createPolicy({ client, visionDetail: "high" });
+
+    await expect(policy.chooseAction({
+      ...policyInput,
+      visionImages: [{
+        path: imagePath,
+        sourcePath: "/tmp/source.png",
+        mediaType: "image/jpeg",
+        width: 2,
+        height: 2,
+        step: 7,
+        frame: 12,
+        crop: { left: 0, top: 0, width: 2, height: 2 },
+        bytes: 4,
+        detail: "low"
+      }]
+    })).resolves.toEqual(validDecision);
+
+    const content = requests[0]?.messages[1]?.content;
+    expect(Array.isArray(content)).toBe(true);
+    if (!Array.isArray(content)) {
+      throw new Error("expected multimodal content parts");
+    }
+    expect(content).toHaveLength(2);
+    expect(content[0]).toMatchObject({ type: "text", text: expect.stringContaining("Current RAM-derived state JSON") });
+    const imagePart = content[1];
+    expect(imagePart).toMatchObject({
+      type: "image_url",
+      image_url: { detail: "low" }
+    });
+    if (imagePart?.type !== "image_url") {
+      throw new Error("expected image content part");
+    }
+    expect(decodeDataUrl(imagePart.image_url.url)).toEqual({ mediaType: "image/jpeg", bytes: Buffer.from([1, 2, 3, 4]) });
+  });
+
+  it("sends multimodal content when config requires vision and processed images are present", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "llm-policy-required-vision-"));
+    const imagePath = path.join(root, "frame.jpg");
+    await writeFile(imagePath, Buffer.from([5, 6, 7, 8]));
+    const requests: ChatCompletionRequest[] = [];
+    const client = fakeClient(async (request) => {
+      requests.push(request);
+      return JSON.stringify(validDecision);
+    });
+    const config = loadConfig({
+      AI_PROVIDER: "openai",
+      OPENAI_API_KEY: "unit-test-key",
+      LLM_VISION_ENABLED: "true"
+    });
+    const policy = LLMPolicy.fromConfig(config, createFallbackPolicy(), { client });
+
+    await expect(policy.chooseAction({
+      ...policyInput,
+      visionImages: [{
+        path: imagePath,
+        sourcePath: "/tmp/source.png",
+        mediaType: "image/jpeg",
+        width: 2,
+        height: 2,
+        step: 7,
+        frame: 12,
+        crop: { left: 0, top: 0, width: 2, height: 2 },
+        bytes: 4,
+        detail: "low"
+      }]
+    })).resolves.toEqual(validDecision);
+
+    const content = requests[0]?.messages[1]?.content;
+    expect(Array.isArray(content)).toBe(true);
+    if (!Array.isArray(content)) {
+      throw new Error("expected multimodal content parts");
+    }
+    expect(content).toHaveLength(2);
+    const imagePart = content[1];
+    expect(imagePart).toMatchObject({ type: "image_url" });
+    if (imagePart?.type !== "image_url") {
+      throw new Error("expected image content part");
+    }
+    expect(decodeDataUrl(imagePart.image_url.url)).toEqual({ mediaType: "image/jpeg", bytes: Buffer.from([5, 6, 7, 8]) });
   });
 
   it("includes compact state-conditioned Stage 1 route facts without a global input timeline", async () => {
@@ -64,7 +201,7 @@ describe("LLMPolicy", () => {
 
     await expect(policy.chooseAction(policyInput)).resolves.toEqual(validDecision);
 
-    const prompt = requests[0]?.messages[1]?.content ?? "";
+    const prompt = getUserText(requests[0]);
     expect(prompt).toContain("Stage 1 route facts");
     expect(prompt).toContain("wCurMap/wYCoord/wXCoord/screenTextKind/wPartyCount/wIsInBattle/playerFacingDirection/recentActions");
     expect(prompt).toContain("not as a step-numbered global timeline");
@@ -101,7 +238,7 @@ describe("LLMPolicy", () => {
 
     await expect(policy.chooseAction(policyInput)).resolves.toEqual(validDecision);
 
-    const prompt = requests[0]?.messages[1]?.content ?? "";
+    const prompt = getUserText(requests[0]);
     expect(prompt).toContain("Full-game objective");
     expect(prompt).toContain("Hall of Fame (map id 0x76)");
     expect(prompt).toContain("Badges are read-only progress signals only");
@@ -263,6 +400,7 @@ function createPolicy(overrides: {
   client: ChatCompletionsClient;
   maxLlmCalls?: number;
   harnessMode?: "stage1" | "full-game";
+  visionDetail?: "low" | "high" | "auto";
   onFallback?: (error: HarnessError) => void;
 }): LLMPolicy {
   return new LLMPolicy({
@@ -274,10 +412,29 @@ function createPolicy(overrides: {
     temperature: 0.1,
     maxLlmCalls: overrides.maxLlmCalls ?? 10,
     harnessMode: overrides.harnessMode,
+    visionDetail: overrides.visionDetail,
     fallbackPolicy: createFallbackPolicy(),
     client: overrides.client,
     onFallback: overrides.onFallback
   });
+}
+
+function getUserText(request: ChatCompletionRequest | undefined): string {
+  const content = request?.messages[1]?.content;
+  if (typeof content === "string") {
+    return content;
+  }
+  const textPart = content?.find((part) => part.type === "text");
+  return textPart?.type === "text" ? textPart.text : "";
+}
+
+function decodeDataUrl(url: string): { mediaType: string; bytes: Buffer } {
+  const match = /^data:([^;]+);base64,(.+)$/.exec(url);
+  if (match === null) {
+    throw new Error("expected image data URL");
+  }
+
+  return { mediaType: match[1] ?? "", bytes: Buffer.from(match[2] ?? "", "base64") };
 }
 
 function createFallbackPolicy(): Policy {
