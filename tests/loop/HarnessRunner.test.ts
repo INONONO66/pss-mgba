@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { HarnessRunner, type RunnerEvidenceRecorder, type RunnerVisionProcessor } from "../../src/loop/HarnessRunner.js";
 import type { Policy, PolicyInput, PokemonStateSnapshot, VisionImageInput } from "../../src/ai/Policy.js";
 import type { PolicyDecision } from "../../src/control/ActionTypes.js";
+import { formatDebugEvent } from "../../src/evidence/EventFormatter.js";
 import { HarnessError } from "../../src/errors.js";
 import { Stage1Detector } from "../../src/pokemon/Stage1Detector.js";
 import { FullGameDetector } from "../../src/pokemon/FullGameDetector.js";
@@ -217,6 +218,31 @@ describe("HarnessRunner", () => {
     expect(evidence.finished?.status).toBe("failed_timeout");
   });
 
+  it("treats omitted max steps as unlimited until detector completion", async () => {
+    const evidence = new FakeEvidenceRecorder();
+    const runner = createRunner({
+      evidence,
+      config: { ...baseConfig, loopMaxSteps: undefined },
+      states: [
+        state(),
+        state({ wPartyCount: 1 }),
+        state({ wPartyCount: 1 }),
+        state({ wPartyCount: 1, wIsInBattle: 1 }),
+        state({ wPartyCount: 1, wIsInBattle: 0 })
+      ],
+      budgets: { repeatedStateThreshold: 10 }
+    });
+
+    const result = await runner.run();
+
+    expect(result.status).toBe("completed");
+    expect(result.errorCode).toBeUndefined();
+    expect(result.totalSteps).toBe(5);
+    expect(evidence.errors).toHaveLength(0);
+    expect(evidence.started).toMatchObject({ harnessMode: "stage1" });
+    expect(evidence.started).not.toHaveProperty("loopMaxSteps", Infinity);
+  });
+
   it("stops as stuck when repeated state hashes persist without detector progress", async () => {
     const evidence = new FakeEvidenceRecorder();
     const repeated = state({ wYCoord: 7 });
@@ -290,6 +316,131 @@ describe("HarnessRunner", () => {
     expect(budgetResult.errorCode).toBe("BUDGET_EXCEEDED");
     expect(budgetEvidence.errors[0]).toMatchObject({ code: "BUDGET_EXCEEDED" });
   });
+
+  it("treats omitted OpenAI LLM call budget as unlimited until detector completion", async () => {
+    const evidence = new FakeEvidenceRecorder();
+    const policyInputs: PolicyInput[] = [];
+    const runner = createRunner({
+      evidence,
+      config: { ...baseConfig, aiProvider: "openai", maxLlmCalls: undefined },
+      policy: {
+        async chooseAction(input) {
+          policyInputs.push(input);
+          return waitDecision;
+        }
+      },
+      states: [
+        state(),
+        state({ wPartyCount: 1 }),
+        state({ wPartyCount: 1 }),
+        state({ wPartyCount: 1, wIsInBattle: 1 }),
+        state({ wPartyCount: 1, wIsInBattle: 0 })
+      ],
+      budgets: { maxSteps: 10, repeatedStateThreshold: 10 }
+    });
+
+    const result = await runner.run();
+
+    expect(result.status).toBe("completed");
+    expect(result.errorCode).toBeUndefined();
+    expect(policyInputs).toHaveLength(5);
+    expect(evidence.errors).toHaveLength(0);
+    expect(evidence.started).not.toHaveProperty("maxLlmCalls", Infinity);
+  });
+
+  it("enforces explicit OpenAI LLM call budgets including zero", async () => {
+    const oneCallPolicyInputs: PolicyInput[] = [];
+    const oneCallEvidence = new FakeEvidenceRecorder();
+    const oneCallRunner = createRunner({
+      evidence: oneCallEvidence,
+      config: { ...baseConfig, aiProvider: "openai", maxLlmCalls: 1 },
+      policy: {
+        async chooseAction(input) {
+          oneCallPolicyInputs.push(input);
+          return waitDecision;
+        }
+      },
+      states: [state({ wYCoord: 1 }), state({ wYCoord: 2 })],
+      budgets: { maxSteps: 10, maxLlmCalls: 1, repeatedStateThreshold: 10 }
+    });
+
+    const oneCallResult = await oneCallRunner.run();
+
+    expect(oneCallResult.status).toBe("failed_budget");
+    expect(oneCallResult.errorCode).toBe("BUDGET_EXCEEDED");
+    expect(oneCallPolicyInputs).toHaveLength(1);
+    expect(oneCallEvidence.errors[0]).toMatchObject({ code: "BUDGET_EXCEEDED" });
+
+    const zeroCallPolicyInputs: PolicyInput[] = [];
+    const zeroCallEvidence = new FakeEvidenceRecorder();
+    const zeroCallRunner = createRunner({
+      evidence: zeroCallEvidence,
+      config: { ...baseConfig, aiProvider: "openai", maxLlmCalls: 0 },
+      policy: {
+        async chooseAction(input) {
+          zeroCallPolicyInputs.push(input);
+          return waitDecision;
+        }
+      },
+      states: [state({ wYCoord: 1 })],
+      budgets: { maxSteps: 10, maxLlmCalls: 0, repeatedStateThreshold: 10 }
+    });
+
+    const zeroCallResult = await zeroCallRunner.run();
+
+    expect(zeroCallResult.status).toBe("failed_budget");
+    expect(zeroCallResult.errorCode).toBe("BUDGET_EXCEEDED");
+    expect(zeroCallPolicyInputs).toHaveLength(0);
+    expect(zeroCallEvidence.errors[0]).toMatchObject({ code: "BUDGET_EXCEEDED" });
+  });
+
+  it("emits debug events after decision, action, error, and run finish records", async () => {
+    const events: unknown[] = [];
+    const evidence = new FakeEvidenceRecorder();
+    const runner = createRunner({
+      evidence,
+      states: [state({ wYCoord: 1 })],
+      budgets: { maxSteps: 1, repeatedStateThreshold: 10 },
+      debugEventSink: (event) => events.push(event)
+    });
+
+    const result = await runner.run();
+
+    expect(result.status).toBe("failed_timeout");
+    expect(events).toHaveLength(4);
+    expect(events.map((event) => (event as { type: string }).type)).toEqual(["decision", "action", "error", "run_finished"]);
+    expect(events[0]).toMatchObject({ type: "decision", payload: { step: 1, frame: 1, decision: { action: { type: "wait", frames: 1 } } } });
+    expect(events[1]).toMatchObject({ type: "action", payload: { step: 1, frame: 1, action: { type: "wait", frames: 1 } } });
+    expect(events[2]).toMatchObject({ type: "error", payload: { error: { code: "TIMEOUT" } } });
+    expect(events[3]).toMatchObject({ type: "run_finished", payload: { status: "failed_timeout", result: { status: "failed_timeout" } } });
+    expect(evidence.decisions).toHaveLength(1);
+    expect(evidence.actions).toHaveLength(1);
+    expect(evidence.errors).toHaveLength(1);
+    expect(evidence.finished?.status).toBe("failed_timeout");
+  });
+
+  it("redacts secret-like debug log fields and sk tokens", () => {
+    const line = formatDebugEvent({
+      type: "decision",
+      timestamp: "2026-05-22T00:00:00.000Z",
+      payload: {
+        step: 4,
+        frame: 9,
+        decision: {
+          action: { type: "wait", frames: 1, authorization: "Bearer raw-token" },
+          confidence: 0.4,
+          rationale: `do not leak OPENAI_API_KEY=s${"k"}-unit-test-secret or token=raw-token`
+        }
+      }
+    });
+
+    expect(line).toContain("decision step=4 frame=9 action=");
+    expect(line).toContain("confidence=0.4");
+    expect(line).toContain("[REDACTED]");
+    expect(line).not.toContain(`s${"k"}-unit-test-secret`);
+    expect(line).not.toContain("raw-token");
+    expect(line).not.toContain("Bearer raw-token");
+  });
 });
 
 async function expectFailure(
@@ -318,6 +469,7 @@ function createRunner(overrides: {
   stateError?: HarnessError;
   policyError?: HarnessError;
   controllerError?: HarnessError;
+  debugEventSink?: ConstructorParameters<typeof HarnessRunner<PokemonStateSnapshot>>[0]["debugEventSink"];
 }): HarnessRunner<PokemonStateSnapshot> {
   const states = overrides.states ?? [state()];
   const frames = overrides.frames ?? states.map((_value, index) => index + 1);
@@ -365,7 +517,8 @@ function createRunner(overrides: {
     visionProcessor: overrides.visionProcessor,
     budgets: { stepDelayMs: 0, ...overrides.budgets },
     sleep: async () => {},
-    now: fixedNow
+    now: fixedNow,
+    debugEventSink: overrides.debugEventSink
   });
 }
 

@@ -32,6 +32,12 @@ export interface RunnerEvidenceRecorder {
   finishRun(status: HarnessStatus, result?: unknown): Promise<unknown>;
 }
 
+export interface RunnerDebugEvent {
+  readonly type: "decision" | "action" | "error" | "run_finished";
+  readonly timestamp: string;
+  readonly payload: unknown;
+}
+
 export interface RunnerBudgets {
   readonly maxSteps?: number;
   readonly stepDelayMs?: number;
@@ -51,6 +57,7 @@ export interface HarnessRunnerOptions<TState = PokemonStateSnapshot> {
   readonly sleep?: (ms: number) => Promise<void>;
   readonly now?: () => Date;
   readonly visionProcessor?: RunnerVisionProcessor;
+  readonly debugEventSink?: (event: RunnerDebugEvent) => void;
 }
 
 export interface RunnerVisionProcessor {
@@ -106,13 +113,14 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
   private readonly controller: RunnerController;
   private readonly evidence: RunnerEvidenceRecorder;
   private readonly detector: ProgressDetector<Record<string, unknown>, DetectorStatus>;
-  private readonly maxSteps: number;
+  private readonly maxSteps: number | undefined;
   private readonly stepDelayMs: number;
-  private readonly maxLlmCalls: number;
+  private readonly maxLlmCalls: number | undefined;
   private readonly repeatedStateThreshold: number;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly now: () => Date;
   private readonly visionProcessor?: RunnerVisionProcessor;
+  private readonly debugEventSink?: (event: RunnerDebugEvent) => void;
   private readonly recentStates: RecentStateSnapshot[] = [];
   private readonly recentVisionImages: VisionImageInput[] = [];
   private readonly recentStateHashes: string[] = [];
@@ -137,6 +145,7 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.now = options.now ?? (() => new Date());
     this.visionProcessor = options.visionProcessor;
+    this.debugEventSink = options.debugEventSink;
   }
 
   async snapshot(step = this.step): Promise<HarnessSnapshot<TState>> {
@@ -162,7 +171,7 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
     let status: HarnessStatus = "running";
 
     while (status === "running") {
-      if (this.step >= this.maxSteps) {
+      if (this.maxSteps !== undefined && this.step >= this.maxSteps) {
         failure = this.timeoutFailure();
         status = failure.status;
         break;
@@ -176,11 +185,14 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
 
         const policyInput = this.createPolicyInput(snapshot);
         const decision = await this.chooseDecision(policyInput);
-        await this.evidence.recordDecision({ step: this.step, frame: snapshot.frame, decision });
+        const decisionEvent = { step: this.step, frame: snapshot.frame, decision };
+        await this.evidence.recordDecision(decisionEvent);
+        this.emitDebugEvent("decision", decisionEvent);
 
         await this.controller.execute(decision.action);
         const actionSummary = this.recordAction(snapshot, decision);
         await this.evidence.recordAction(actionSummary);
+        this.emitDebugEvent("action", actionSummary);
 
         const detectorStatus = this.detector.update(toDetectorState(snapshot.state), decision.action, snapshot.frame);
         status = detectorStatus.status;
@@ -206,16 +218,18 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
 
     if (failure !== undefined) {
       await this.evidence.recordError(failure.error);
+      this.emitDebugEvent("error", { error: failure.error.toJSON() });
     }
 
     const result = this.createResult(status, failure?.error);
-    await this.evidence.finishRun(status, result);
+    const summary = await this.evidence.finishRun(status, result);
+    this.emitDebugEvent("run_finished", summary);
     return result;
   }
 
   private async chooseDecision(input: PolicyInput): Promise<PolicyDecision> {
     if (this.config.aiProvider === "openai") {
-      if (this.llmCalls >= this.maxLlmCalls) {
+      if (this.maxLlmCalls !== undefined && this.llmCalls >= this.maxLlmCalls) {
         throw new HarnessError("BUDGET_EXCEEDED", "Runner LLM call budget reached", {
           context: { maxLlmCalls: this.maxLlmCalls }
         });
@@ -348,6 +362,10 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
 
   private timestamp(): string {
     return this.now().toISOString();
+  }
+
+  private emitDebugEvent(type: RunnerDebugEvent["type"], payload: unknown): void {
+    this.debugEventSink?.({ type, timestamp: this.timestamp(), payload });
   }
 }
 
