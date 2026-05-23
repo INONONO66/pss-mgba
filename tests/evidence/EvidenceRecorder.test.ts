@@ -26,6 +26,8 @@ describe("EvidenceRecorder", () => {
     await expect(stat(paths.summaryFile)).resolves.toMatchObject({ isFile: expect.any(Function) });
     await expect(stat(paths.statesDir)).resolves.toMatchObject({ isDirectory: expect.any(Function) });
     await expect(stat(paths.screenshotsDir)).resolves.toMatchObject({ isDirectory: expect.any(Function) });
+    await expect(stat(paths.rawScreenshotsDir)).resolves.toMatchObject({ isDirectory: expect.any(Function) });
+    await expect(stat(paths.visionDir)).resolves.toMatchObject({ isDirectory: expect.any(Function) });
     await expect(stat(paths.errorsDir)).resolves.toMatchObject({ isDirectory: expect.any(Function) });
 
     expect(stateFile).toBe(paths.stateFile(1));

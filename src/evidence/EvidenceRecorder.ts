@@ -128,6 +128,8 @@ export class EvidenceRecorder {
     await Promise.all([
       mkdir(this.paths.statesDir, { recursive: true }),
       mkdir(this.paths.screenshotsDir, { recursive: true }),
+      mkdir(this.paths.rawScreenshotsDir, { recursive: true }),
+      mkdir(this.paths.visionDir, { recursive: true }),
       mkdir(this.paths.errorsDir, { recursive: true })
     ]);
   }

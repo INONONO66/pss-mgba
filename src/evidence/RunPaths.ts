@@ -9,6 +9,8 @@ export interface RunPaths {
   readonly summaryFile: string;
   readonly statesDir: string;
   readonly screenshotsDir: string;
+  readonly rawScreenshotsDir: string;
+  readonly visionDir: string;
   readonly errorsDir: string;
   stateFile(sequence: number): string;
   screenshotFile(sequence: number): string;
@@ -19,6 +21,8 @@ export function buildRunPaths(rootDir: string, runId: string): RunPaths {
   const runDir = path.join(rootDir, runId);
   const statesDir = path.join(runDir, "states");
   const screenshotsDir = path.join(runDir, "screenshots");
+  const rawScreenshotsDir = path.join(runDir, "raw-screenshots");
+  const visionDir = path.join(runDir, "vision");
   const errorsDir = path.join(runDir, "errors");
 
   return {
@@ -30,6 +34,8 @@ export function buildRunPaths(rootDir: string, runId: string): RunPaths {
     summaryFile: path.join(runDir, "summary.json"),
     statesDir,
     screenshotsDir,
+    rawScreenshotsDir,
+    visionDir,
     errorsDir,
     stateFile: (sequence: number) => path.join(statesDir, `${formatSequence(sequence)}.json`),
     screenshotFile: (sequence: number) => path.join(screenshotsDir, `${formatSequence(sequence)}.json`),
