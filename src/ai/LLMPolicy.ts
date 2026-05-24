@@ -4,7 +4,7 @@ import type { HarnessConfig, HarnessMode, LlmVisionDetail } from "../config.js";
 import type { PolicyDecision } from "../control/ActionTypes.js";
 import { PolicyDecisionSchema, createPolicyDecisionJsonSchema } from "../control/ActionSchema.js";
 import { HarnessError } from "../errors.js";
-import type { Policy, PolicyInput, VisionImageInput } from "./Policy.js";
+import type { Policy, PolicyInput, RecentStateSnapshot, VisionImageInput } from "./Policy.js";
 
 interface ChatMessage {
   content: string | null;
@@ -308,7 +308,7 @@ function buildStage1UserText(input: PolicyInput): string {
     "Task: choose the next safe Game Boy controller action.",
     "Goal: make forward game progress using only the current observed game state.",
     ...buildStateContextSection(input),
-    `Recent actions summary: ${stableJson(input.recentActions ?? input.recentStates ?? [])}`,
+    ...buildRecentContextSection(input),
     ...buildMapSection(input),
     outputContract()
   ].join("\n");
@@ -320,7 +320,7 @@ function buildFullGameUserText(input: PolicyInput): string {
     "Goal: progress through the game autonomously using only observed state and legal inputs.",
     "Completion rule: only observed Hall of Fame map/state completes the run; badges alone do not.",
     ...buildStateContextSection(input),
-    `Recent actions summary: ${stableJson(input.recentActions ?? input.recentStates ?? [])}`,
+    ...buildRecentContextSection(input),
     ...buildMapSection(input),
     outputContract()
   ].join("\n");
@@ -385,6 +385,165 @@ function formatDetectorStatus(status: unknown): string {
   });
 }
 
+
+function buildRecentContextSection(input: PolicyInput): string[] {
+  const lines: string[] = [];
+  const recentStateSummary = summarizeRecentStates(input.recentStates);
+  if (recentStateSummary !== undefined) {
+    lines.push(`Recent observed state summary: ${stableJson(recentStateSummary)}`);
+  }
+
+  const loopSignal = summarizeLoopSignal(input.recentStates, input.recentActions);
+  if (loopSignal !== undefined) {
+    lines.push(`Loop signal: ${loopSignal}`);
+  }
+
+  lines.push(`Recent actions summary: ${stableJson(input.recentActions ?? [])}`);
+  return lines;
+}
+
+function summarizeRecentStates(states: PolicyInput["recentStates"]): Array<Record<string, unknown>> | undefined {
+  if (states === undefined || states.length === 0) {
+    return undefined;
+  }
+
+  return states.slice(-8).map((state) => ({
+    step: state.step,
+    mapId: pickNumber(state.wCurMap, state.mapId, nestedNumber(state.coordinates, "mapId")),
+    y: pickNumber(state.wYCoord, state.y, nestedNumber(state.coordinates, "y")),
+    x: pickNumber(state.wXCoord, state.x, nestedNumber(state.coordinates, "x")),
+    facing: pickString(state.playerFacingDirection, nestedString(state.playerFacing, "direction")),
+    inBattle: state.wIsInBattle,
+    partyCount: pickNumber(state.wPartyCount, state.partyCount, nestedNumber(state.party, "count")),
+    badges: pickNumber(state.badgeCount, nestedNumber(state.badges, "count")),
+    textBoxId: pickNumber(state.textBoxId, state.wTextBoxID, nestedNumber(state.menuText, "textBoxId")),
+    text: truncateText(pickString(state.screenText, nestedString(state.menuText, "screenText")), 80),
+    textKind: pickString(state.screenTextKind, nestedString(state.menuText, "screenTextKind")),
+    hallOfFameComplete: state.hallOfFameComplete
+  }));
+}
+
+function summarizeLoopSignal(states: PolicyInput["recentStates"], actions: PolicyInput["recentActions"]): string | undefined {
+  const stableContextCount = countTrailingStableObservationContexts(states);
+  const repeatedAction = summarizeRepeatedTrailingAction(actions);
+
+  if (stableContextCount < 4 && repeatedAction === undefined) {
+    return undefined;
+  }
+
+  const clauses: string[] = [];
+  if (stableContextCount >= 4) {
+    clauses.push(`same map/position/facing/textbox context for ${stableContextCount} observations`);
+  }
+  if (repeatedAction !== undefined) {
+    clauses.push(`${repeatedAction.label} repeated ${repeatedAction.count} times`);
+  }
+  clauses.push("if the same dialog/location is cycling without progress, do not keep pressing the same target; try a different legal recovery action such as B, moving/turning away, or opening/closing Start based on the live state");
+  return clauses.join("; ");
+}
+
+function countTrailingStableObservationContexts(states: PolicyInput["recentStates"]): number {
+  if (states === undefined || states.length === 0) {
+    return 0;
+  }
+
+  const latest = observationContextKey(states[states.length - 1]);
+  if (latest === undefined) {
+    return 0;
+  }
+
+  let count = 0;
+  for (let index = states.length - 1; index >= 0; index -= 1) {
+    if (observationContextKey(states[index]) !== latest) {
+      break;
+    }
+    count += 1;
+  }
+  return count;
+}
+
+function observationContextKey(state: RecentStateSnapshot | undefined): string | undefined {
+  if (state === undefined) {
+    return undefined;
+  }
+
+  const mapId = pickNumber(state.wCurMap, state.mapId, nestedNumber(state.coordinates, "mapId"));
+  const y = pickNumber(state.wYCoord, state.y, nestedNumber(state.coordinates, "y"));
+  const x = pickNumber(state.wXCoord, state.x, nestedNumber(state.coordinates, "x"));
+  const facing = pickString(state.playerFacingDirection, nestedString(state.playerFacing, "direction"));
+  const textBoxId = pickNumber(state.textBoxId, state.wTextBoxID, nestedNumber(state.menuText, "textBoxId"));
+  const textKind = pickString(state.screenTextKind, nestedString(state.menuText, "screenTextKind"));
+  if (mapId === undefined || y === undefined || x === undefined) {
+    return undefined;
+  }
+  return stableJson({ mapId, y, x, facing, textBoxId, textKind });
+}
+
+function summarizeRepeatedTrailingAction(actions: PolicyInput["recentActions"]): { label: string; count: number } | undefined {
+  if (actions === undefined || actions.length === 0) {
+    return undefined;
+  }
+
+  const latest = actionKey(actions[actions.length - 1]);
+  if (latest === undefined) {
+    return undefined;
+  }
+
+  let count = 0;
+  for (let index = actions.length - 1; index >= 0; index -= 1) {
+    if (actionKey(actions[index])?.key !== latest.key) {
+      break;
+    }
+    count += 1;
+  }
+
+  return count >= 4 ? { label: latest.label, count } : undefined;
+}
+
+function actionKey(value: unknown): { key: string; label: string } | undefined {
+  const record = isRecord(value) ? value : undefined;
+  const action = isRecord(record?.action) ? record.action : record;
+  if (!isRecord(action) || typeof action.type !== "string") {
+    return undefined;
+  }
+
+  const label = action.type === "wait"
+    ? `wait ${String(action.frames ?? "?")}`
+    : action.type === "sequence"
+      ? "sequence"
+      : `${action.type} ${String(action.button ?? "?")} ${String(action.frames ?? "?")}`;
+  return { key: stableJson(action), label };
+}
+
+function nestedNumber(value: unknown, key: string): number | undefined {
+  if (!isRecord(value)) return undefined;
+  return typeof value[key] === "number" ? value[key] : undefined;
+}
+
+function nestedString(value: unknown, key: string): string | undefined {
+  if (!isRecord(value)) return undefined;
+  return typeof value[key] === "string" ? value[key] : undefined;
+}
+
+function pickNumber(...values: readonly unknown[]): number | undefined {
+  return values.find((value): value is number => typeof value === "number" && Number.isFinite(value));
+}
+
+function pickString(...values: readonly unknown[]): string | undefined {
+  return values.find((value): value is string => typeof value === "string");
+}
+
+function truncateText(value: string | undefined, limit: number): string | undefined {
+  if (value === undefined || value.length <= limit) {
+    return value;
+  }
+  return `${value.slice(0, limit - 1)}…`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function buildMapSection(input: PolicyInput): string[] {
   const lines: string[] = [];
 
@@ -436,7 +595,8 @@ function outputContract(): string {
   return [
     "Rules:",
     "- Use only controller actions; no memory writes, emulator APIs, shell commands, or hardcoded global input timelines.",
-    "- Base the action on the current observed state, current map/position, recent actions, and screenshot if present.",
+    "- Base the action on the current observed state, recent observed state summary, current map/position, recent actions, and screenshot if present.",
+    "- If recent observations show the same location/dialog/menu context and same action repeating without progress, do not keep repeating it; choose a different legal recovery action from the live state.",
     "- Do not rely on guidebook walkthrough steps or route scripts; infer from the live state.",
     `Output schema: ${stableJson(createPolicyDecisionJsonSchema())}`,
     "Output only one JSON object. No markdown or extra text."

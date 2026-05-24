@@ -308,7 +308,7 @@ describe("LLMPolicy", () => {
     await expect(policy.chooseAction(policyInput)).resolves.toEqual(validDecision);
 
     const prompt = getUserText(requests[0]);
-    expect(prompt).toContain("Base the action on the current observed state, current map/position, recent actions, and screenshot if present.");
+    expect(prompt).toContain("Base the action on the current observed state, recent observed state summary, current map/position, recent actions, and screenshot if present.");
     expect(prompt).toContain("Do not rely on guidebook walkthrough steps or route scripts");
     expect(prompt).toContain("Fallback RAM state");
     expect(prompt).toContain("Recent actions summary");
@@ -322,6 +322,71 @@ describe("LLMPolicy", () => {
     expect(prompt).not.toContain("step 2");
     expect(prompt).not.toContain("step 3");
     expect(prompt.indexOf("Fallback RAM state")).toBeLessThan(prompt.indexOf("Recent actions summary"));
+  });
+
+  it("injects recent observed states separately from recent actions and flags local loops", async () => {
+    const requests: ChatCompletionRequest[] = [];
+    const client = fakeClient(async (request) => {
+      requests.push(request);
+      return JSON.stringify(validDecision);
+    });
+    const policy = createPolicy({ client, harnessMode: "full-game" });
+
+    await expect(policy.chooseAction({
+      ...policyInput,
+      recentStates: [
+        { step: 11, wCurMap: 40, wYCoord: 1, wXCoord: 4, playerFacingDirection: "left", textBoxId: 1, screenText: "It", screenTextKind: "overworld_text" },
+        { step: 12, wCurMap: 40, wYCoord: 1, wXCoord: 4, playerFacingDirection: "left", textBoxId: 1, screenText: "like but the pages are blank!", screenTextKind: "overworld_text" },
+        { step: 13, wCurMap: 40, wYCoord: 1, wXCoord: 4, playerFacingDirection: "left", textBoxId: 1, screenText: "", screenTextKind: "overworld_text" },
+        { step: 14, wCurMap: 40, wYCoord: 1, wXCoord: 4, playerFacingDirection: "left", textBoxId: 1, screenText: "It", screenTextKind: "overworld_text" }
+      ],
+      recentActions: [
+        { step: 11, action: { type: "press", button: "A", frames: 8 } },
+        { step: 12, action: { type: "press", button: "A", frames: 8 } },
+        { step: 13, action: { type: "press", button: "A", frames: 8 } },
+        { step: 14, action: { type: "press", button: "A", frames: 8 } }
+      ]
+    })).resolves.toEqual(validDecision);
+
+    const prompt = getUserText(requests[0]);
+    expect(prompt).toContain("Recent observed state summary");
+    expect(prompt).toContain("like but the pages are blank!");
+    expect(prompt).toContain("Recent actions summary");
+    expect(prompt).toContain("Loop signal:");
+    expect(prompt).toContain("same map/position/facing/textbox context for 4 observations");
+    expect(prompt).toContain("press A 8 repeated 4 times");
+    expect(prompt).toContain("do not keep pressing the same target");
+    expect(prompt.indexOf("Recent observed state summary")).toBeLessThan(prompt.indexOf("Recent actions summary"));
+  });
+
+  it("does not emit loop signal when recent observations and actions are changing", async () => {
+    const requests: ChatCompletionRequest[] = [];
+    const client = fakeClient(async (request) => {
+      requests.push(request);
+      return JSON.stringify(validDecision);
+    });
+    const policy = createPolicy({ client, harnessMode: "full-game" });
+
+    await expect(policy.chooseAction({
+      ...policyInput,
+      recentStates: [
+        { step: 21, wCurMap: 40, wYCoord: 4, wXCoord: 4, playerFacingDirection: "up", textBoxId: 0, screenText: "", screenTextKind: "none" },
+        { step: 22, wCurMap: 40, wYCoord: 3, wXCoord: 4, playerFacingDirection: "up", textBoxId: 0, screenText: "", screenTextKind: "none" },
+        { step: 23, wCurMap: 40, wYCoord: 2, wXCoord: 4, playerFacingDirection: "left", textBoxId: 0, screenText: "", screenTextKind: "none" },
+        { step: 24, wCurMap: 40, wYCoord: 2, wXCoord: 3, playerFacingDirection: "left", textBoxId: 0, screenText: "", screenTextKind: "none" }
+      ],
+      recentActions: [
+        { step: 21, action: { type: "press", button: "Up", frames: 8 } },
+        { step: 22, action: { type: "press", button: "Up", frames: 8 } },
+        { step: 23, action: { type: "press", button: "Left", frames: 1 } },
+        { step: 24, action: { type: "press", button: "Left", frames: 8 } }
+      ]
+    })).resolves.toEqual(validDecision);
+
+    const prompt = getUserText(requests[0]);
+    expect(prompt).toContain("Recent observed state summary");
+    expect(prompt).toContain("Recent actions summary");
+    expect(prompt).not.toContain("Loop signal:");
   });
 
   it("injects concise full game state summary, objective, and detector progress into the prompt", async () => {
