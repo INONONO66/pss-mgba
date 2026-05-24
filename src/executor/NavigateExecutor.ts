@@ -104,33 +104,16 @@ export async function executeNavigate(
   }
 
   for (const next of pathResult.path) {
-    let moved: WorldPosition | undefined;
-
-    for (let attempt = 0; attempt < MAX_STEP_RETRIES; attempt += 1) {
-      const button = directionButton(current, next);
-      await controller.pressButton(button, 5);
-      moved = await waitForStep(worldReader, current);
-
-      if (moved !== undefined) {
-        break;
-      }
-
-      await controller.pressButton(button, 30);
-    }
-
-    if (moved === undefined) {
-      return { status: "failed", reason: "blocked_by_npc" };
-    }
-
-    current = moved;
-
-    const interrupt = await interruptResult(worldReader, mapId, current.mapId);
-    if (interrupt !== undefined) {
-      return interrupt;
-    }
+    const stepResult = await walkOneStep(current, next, controller, worldReader, mapId);
+    if (stepResult.interrupt !== undefined) return stepResult.interrupt;
+    if (stepResult.blocked) return { status: "failed", reason: "blocked_by_npc" };
+    current = stepResult.position;
   }
 
   if (pathResult.status === "partial") {
+    const pushResult = await tryPushIntoGoal(current, goal, controller, worldReader, mapId);
+    if (pushResult !== undefined) return pushResult;
+
     return {
       status: "partial",
       reason: "reached",
@@ -139,4 +122,61 @@ export async function executeNavigate(
   }
 
   return { status: "success", reason: "arrived" };
+}
+
+interface StepResult {
+  position: WorldPosition;
+  blocked: boolean;
+  interrupt?: CommandResult;
+}
+
+async function walkOneStep(
+  current: WorldPosition,
+  next: Position,
+  controller: NavigateController,
+  worldReader: NavigateWorldReader,
+  expectedMapId: number,
+): Promise<StepResult> {
+  for (let attempt = 0; attempt < MAX_STEP_RETRIES; attempt += 1) {
+    const button = directionButton(current, next);
+    await controller.pressButton(button, 5);
+    const moved = await waitForStep(worldReader, current);
+
+    if (moved !== undefined) {
+      const interrupt = await interruptResult(worldReader, expectedMapId, moved.mapId);
+      if (interrupt !== undefined) return { position: moved, blocked: false, interrupt };
+      return { position: moved, blocked: false };
+    }
+
+    await controller.pressButton(directionButton(current, next), 30);
+  }
+
+  return { position: current, blocked: true };
+}
+
+async function tryPushIntoGoal(
+  current: WorldPosition,
+  goal: Position,
+  controller: NavigateController,
+  worldReader: NavigateWorldReader,
+  expectedMapId: number,
+): Promise<CommandResult | undefined> {
+  if (!isAdjacent(current, goal)) return undefined;
+
+  const button = directionButton(current, goal);
+  await controller.pressButton(button, 5);
+  const moved = await waitForStep(worldReader, current);
+
+  if (moved === undefined) return undefined;
+
+  const interrupt = await interruptResult(worldReader, expectedMapId, moved.mapId);
+  if (interrupt !== undefined) return interrupt;
+
+  return { status: "success", reason: "arrived" };
+}
+
+function isAdjacent(a: Position, b: Position): boolean {
+  const dy = Math.abs(a.y - b.y);
+  const dx = Math.abs(a.x - b.x);
+  return (dy === 1 && dx === 0) || (dy === 0 && dx === 1);
 }
