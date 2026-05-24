@@ -224,7 +224,11 @@ function createRunner(config: HarnessConfig): CliRunner {
 
   const heuristicPolicy = new HeuristicCommandPolicy();
   const policy = isLlmProvider(config.aiProvider)
-    ? LLMCommandPolicy.fromConfig(config, heuristicPolicy)
+    ? LLMCommandPolicy.fromConfig(config, heuristicPolicy, {
+      onFallback: (error) => {
+        console.error(`[LLM fallback] ${error.code}: ${error.message}`);
+      },
+    })
     : heuristicPolicy;
 
   const executionContext: ExecutionContext = {

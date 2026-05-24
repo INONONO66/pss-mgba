@@ -110,7 +110,7 @@ export function createDialogStateReader(ram: RamReader): DialogStateReader {
     },
     async isChoiceActive() {
       const textBoxId = await ram.read8(map.wTextBoxID);
-      return textBoxId === 0x01 || textBoxId === 0x0d;
+      return textBoxId === 0x0d;
     },
     async isNamingScreenActive() {
       const namingScreenType = await ram.read8(map.wNamingScreenType);

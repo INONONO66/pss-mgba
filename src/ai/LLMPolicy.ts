@@ -304,12 +304,6 @@ export class LLMCommandPolicy implements CommandPolicy {
   }
 
   async chooseAction(input: PolicyInput): Promise<CommandPolicyDecision> {
-    if (this.calls >= this.maxLlmCalls) {
-      return this.fallback(input, new HarnessError("BUDGET_EXCEEDED", "Maximum LLM call budget reached", {
-        context: { maxLlmCalls: this.maxLlmCalls }
-      }));
-    }
-
     this.calls += 1;
 
     try {
@@ -868,8 +862,12 @@ function parseCommandDecision(content: string): CommandPolicyDecision {
     throw new HarnessError("LLM_INVALID_OUTPUT", "LLM response was not valid JSON", { cause: error });
   }
 
-  const result = CommandPolicyDecisionSchema.safeParse(normalizeCommandPolicyDecisionCandidate(parsed));
+  const normalized = normalizeCommandPolicyDecisionCandidate(parsed);
+  const result = CommandPolicyDecisionSchema.safeParse(normalized);
   if (!result.success) {
+    console.error("[LLM raw response]", content.slice(0, 500));
+    console.error("[LLM normalized]", JSON.stringify(normalized).slice(0, 500));
+    console.error("[LLM validation issues]", result.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`));
     throw new HarnessError("LLM_INVALID_OUTPUT", "LLM response failed command policy decision schema validation", {
       context: { issues: result.error.issues.map((issue) => issue.message) }
     });
