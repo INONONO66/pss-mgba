@@ -39,18 +39,29 @@ export class DockerDriver {
       Env: ['DISPLAY=:99'],
       HostConfig: {
         NetworkMode: opts.networkName,
+        PortBindings: {
+          [`${opts.emulatorPort}/tcp`]: [{ HostPort: '' }],
+        },
         Tmpfs: {
           '/tmp': 'rw,noexec,nosuid,size=64m',
         },
         ...(opts.romPath ? { Binds: [`${opts.romPath}:/rom/game.gb:ro`] } : {}),
+      },
+      ExposedPorts: {
+        [`${opts.emulatorPort}/tcp`]: {},
       },
       ...(opts.romPath ? { Volumes: { '/rom/game.gb': {} } } : {}),
     }
 
     const container = await this.docker.createContainer(createOptions)
     await container.start()
+    const inspection = await container.inspect()
+    const hostPort = inspection.NetworkSettings.Ports?.[`${opts.emulatorPort}/tcp`]?.[0]?.HostPort
+    if (hostPort === undefined || hostPort === '') {
+      throw new Error('Container port not bound')
+    }
 
-    return { id: container.id, host: containerName, port: opts.emulatorPort }
+    return { id: container.id, host: '127.0.0.1', port: Number.parseInt(hostPort, 10) }
   }
 
   async stopContainer(containerId: string): Promise<void> {
