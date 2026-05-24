@@ -1,10 +1,11 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { RunExperimentMetadata } from "./run-trace";
 import type { TokenUsageMetric, TokenUsageSnapshot } from "./token-usage";
 
 export const DEFAULT_RUNS_DIR = ".pss-mgba/traces/runs";
 
-export interface RunSummary {
+export interface RunSummary extends Partial<RunExperimentMetadata> {
   avgTokensImprovementPercentVsPrevious: number;
   avgTokensPerTurn: number;
   avgTokensSavedVsPrevious: number;
@@ -15,7 +16,7 @@ export interface RunSummary {
   turns: number;
 }
 
-interface RawRunSummary {
+interface RawRunSummary extends Partial<RunExperimentMetadata> {
   avgTokensPerTurn: number;
   iteration: number;
   runId: string;
@@ -113,7 +114,7 @@ async function readRawRunSummary(
 ): Promise<RawRunSummary | null> {
   const run = JSON.parse(
     await readFile(join(runsDir, runId, "run.json"), "utf8")
-  ) as { iteration: number; runId: string };
+  ) as { iteration: number; runId: string } & Partial<RunExperimentMetadata>;
   const usageJsonl = await readFile(
     join(runsDir, runId, "token-usage.jsonl"),
     "utf8"
@@ -133,6 +134,7 @@ async function readRawRunSummary(
 
   if (turnSummaries.length === 0) {
     return {
+      ...experimentFields(run),
       avgTokensPerTurn: 0,
       iteration: run.iteration,
       runId: run.runId,
@@ -147,11 +149,32 @@ async function readRawRunSummary(
   );
 
   return {
+    ...experimentFields(run),
     avgTokensPerTurn: totalTokens.totalTokens / turnSummaries.length,
     iteration: run.iteration,
     runId: run.runId,
     totalTokens,
     turns: turnSummaries.length,
+  };
+}
+
+function experimentFields(
+  run: Partial<RunExperimentMetadata>
+): Partial<RunExperimentMetadata> {
+  return {
+    experimentId: run.experimentId,
+    milestone: run.milestone,
+    milestoneCurrent: run.milestoneCurrent ?? run.milestone,
+    milestoneFurthest: run.milestoneFurthest ?? run.milestone,
+    mode: run.mode,
+    objective: run.objective,
+    ramReadStatus: run.ramReadStatus,
+    runBudget: run.runBudget,
+    saveStatePath: run.saveStatePath,
+    stateSource: run.stateSource,
+    stuckEvents: run.stuckEvents,
+    supervisorEnabled: run.supervisorEnabled,
+    supervisorInterventions: run.supervisorInterventions,
   };
 }
 
@@ -206,6 +229,12 @@ function labels(summary: RunSummary, kind?: string): string {
     `run_id="${escapeLabel(summary.runId)}"`,
     `iteration="${summary.iteration}"`,
   ];
+  if (summary.mode) {
+    entries.push(`mode="${escapeLabel(summary.mode)}"`);
+  }
+  if (summary.experimentId) {
+    entries.push(`experiment_id="${escapeLabel(summary.experimentId)}"`);
+  }
   if (kind) {
     entries.push(`kind="${escapeLabel(kind)}"`);
   }

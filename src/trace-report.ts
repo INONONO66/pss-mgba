@@ -8,6 +8,10 @@ if (runs.length === 0) {
     runs.map((run) => ({
       iteration: run.iteration,
       runId: run.runId,
+      mode: run.mode ?? "",
+      experimentId: run.experimentId ?? "",
+      milestoneCurrent: run.milestoneCurrent ?? "",
+      milestoneFurthest: run.milestoneFurthest ?? "",
       turns: run.turns,
       totalTokens: run.totalTokens.totalTokens,
       avgTokensPerTurn: run.avgTokensPerTurn.toFixed(1),
