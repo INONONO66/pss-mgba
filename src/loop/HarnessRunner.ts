@@ -12,6 +12,7 @@ import type { GameWorldSnapshot } from "../pokemon/GameWorld.js";
 import type { FullGameState, MenuTextState } from "../pokemon/PokemonTypes.js";
 import { buildStateSummary } from "../pokemon/StateSummary.js";
 import { buildPokemonSupervisorPlan } from "../supervisor/PokemonSupervisor.js";
+import type { SupervisorPlan } from "../supervisor/SupervisorTypes.js";
 
 export interface RunnerClient {
   currentFrame(): Promise<FrameNumber>;
@@ -197,7 +198,12 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
 
         const policyInput = this.createPolicyInput(snapshot);
         const decision = await this.chooseDecision(policyInput);
-        await this.evidence.recordDecision({ step: this.step, frame: snapshot.frame, decision });
+        await this.evidence.recordDecision({
+          step: this.step,
+          frame: snapshot.frame,
+          decision,
+          supervisor: summarizeSupervisorPlan(policyInput.supervisorPlan)
+        });
 
         await this.controller.execute(decision.action);
         const actionSummary = this.recordAction(snapshot, decision);
@@ -504,6 +510,24 @@ function toPolicyState(value: unknown): PokemonStateSnapshot {
 
 function toDetectorState(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
+}
+
+function summarizeSupervisorPlan(plan: SupervisorPlan | undefined): unknown {
+  if (plan === undefined) return undefined;
+
+  return {
+    state: plan.assessment.state,
+    activeGoal: {
+      id: plan.activeGoal.id,
+      kind: plan.activeGoal.kind,
+      title: plan.activeGoal.title,
+      priority: plan.activeGoal.priority,
+      why: plan.activeGoal.why,
+    },
+    guidance: plan.guidance,
+    avoid: plan.avoid,
+    citations: plan.citations,
+  };
 }
 
 function extractMenuTextState(value: unknown): MenuTextState | undefined {

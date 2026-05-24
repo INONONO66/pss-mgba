@@ -166,7 +166,9 @@ describe("HarnessRunner", () => {
 
   it("injects full game state, summary, objective, and detector status into each policy input when available", async () => {
     const policyInputs: PolicyInput[] = [];
+    const evidence = new FakeEvidenceRecorder();
     const runner = createRunner({
+      evidence,
       policy: {
         async chooseAction(input) {
           policyInputs.push(input);
@@ -205,6 +207,16 @@ describe("HarnessRunner", () => {
       })
     });
     expect(policyInputs[0]?.supervisorPlan?.guidance.join("\n")).toContain("Current focus");
+    expect(evidence.decisions[0]).toMatchObject({
+      supervisor: {
+        state: "progressing",
+        activeGoal: {
+          kind: "advance-story",
+          title: "Obtain the first party Pokemon"
+        },
+        guidance: expect.arrayContaining([expect.stringContaining("Current focus")])
+      }
+    });
   });
 
   it("clears stale map context and reports map reader failures", async () => {
