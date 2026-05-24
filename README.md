@@ -112,6 +112,9 @@ Important outputs:
 
 - `run.json`: run metadata, mode, experiment id, milestone, stuck count, and
   supervisor count.
+- `events.jsonl`: structured viewer event log with observation screenshots and
+  status, `action_plan` summaries, action tool calls and results, and supervisor
+  interventions.
 - `token-usage.jsonl`: per-step and per-turn token usage.
 - Prometheus endpoint: `http://127.0.0.1:9464/metrics` by default.
 - `pnpm trace:report`: local comparison report across recorded iterations.
@@ -121,6 +124,18 @@ visual novelty, observe-before-act ratio, tool error rate, turn/step/tool
 durations, stuck events, and supervisor interventions. Token savings only count
 as improvement when progress, stuck behavior, action diversity, and tool
 reliability do not regress.
+
+## Trace Viewer
+
+New runs write `events.jsonl` automatically. Build the React viewer with
+`pnpm web:build`, then serve the built viewer and local API with `pnpm viewer`.
+The default viewer URL is `http://127.0.0.1:9474`.
+
+During UI development, run `pnpm viewer` for the local API and `pnpm web:dev`
+for Vite. Vite proxies `/api` requests to the viewer server. Older runs without
+`events.jsonl` still show metadata and token metrics, but they do not have
+screenshots or an action timeline. No deployment or API keys are required, and
+the server is local-only by default.
 
 ## Grafana
 
@@ -154,6 +169,9 @@ Useful focused commands while iterating:
 ```bash
 pnpm test -- tests/mgba-http.test.ts tests/runner.test.ts tests/observation.test.ts
 pnpm test -- tests/screenshot-image.test.ts tests/run-metrics.test.ts tests/metrics-server.test.ts
+pnpm test -- tests/viewer-events.test.ts tests/viewer-server.test.ts
+pnpm web:typecheck
+pnpm web:build
 pnpm trace:report
 ```
 
