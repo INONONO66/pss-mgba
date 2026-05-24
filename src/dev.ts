@@ -41,23 +41,15 @@ export function buildDevHarnessArgs(args: readonly string[], runId: string): str
   const forwarded = normalizedArgs[0] === "run" ? normalizedArgs.slice(1) : [...normalizedArgs];
   const result = ["run", ...forwarded];
   ensureOption(result, "--policy", "openai");
-  ensureOption(result, "--mode", "full-game");
   ensureOption(result, "--max-steps", "1000");
   ensureOption(result, "--run-id", runId);
-  ensureFlag(result, "--vision");
   return result;
 }
 
-export function formatDevRunBanner(config: Pick<HarnessConfig, "harnessMode" | "aiProvider" | "llmVisionEnabled" | "loopMaxSteps">): string {
-  const completion = config.harnessMode === "full-game"
-    ? "stable Hall of Fame state only"
-    : "Stage 1 contract";
+export function formatDevRunBanner(config: Pick<HarnessConfig, "aiProvider" | "loopMaxSteps">): string {
   return [
-    `Mode: ${config.harnessMode}`,
     `Policy: ${config.aiProvider}`,
-    `Vision: ${config.llmVisionEnabled ? "enabled" : "disabled"}`,
     `Max steps: ${config.loopMaxSteps}`,
-    `Completion: ${completion}`,
   ].join("\n");
 }
 
@@ -74,15 +66,11 @@ async function startViewer(config: HarnessConfig): Promise<StartedDevViewerServe
 function loadDevConfig(args: readonly string[], loader: (env: NodeJS.ProcessEnv) => HarnessConfig): HarnessConfig {
   const env: NodeJS.ProcessEnv = { ...process.env };
   const policy = optionValue(args, "--policy");
-  const mode = optionValue(args, "--mode");
   const maxSteps = optionValue(args, "--max-steps");
   const runId = optionValue(args, "--run-id");
 
   if (policy !== undefined) {
     env.AI_PROVIDER = policy;
-  }
-  if (mode !== undefined) {
-    env.HARNESS_MODE = mode;
   }
   if (maxSteps !== undefined) {
     env.LOOP_MAX_STEPS = maxSteps;
@@ -90,15 +78,8 @@ function loadDevConfig(args: readonly string[], loader: (env: NodeJS.ProcessEnv)
   if (runId !== undefined) {
     env.HARNESS_RUN_ID = runId;
   }
-  env.LLM_VISION_ENABLED = "true";
 
   return loader(env);
-}
-
-function ensureFlag(args: string[], flag: string): void {
-  if (!args.includes(flag)) {
-    args.push(flag);
-  }
 }
 
 function ensureOption(args: string[], name: string, value: string): void {

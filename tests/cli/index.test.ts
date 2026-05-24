@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { HarnessConfig } from "../../src/config.js";
 import { getHarnessHelp, parseCliArgs, runCli } from "../../src/index.js";
 import type { MgbaPreflightReport } from "../../src/mgba/preflight.js";
 
@@ -10,108 +9,36 @@ describe("CLI", () => {
     const exitCode = await runCli(["--help"], io);
 
     expect(exitCode).toBe(0);
-    const usageBlock = [
-      "Usage:",
-      "  pnpm run harness --help",
-      "  pnpm run harness snapshot [--dry-run] [--policy heuristic|openai] [--mode stage1|full-game] [--vision] [--max-steps N] [--run-id ID]",
-      "  pnpm run harness preflight [--policy heuristic|openai] [--mode stage1|full-game] [--vision] [--run-id ID]",
-      "  pnpm run harness run [--policy heuristic|openai] [--mode stage1|full-game] [--vision] [--max-steps N] [--run-id ID]",
-      "  pnpm run harness press BUTTON [--frames N] [--run-id ID]",
-      "  pnpm run smoke:mgba"
-    ].join("\n");
     const output = io.out.join("\n");
-    const harnessHelp = getHarnessHelp();
-    expect(output).toBe(harnessHelp);
-    expect(harnessHelp.slice(harnessHelp.indexOf("Usage:"), harnessHelp.indexOf("\n\nCommands:"))).toBe(usageBlock);
-    expect(harnessHelp).toContain("--mode full-game uses the full-game detector and completes only after stable Hall of Fame state observation.");
-    expect(harnessHelp).toContain("Badge count is progress only; all badges alone never complete the run.");
+    expect(output).toBe(getHarnessHelp());
+    expect(output).toContain("pnpm run harness run");
+    expect(output).toContain("navigate, battle, dialog");
   });
 
-  it("parses commands and common options without a CLI framework", () => {
-    const parsed = parseCliArgs(["run", "--policy", "openai", "--mode", "full-game", "--vision", "--max-steps", "9", "--run-id", "manual"]);
+  it("parses run command with --run-id", () => {
+    const parsed = parseCliArgs(["run", "--run-id", "my-run"]);
 
     expect(parsed.errors).toEqual([]);
-    expect(parsed.options).toMatchObject({ command: "run", policy: "openai", mode: "full-game", vision: true, maxSteps: 9, runId: "manual" });
+    expect(parsed.options).toMatchObject({ command: "run", runId: "my-run" });
   });
 
-  it("rejects unsupported policy names", () => {
-    const parsed = parseCliArgs(["run", "--policy", "codexlb"]);
+  it("parses press command with --frames", () => {
+    const parsed = parseCliArgs(["press", "A", "--frames", "10"]);
 
-    expect(parsed.errors).toEqual(["--policy must be heuristic or openai"]);
-    expect(parsed.options.policy).toBeUndefined();
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.options).toMatchObject({ command: "press", pressButton: "A", pressFrames: 10 });
   });
 
-  it("rejects unsupported mode names", () => {
-    const parsed = parseCliArgs(["run", "--mode", "credits"]);
+  it("rejects unknown options", () => {
+    const parsed = parseCliArgs(["run", "--policy", "openai"]);
 
-    expect(parsed.errors).toEqual(["--mode must be stage1 or full-game"]);
-    expect(parsed.options.mode).toBeUndefined();
-  });
-
-  it("runs snapshot dry-run without constructing live dependencies or requiring an API key", async () => {
-    const io = createIo();
-    let runnerConstructed = false;
-
-    const exitCode = await withEnv({ AI_PROVIDER: "openai", HARNESS_MODE: undefined, OPENAI_API_KEY: undefined }, () => runCli(["snapshot", "--dry-run"], io, {
-      createRunner() {
-        runnerConstructed = true;
-        throw new Error("runner should not be constructed");
-      }
-    }));
-
-    const output = io.out.join("\n");
-    expect(exitCode).toBe(0);
-    expect(runnerConstructed).toBe(false);
-    expect(output).toContain("Snapshot dry run succeeded");
-    expect(output).toContain('"harnessMode": "stage1"');
-    expect(output).toContain('"aiProvider": "heuristic"');
-    expect(output).not.toContain("hasOpenaiApiKey");
-    expect(output).not.toContain("sk-");
-  });
-
-  it("passes CLI mode override into loaded config and dry-run summary", async () => {
-    const io = createIo();
-
-    const exitCode = await runCli(["snapshot", "--dry-run", "--mode", "full-game"], io);
-
-    expect(exitCode).toBe(0);
-    expect(io.out.join("\n")).toContain('"harnessMode": "full-game"');
-  });
-
-  it("passes --vision into loaded config and dry-run summary", async () => {
-    const io = createIo();
-
-    const exitCode = await runCli(["snapshot", "--dry-run", "--vision"], io);
-
-    expect(exitCode).toBe(0);
-    expect(io.out.join("\n")).toContain('"llmVisionEnabled": true');
-  });
-
-  it("prints a secret-safe OpenAI-compatible dry-run summary for custom base URLs", async () => {
-    const io = createIo();
-
-    const exitCode = await withEnv({
-      AI_PROVIDER: "openai",
-      OPENAI_API_KEY: "provider-key-must-not-appear",
-      OPENAI_BASE_URL: "https://codex.example.invalid/v1",
-      OPENAI_MODEL: "codex-compatible-model"
-    }, () => runCli(["snapshot", "--dry-run"], io));
-
-    const output = io.out.join("\n");
-    expect(exitCode).toBe(0);
-    expect(output).toContain('"aiProvider": "openai"');
-    expect(output).toContain('"hasOpenaiApiKey": true');
-    expect(output).toContain('"openaiBaseUrl": "https://codex.example.invalid/v1"');
-    expect(output).toContain('"openaiModel": "codex-compatible-model"');
-    expect(output).not.toContain("provider-key-must-not-appear");
+    expect(parsed.errors.length).toBeGreaterThan(0);
   });
 
   it("formats preflight failures as guidance without stack noise", async () => {
     const io = createIo();
-    const seenConfigs: HarnessConfig[] = [];
-    const exitCode = await runCli(["preflight", "--vision"], io, {
-      async runPreflight(config): Promise<MgbaPreflightReport> {
-        seenConfigs.push(config);
+    const exitCode = await runCli(["preflight"], io, {
+      async runPreflight(): Promise<MgbaPreflightReport> {
         return {
           ok: false,
           checks: [
@@ -133,43 +60,24 @@ describe("CLI", () => {
     expect(output).toContain("Start mGBA manually");
     expect(output).not.toContain("Error:");
     expect(output).not.toContain("    at ");
-    expect(seenConfigs[0]?.llmVisionEnabled).toBe(true);
   });
 
   it("constructs run dependencies through the runner factory", async () => {
     const io = createIo();
-    const seen: Array<{ config: HarnessConfig; maxSteps?: number }> = [];
-    const exitCode = await withEnv({ OPENAI_API_KEY: "unit-test-key" }, () => runCli(["run", "--policy", "openai", "--mode", "full-game", "--vision", "--max-steps", "2", "--run-id", "cli-test"], io, {
-      createRunner(config, options) {
-        seen.push({ config, maxSteps: options.maxSteps });
+    let factoryCalled = false;
+    const exitCode = await runCli(["run", "--run-id", "cli-test"], io, {
+      createRunner() {
+        factoryCalled = true;
         return {
-          async snapshot() {
-            throw new Error("snapshot should not run");
-          },
           async run() {
-            return {
-              runId: config.harnessRunId,
-              status: "completed",
-              startedAt: "2026-05-22T00:00:00.000Z",
-              completedAt: "2026-05-22T00:00:01.000Z",
-              totalSteps: options.maxSteps ?? 0,
-              checkpoints: { initialObserved: true, starterAcquired: true, rivalBattleEntered: true, rivalBattleExited: true, completed: true },
-              detector: {},
-              last20Actions: [],
-              recentStateHashes: []
-            };
+            return { status: "completed" };
           }
         };
       }
-    }));
+    });
 
     expect(exitCode).toBe(0);
-    expect(seen).toHaveLength(1);
-    expect(seen[0]?.config.aiProvider).toBe("openai");
-    expect(seen[0]?.config.harnessMode).toBe("full-game");
-    expect(seen[0]?.config.llmVisionEnabled).toBe(true);
-    expect(seen[0]?.config.harnessRunId).toBe("cli-test");
-    expect(seen[0]?.maxSteps).toBe(2);
+    expect(factoryCalled).toBe(true);
     expect(io.out.join("\n")).toContain("completed");
   });
 
@@ -193,9 +101,9 @@ describe("CLI", () => {
     expect(actions).toEqual([{ type: "press", button: "A", frames: 3 }]);
   });
 
-  it("keeps legacy scaffold help expectations meaningful", () => {
+  it("keeps help expectations meaningful", () => {
     expect(getHarnessHelp()).toContain("Pokemon Red/Blue AI harness CLI");
-    expect(getHarnessHelp()).toContain("mGBA preflight");
+    expect(getHarnessHelp()).toContain("preflight");
   });
 });
 
@@ -212,28 +120,4 @@ function createIo() {
       err.push(message);
     }
   };
-}
-
-async function withEnv<T>(env: Record<string, string | undefined>, run: () => Promise<T>): Promise<T> {
-  const previous = new Map<string, string | undefined>();
-  for (const [key, value] of Object.entries(env)) {
-    previous.set(key, process.env[key]);
-    if (value === undefined) {
-      delete process.env[key];
-    } else {
-      process.env[key] = value;
-    }
-  }
-
-  try {
-    return await run();
-  } finally {
-    for (const [key, value] of previous) {
-      if (value === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = value;
-      }
-    }
-  }
 }
