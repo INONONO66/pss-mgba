@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDevHarnessArgs, runDev } from "../src/dev.js";
+import { buildDevHarnessArgs, formatDevRunBanner, runDev } from "../src/dev.js";
 import type { AiProvider, HarnessConfig, HarnessMode } from "../src/config.js";
 
 describe("dev command", () => {
@@ -84,6 +84,7 @@ describe("dev command", () => {
       "viewer:closed"
     ]);
     expect(io.out.join("\n")).toContain("Dev viewer: http://127.0.0.1:8787");
+    expect(io.out.join("\n")).toContain("Completion: stable Hall of Fame state only");
   });
 
   it("generates a run id when HARNESS_RUN_ID is blank", async () => {
@@ -122,6 +123,21 @@ describe("dev command", () => {
         process.env.HARNESS_RUN_ID = previous;
       }
     }
+  });
+
+  it("prints a concise full-game completion banner", () => {
+    expect(formatDevRunBanner(fakeConfig({
+      harnessMode: "full-game",
+      aiProvider: "openai",
+      llmVisionEnabled: true,
+      loopMaxSteps: 1500
+    }))).toBe([
+      "Mode: full-game",
+      "Policy: openai",
+      "Vision: enabled",
+      "Max steps: 1500",
+      "Completion: stable Hall of Fame state only",
+    ].join("\n"));
   });
 });
 

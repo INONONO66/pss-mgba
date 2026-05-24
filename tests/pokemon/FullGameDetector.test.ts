@@ -33,8 +33,45 @@ describe("FullGameDetector", () => {
     expect(allBadges.status).toBe("running");
   });
 
-  it("completes only on Hall of Fame map observation or derived completion flag", () => {
+  it("requires two Hall of Fame observations before completing", () => {
     const mapDetector = new FullGameDetector();
+    const mapStatus = mapDetector.update(state({ wCurMap: HALL_OF_FAME_MAP_ID, mapId: HALL_OF_FAME_MAP_ID }));
+    const stableMapStatus = mapDetector.update(state({ wCurMap: HALL_OF_FAME_MAP_ID, mapId: HALL_OF_FAME_MAP_ID }));
+
+    expect(mapStatus.status).toBe("running");
+    expect(mapStatus.checkpoints.hallOfFameObserved).toBe(true);
+    expect(mapStatus.checkpoints.hallOfFameCompleted).toBe(false);
+    expect(mapStatus.checkpoints.completed).toBe(false);
+    expect(stableMapStatus.status).toBe("completed");
+    expect(stableMapStatus.checkpoints.hallOfFameObserved).toBe(true);
+    expect(stableMapStatus.checkpoints.hallOfFameCompleted).toBe(true);
+    expect(stableMapStatus.checkpoints.completed).toBe(true);
+
+    const flagDetector = new FullGameDetector();
+    const flagStatus = flagDetector.update(state({ hallOfFameComplete: true }));
+    const stableFlagStatus = flagDetector.update(state({ hallOfFameComplete: true }));
+
+    expect(flagStatus.status).toBe("running");
+    expect(stableFlagStatus.status).toBe("completed");
+    expect(stableFlagStatus.checkpointEvidence.map((entry) => entry.checkpoint)).toContain("hallOfFameObserved");
+    expect(stableFlagStatus.checkpointEvidence.map((entry) => entry.checkpoint)).toContain("hallOfFameCompleted");
+  });
+
+  it("does not complete from a one-frame Hall of Fame false positive", () => {
+    const detector = new FullGameDetector();
+    const first = detector.update(state({ wCurMap: HALL_OF_FAME_MAP_ID, mapId: HALL_OF_FAME_MAP_ID }));
+    const returned = detector.update(state({ wCurMap: 1, mapId: 1 }));
+
+    expect(first.checkpoints.hallOfFameObserved).toBe(true);
+    expect(first.status).toBe("running");
+    expect(returned.checkpoints.hallOfFameCompleted).toBe(false);
+    expect(returned.checkpoints.completed).toBe(false);
+    expect(returned.status).toBe("running");
+  });
+
+  it("eventually completes only on stable Hall of Fame map observation or derived completion flag", () => {
+    const mapDetector = new FullGameDetector();
+    mapDetector.update(state({ wCurMap: HALL_OF_FAME_MAP_ID, mapId: HALL_OF_FAME_MAP_ID }));
     const mapStatus = mapDetector.update(state({ wCurMap: HALL_OF_FAME_MAP_ID, mapId: HALL_OF_FAME_MAP_ID }));
 
     expect(mapStatus.status).toBe("completed");
@@ -42,6 +79,7 @@ describe("FullGameDetector", () => {
     expect(mapStatus.checkpoints.completed).toBe(true);
 
     const flagDetector = new FullGameDetector();
+    flagDetector.update(state({ hallOfFameComplete: true }));
     const flagStatus = flagDetector.update(state({ hallOfFameComplete: true }));
 
     expect(flagStatus.status).toBe("completed");

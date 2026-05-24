@@ -315,7 +315,11 @@ describe("HarnessRunner", () => {
       evidence,
       config: { ...baseConfig, harnessMode: "full-game" },
       detector: new FullGameDetector(),
-      states: [state({ wObtainedBadges: 0xff, badgeCount: 8 }), state({ mapId: 0x76, wCurMap: 0x76, hallOfFameComplete: true })]
+      states: [
+        state({ wObtainedBadges: 0xff, badgeCount: 8 }),
+        state({ mapId: 0x76, wCurMap: 0x76, hallOfFameComplete: true }),
+        state({ mapId: 0x76, wCurMap: 0x76, hallOfFameComplete: true })
+      ]
     });
 
     const result = await runner.run();
