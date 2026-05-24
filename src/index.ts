@@ -1,8 +1,8 @@
 import "dotenv/config";
 import { pathToFileURL } from "node:url";
 import { inspect } from "node:util";
-import { HeuristicPolicy } from "./ai/HeuristicPolicy.js";
-import { LLMPolicy } from "./ai/LLMPolicy.js";
+import { HeuristicPolicy, HeuristicCommandPolicy } from "./ai/HeuristicPolicy.js";
+import { LLMPolicy, LLMCommandPolicy } from "./ai/LLMPolicy.js";
 import { Controller } from "./control/Controller.js";
 import type { MgbaButton } from "./mgba/MgbaTypes.js";
 import { MGBA_BUTTONS } from "./mgba/MgbaTypes.js";
@@ -12,6 +12,7 @@ import { EvidenceRecorder } from "./evidence/EvidenceRecorder.js";
 import { redactSecrets } from "./evidence/redaction.js";
 import { HarnessError } from "./errors.js";
 import { HarnessRunner } from "./loop/HarnessRunner.js";
+import { CommandHarnessRunner, type CommandRunnerGameState } from "./loop/CommandHarnessRunner.js";
 import { runMgbaSmokeWorkflow, type MgbaSmokeWorkflowDependencies } from "./loop/MgbaSmokeWorkflow.js";
 import { MgbaHttpClient } from "./mgba/MgbaHttpClient.js";
 import { runMgbaPreflight, type MgbaPreflightReport } from "./mgba/preflight.js";
@@ -20,7 +21,17 @@ import { FullGameDetector } from "./pokemon/FullGameDetector.js";
 import { Stage1Detector } from "./pokemon/Stage1Detector.js";
 import { ScreenshotProcessor } from "./vision/ScreenshotProcessor.js";
 import { MapMemory } from "./pokemon/MapMemory.js";
-import { readGameWorld } from "./pokemon/GameWorld.js";
+import { MapGraph, type MapGraphInput } from "./pokemon/MapGraph.js";
+import { readGameWorld, type GameWorldSnapshot } from "./pokemon/GameWorld.js";
+import type { ExecutionContext } from "./executor/CommandExecutor.js";
+import {
+  createUnifiedController,
+  createNavigateWorldReader,
+  createNavigateMapSource,
+  createInteractStateReader,
+  createDialogStateReader,
+  toCommandGameMode,
+} from "./executor/MgbaAdapters.js";
 
 type HarnessCommand = "snapshot" | "preflight" | "run" | "press" | "smoke";
 
@@ -327,6 +338,112 @@ function createSmokeDependencies(config: HarnessConfig): MgbaSmokeWorkflowDepend
 }
 
 function createRunner(config: HarnessConfig, options: RunnerCommandOptions): CliRunner {
+  if (process.env.USE_LEGACY_RUNNER === "1") {
+    return createLegacyRunner(config, options);
+  }
+  return createCommandRunner(config, options);
+}
+
+function createCommandRunner(config: HarnessConfig, options: RunnerCommandOptions): CliRunner {
+  const client = new MgbaHttpClient({ baseUrl: config.mgbaHttpBaseUrl });
+  const stateReader = new PokemonStateReader({ client, version: config.pokemonVersion });
+  const mapMemory = new MapMemory();
+  const mapGraph = new MapGraph();
+  const detector = createDetector(config);
+
+  const ram = { read8: (a: number) => client.read8(a), readRange: (a: number, l: number) => client.readRange(a, l), holdButton: (b: MgbaButton, f: number) => client.holdButton(b, f) };
+  const controller = createUnifiedController(ram);
+  const navigateWorldReader = createNavigateWorldReader(ram);
+  const navigateMapSource = createNavigateMapSource(mapMemory);
+  const interactStateReader = createInteractStateReader(ram);
+  const dialogStateReader = createDialogStateReader(ram);
+
+  const heuristicPolicy = new HeuristicCommandPolicy();
+  const policy = isLlmProvider(config.aiProvider)
+    ? LLMCommandPolicy.fromConfig(config, heuristicPolicy)
+    : heuristicPolicy;
+
+  const executionContext: ExecutionContext = {
+    mode: "overworld",
+    fullState: undefined as unknown as ExecutionContext["fullState"],
+    mapWidth: 0,
+    mapHeight: 0,
+    controller,
+    navigateWorldReader,
+    navigateMapSource,
+    interactStateReader,
+    dialogStateReader,
+  };
+
+  let lastWorld: GameWorldSnapshot | undefined;
+
+  const readGameState = async (): Promise<CommandRunnerGameState> => {
+    const world = await readGameWorld(client);
+    lastWorld = world;
+    const menuText = await stateReader.readMenuTextState({ tileMapBytes: world.tileMapBytes });
+    const fullState = await stateReader.readFullState({ menuText });
+    return {
+      fullState,
+      mode: toCommandGameMode(world.mode),
+      mapId: world.mapLayout.mapId,
+      playerY: world.playerCoords.y,
+      playerX: world.playerCoords.x,
+      facing: fullState.player.facing.direction,
+      mapWidth: world.mapLayout.width * 2,
+      mapHeight: world.mapLayout.height * 2,
+    };
+  };
+
+  const updateMapMemory = async () => {
+    if (lastWorld) {
+      mapMemory.update(lastWorld, lastWorld.tileMapBytes);
+    }
+  };
+
+  const updateMapGraph = () => {
+    const inputs: MapGraphInput[] = mapMemory.visitedMaps().map((mapId) => {
+      const warps = lastWorld?.mapLayout.mapId === mapId ? (lastWorld.warps?.warps ?? []) : [];
+      const connections: Partial<Record<"north" | "south" | "east" | "west", number>> = {};
+      if (lastWorld?.mapLayout.mapId === mapId && lastWorld.warps?.connections) {
+        const c = lastWorld.warps.connections;
+        if (c.north) connections.north = c.north.mapId;
+        if (c.south) connections.south = c.south.mapId;
+        if (c.west) connections.west = c.west.mapId;
+        if (c.east) connections.east = c.east.mapId;
+      }
+      return { mapId, warps, connections };
+    });
+    mapGraph.build(inputs);
+  };
+
+  const runner = new CommandHarnessRunner({
+    policy,
+    executionContext,
+    mapMemory,
+    mapGraph,
+    detector,
+    maxSteps: options.maxSteps ?? config.loopMaxSteps,
+    maxLlmCalls: config.maxLlmCalls,
+    stepDelayMs: config.loopStepDelayMs,
+    readGameState,
+    updateMapMemory,
+    updateMapGraph,
+    onStep: async (step, command, result) => {
+      console.log(`[step ${step}] ${command.type}: ${result.status} — ${result.reason}${result.details ? ` (${result.details})` : ""}`);
+    },
+  });
+
+  return {
+    async snapshot() {
+      return readGameState();
+    },
+    async run() {
+      return runner.run();
+    },
+  };
+}
+
+function createLegacyRunner(config: HarnessConfig, options: RunnerCommandOptions): CliRunner {
   const evidence = new EvidenceRecorder({ evidenceDir: config.evidenceDir, runId: config.harnessRunId });
   const client = new MgbaHttpClient({ baseUrl: config.mgbaHttpBaseUrl, screenshotDir: evidence.paths.rawScreenshotsDir });
   const heuristicPolicy = new HeuristicPolicy();
