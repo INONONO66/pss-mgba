@@ -15,6 +15,7 @@ export interface NavigateWorldReader {
 
 export interface NavigateMapSource {
   walkabilityGrid(mapId: number): { grid: boolean[][]; width: number; height: number } | undefined;
+  warpPositions?(mapId: number): ReadonlyArray<{ y: number; x: number }>;
 }
 
 interface WorldPosition extends Position {
@@ -111,7 +112,8 @@ export async function executeNavigate(
   }
 
   if (pathResult.status === "partial") {
-    const pushResult = await tryPushIntoGoal(current, goal, controller, worldReader, mapId);
+    const warps = mapSource.warpPositions?.(mapId) ?? [];
+    const pushResult = await tryPushIntoGoal(current, goal, controller, worldReader, mapId, warps);
     if (pushResult !== undefined) return pushResult;
 
     return {
@@ -160,8 +162,10 @@ async function tryPushIntoGoal(
   controller: NavigateController,
   worldReader: NavigateWorldReader,
   expectedMapId: number,
+  warps: ReadonlyArray<{ y: number; x: number }>,
 ): Promise<CommandResult | undefined> {
   if (!isAdjacent(current, goal)) return undefined;
+  if (!warps.some((w) => w.y === goal.y && w.x === goal.x)) return undefined;
 
   const button = directionButton(current, goal);
   await controller.pressButton(button, 5);

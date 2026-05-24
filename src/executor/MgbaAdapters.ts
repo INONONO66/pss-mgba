@@ -71,10 +71,17 @@ export function createNavigateWorldReader(ram: RamReader): NavigateWorldReader {
   };
 }
 
-export function createNavigateMapSource(source: WalkabilitySource): NavigateMapSource {
+export interface WarpSource {
+  warpPositions(mapId: number): ReadonlyArray<{ y: number; x: number }>;
+}
+
+export function createNavigateMapSource(source: WalkabilitySource, warpSource?: WarpSource): NavigateMapSource {
   return {
     walkabilityGrid(mapId) {
       return source.walkabilityGrid(mapId) ?? undefined;
+    },
+    warpPositions(mapId) {
+      return warpSource?.warpPositions(mapId) ?? [];
     },
   };
 }

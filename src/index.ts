@@ -222,7 +222,10 @@ function createRunner(config: HarnessConfig): CliRunner {
   const ram = { read8: (a: number) => client.read8(a), readRange: (a: number, l: number) => client.readRange(a, l), holdButton: (b: MgbaButton, f: number) => client.holdButton(b, f) };
   const controller = createUnifiedController(ram);
   const navigateWorldReader = createNavigateWorldReader(ram);
-  const navigateMapSource = createNavigateMapSource(mapMemory);
+  let currentWarps: Array<{ y: number; x: number }> = [];
+  const navigateMapSource = createNavigateMapSource(mapMemory, {
+    warpPositions() { return currentWarps; },
+  });
   const interactStateReader = createInteractStateReader(ram);
   const dialogStateReader = createDialogStateReader(ram);
 
@@ -256,6 +259,7 @@ function createRunner(config: HarnessConfig): CliRunner {
   const readGameState = async (): Promise<CommandRunnerGameState> => {
     const world = await readGameWorld(client);
     lastWorld = world;
+    currentWarps = world.warps.warps.map((w) => ({ y: w.y, x: w.x }));
     const menuText = await stateReader.readMenuTextState({ tileMapBytes: world.tileMapBytes });
     const fullState = await stateReader.readFullState({ menuText });
     const state: CommandRunnerGameState = {
