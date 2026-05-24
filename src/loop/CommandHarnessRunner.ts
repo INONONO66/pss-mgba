@@ -31,6 +31,23 @@ export interface CommandRunnerOptions {
   onAutoAdvance?: (step: number) => Promise<void>;
 }
 
+export interface WarpInfo {
+  y: number;
+  x: number;
+  destWarpId: number;
+  destMapId: number;
+  destMapName: string;
+}
+
+export interface NpcInfo {
+  slot: number;
+  pictureId: number;
+  mapY: number;
+  mapX: number;
+  facing: string;
+  movementType: string;
+}
+
 export interface CommandRunnerGameState {
   fullState: FullGameState;
   mode: GameMode;
@@ -40,6 +57,8 @@ export interface CommandRunnerGameState {
   facing: string;
   mapWidth: number;
   mapHeight: number;
+  warps: WarpInfo[];
+  npcs: NpcInfo[];
 }
 
 export interface CommandRunResult {
@@ -128,12 +147,14 @@ export class CommandHarnessRunner {
       commandHistory: [...this.commandHistory],
       mapGraph: this.options.mapGraph.renderForLLM(state.mapId),
       currentMapFull: state.mode !== "battle"
-        ? this.options.mapMemory.renderFullMap(state.mapId, state.playerY, state.playerX)
+        ? this.options.mapMemory.renderFullMap(state.mapId, state.playerY, state.playerX, state.warps)
         : undefined,
       microContext: state.mode !== "battle" ? {
         position: { y: state.playerY, x: state.playerX },
         facing: state.facing,
         adjacent: this.getAdjacentTiles(state),
+        warps: state.warps,
+        npcs: state.npcs,
       } : undefined,
       fullState: state.fullState,
       step: this.step,

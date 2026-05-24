@@ -199,6 +199,8 @@ function gameState(overrides: Partial<CommandRunnerGameState> & { textBoxId?: nu
     facing: overrides.facing ?? "down",
     mapWidth: overrides.mapWidth ?? 20,
     mapHeight: overrides.mapHeight ?? 18,
+    warps: [],
+    npcs: [],
   };
 }
 

@@ -211,7 +211,17 @@ function buildMapSections(input: PolicyInput): string[] {
     const adjacent = Object.entries(input.microContext.adjacent)
       .map(([direction, value]) => `${capitalize(direction)}:${value}`)
       .join(", ");
-    sections.push(`Position: (${input.microContext.position.x},${input.microContext.position.y}), facing ${input.microContext.facing}\nAdjacent: ${adjacent}`);
+    const lines = [
+      `Position: (${input.microContext.position.x},${input.microContext.position.y}), facing ${input.microContext.facing}`,
+      `Adjacent: ${adjacent}`,
+    ];
+    if (input.microContext.warps !== undefined && input.microContext.warps.length > 0) {
+      lines.push(`Warps: ${input.microContext.warps.map((w) => `(${w.x},${w.y})→${w.destMapName}`).join(", ")}`);
+    }
+    if (input.microContext.npcs !== undefined && input.microContext.npcs.length > 0) {
+      lines.push(`NPCs: ${input.microContext.npcs.map((n) => `#${n.slot} at (${n.mapX},${n.mapY}) facing ${n.facing} [${n.movementType}]`).join(", ")}`);
+    }
+    sections.push(lines.join("\n"));
   }
   return sections;
 }

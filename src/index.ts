@@ -1,4 +1,5 @@
 import "dotenv/config";
+import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { inspect } from "node:util";
 import { HeuristicCommandPolicy } from "./ai/HeuristicPolicy.js";
@@ -9,8 +10,9 @@ import { MGBA_BUTTONS } from "./mgba/MgbaTypes.js";
 import { HarnessActionSchema } from "./control/ActionSchema.js";
 import { loadConfig, type AiProvider, type HarnessConfig } from "./config.js";
 import { redactSecrets } from "./evidence/redaction.js";
+import { EvidenceRecorder } from "./evidence/EvidenceRecorder.js";
 import { HarnessError } from "./errors.js";
-import { CommandHarnessRunner, type CommandRunnerGameState } from "./loop/CommandHarnessRunner.js";
+import { CommandHarnessRunner, type CommandRunnerGameState, type CommandRunResult } from "./loop/CommandHarnessRunner.js";
 
 import { MgbaHttpClient } from "./mgba/MgbaHttpClient.js";
 import { runMgbaPreflight, type MgbaPreflightReport } from "./mgba/preflight.js";
@@ -18,6 +20,7 @@ import { PokemonStateReader } from "./pokemon/PokemonStateReader.js";
 import { FullGameDetector } from "./pokemon/FullGameDetector.js";
 import { Stage1Detector } from "./pokemon/Stage1Detector.js";
 import { MapMemory } from "./pokemon/MapMemory.js";
+import { mapName } from "./pokemon/PokemonCatalog.js";
 import { MapGraph, type MapGraphInput } from "./pokemon/MapGraph.js";
 import { readGameWorld, type GameWorldSnapshot } from "./pokemon/GameWorld.js";
 import type { ExecutionContext } from "./executor/CommandExecutor.js";
@@ -214,6 +217,7 @@ function createRunner(config: HarnessConfig): CliRunner {
   const mapMemory = new MapMemory();
   const mapGraph = new MapGraph();
   const detector = createDetector(config);
+  const evidence = new EvidenceRecorder({ evidenceDir: config.evidenceDir, runId: config.harnessRunId });
 
   const ram = { read8: (a: number) => client.read8(a), readRange: (a: number, l: number) => client.readRange(a, l), holdButton: (b: MgbaButton, f: number) => client.holdButton(b, f) };
   const controller = createUnifiedController(ram);
@@ -227,6 +231,9 @@ function createRunner(config: HarnessConfig): CliRunner {
     ? LLMCommandPolicy.fromConfig(config, heuristicPolicy, {
       onFallback: (error) => {
         console.error(`[LLM fallback] ${error.code}: ${error.message}`);
+      },
+      onConversation: async (conversation) => {
+        await evidence.recordLlmConversation(conversation);
       },
     })
     : heuristicPolicy;
@@ -244,13 +251,14 @@ function createRunner(config: HarnessConfig): CliRunner {
   };
 
   let lastWorld: GameWorldSnapshot | undefined;
+  let lastGameState: CommandRunnerGameState | undefined;
 
   const readGameState = async (): Promise<CommandRunnerGameState> => {
     const world = await readGameWorld(client);
     lastWorld = world;
     const menuText = await stateReader.readMenuTextState({ tileMapBytes: world.tileMapBytes });
     const fullState = await stateReader.readFullState({ menuText });
-    return {
+    const state: CommandRunnerGameState = {
       fullState,
       mode: toCommandGameMode(world.mode),
       mapId: world.mapLayout.mapId,
@@ -259,7 +267,24 @@ function createRunner(config: HarnessConfig): CliRunner {
       facing: fullState.player.facing.direction,
       mapWidth: world.mapLayout.width * 2,
       mapHeight: world.mapLayout.height * 2,
+      warps: world.warps.warps.map((w) => ({
+        y: w.y,
+        x: w.x,
+        destWarpId: w.destWarpId,
+        destMapId: w.destMapId,
+        destMapName: mapName(w.destMapId),
+      })),
+      npcs: world.sprites.npcs.filter((n) => n.onScreen).map((n) => ({
+        slot: n.slot,
+        pictureId: n.pictureId,
+        mapY: n.mapY,
+        mapX: n.mapX,
+        facing: n.facing,
+        movementType: n.movementType,
+      })),
     };
+    lastGameState = state;
+    return state;
   };
 
   const updateMapMemory = async () => {
@@ -284,6 +309,8 @@ function createRunner(config: HarnessConfig): CliRunner {
     mapGraph.build(inputs);
   };
 
+  const formatSequence = (n: number): string => n.toString().padStart(6, "0");
+
   const runner = new CommandHarnessRunner({
     policy,
     executionContext,
@@ -296,12 +323,51 @@ function createRunner(config: HarnessConfig): CliRunner {
     updateMapGraph,
     onStep: async (step, command, result) => {
       console.log(`[step ${step}] ${command.type}: ${result.status} — ${result.reason}${result.details ? ` (${result.details})` : ""}`);
+
+      const frame = lastWorld ? await client.currentFrame() : 0;
+
+      if (lastGameState) {
+        await evidence.recordState({ step, frame, state: lastGameState.fullState });
+      }
+
+      await evidence.recordDecision({ step, frame, command });
+
+      await evidence.recordAction({
+        step,
+        frame,
+        action: command,
+        result: { status: result.status, reason: result.reason },
+      });
+
+      const rawPath = path.resolve(evidence.paths.rawScreenshotsDir, `${formatSequence(step)}.png`);
+      try {
+        const savedPath = await client.screenshot(rawPath);
+        await evidence.recordScreenshot({ path: savedPath, frame, step, note: "runner_snapshot" });
+      } catch {
+        /* screenshot capture is best-effort; matches HarnessRunner convention */
+      }
     },
   });
 
   return {
-    async run() {
-      return runner.run();
+    async run(): Promise<CommandRunResult> {
+      await evidence.startRun({
+        runId: config.harnessRunId,
+        aiProvider: config.aiProvider,
+        evidenceDir: config.evidenceDir,
+      });
+
+      let runResult: CommandRunResult;
+      try {
+        runResult = await runner.run();
+      } catch (error) {
+        await evidence.recordError(error);
+        await evidence.finishRun("failed_mgba");
+        throw error;
+      }
+
+      await evidence.finishRun(runResult.status, runResult);
+      return runResult;
     },
   };
 }
