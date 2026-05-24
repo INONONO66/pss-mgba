@@ -24,6 +24,7 @@ describe("EvidenceRecorder", () => {
     const paths = buildRunPaths(evidenceDir, "run-1");
     await expect(stat(paths.configFile)).resolves.toMatchObject({ isFile: expect.any(Function) });
     await expect(stat(paths.eventsFile)).resolves.toMatchObject({ isFile: expect.any(Function) });
+    await expect(stat(paths.supervisorEventsFile)).resolves.toMatchObject({ isFile: expect.any(Function) });
     await expect(stat(paths.summaryFile)).resolves.toMatchObject({ isFile: expect.any(Function) });
     await expect(stat(paths.statesDir)).resolves.toMatchObject({ isDirectory: expect.any(Function) });
     await expect(stat(paths.screenshotsDir)).resolves.toMatchObject({ isDirectory: expect.any(Function) });
@@ -37,7 +38,7 @@ describe("EvidenceRecorder", () => {
     expect(llmFile).toBe(paths.llmConversationFile(1));
     expect(errorFile).toBe(paths.errorFile(1));
     expect(summary.status).toBe("completed");
-    expect(summary.counts).toEqual({ states: 1, decisions: 1, actions: 1, screenshots: 1, llmConversations: 1, errors: 1, events: 8 });
+    expect(summary.counts).toEqual({ states: 1, decisions: 1, actions: 1, screenshots: 1, llmConversations: 1, errors: 1, supervisorEvents: 0, events: 8 });
 
     const events = await readJsonLines(paths.eventsFile);
     expect(events).toHaveLength(8);
@@ -99,17 +100,55 @@ describe("EvidenceRecorder", () => {
     expect(content).not.toContain(echoedImage);
     expect(content).not.toContain("iVBORw0KGgoAAAANS");
   });
+
+  it("records supervisor events in a dedicated artifact and mirrors them to the run event stream", async () => {
+    const evidenceDir = await mkdtemp(path.join(os.tmpdir(), "evidence-supervisor-"));
+    const recorder = new EvidenceRecorder({ evidenceDir, runId: "run-supervisor", now: fixedNow });
+
+    await recorder.startRun({});
+    await recorder.recordSupervisorEvent({
+      schema: "openomni.supervisor.event.v1",
+      source: "pss-mgba",
+      type: "supervisor.improvement.recorded",
+      timestamp: fixedNow().toISOString(),
+      runId: "run-supervisor",
+      step: 4,
+      payload: {
+        id: "break-loop-1",
+        stuckReason: "same sign text",
+        hypothesis: "turn away before interacting again",
+        guidance: ["Do not press A on the same target."],
+      },
+    });
+    const summary = await recorder.finishRun("failed_timeout");
+
+    const paths = buildRunPaths(evidenceDir, "run-supervisor");
+    const supervisorEvents = await readJsonLines(paths.supervisorEventsFile);
+    const events = await readJsonLines(paths.eventsFile);
+
+    expect(summary.counts.supervisorEvents).toBe(1);
+    expect(supervisorEvents).toMatchObject([{
+      schema: "openomni.supervisor.event.v1",
+      source: "pss-mgba",
+      type: "supervisor.improvement.recorded",
+    }]);
+    expect(events.map((event) => event.type)).toEqual([
+      "run_started",
+      "supervisor_event",
+      "run_finished",
+    ]);
+  });
 });
 
 function fixedNow(): Date {
   return new Date("2026-05-22T00:00:00.000Z");
 }
 
-async function readJsonLines(file: string): Promise<Array<{ type: string }>> {
+async function readJsonLines(file: string): Promise<Array<Record<string, unknown> & { type: string }>> {
   const content = await readFile(file, "utf8");
   return content
     .trim()
     .split("\n")
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as { type: string });
+    .map((line) => JSON.parse(line) as Record<string, unknown> & { type: string });
 }

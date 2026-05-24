@@ -1,4 +1,5 @@
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
+import type { SupervisorEvent } from "../supervisor/SupervisorTypes.js";
 import type { HarnessStatus } from "../types.js";
 import { buildRunPaths, type RunPaths } from "./RunPaths.js";
 
@@ -34,6 +35,7 @@ interface RunSummary {
     readonly screenshots: number;
     readonly llmConversations: number;
     readonly errors: number;
+    readonly supervisorEvents: number;
     readonly events: number;
   };
   readonly result?: unknown;
@@ -54,6 +56,7 @@ export class EvidenceRecorder {
   private screenshotCount = 0;
   private llmConversationCount = 0;
   private errorCount = 0;
+  private supervisorEventCount = 0;
   private eventCount = 0;
 
   constructor(options: EvidenceRecorderOptions = {}) {
@@ -67,6 +70,7 @@ export class EvidenceRecorder {
     await this.ensureDirectories();
     await writeJson(this.paths.configFile, redactSecrets(config));
     await writeFile(this.paths.eventsFile, "", "utf8");
+    await writeFile(this.paths.supervisorEventsFile, "", "utf8");
     await this.appendEvent("run_started", { config });
   }
 
@@ -113,6 +117,13 @@ export class EvidenceRecorder {
     return file;
   }
 
+  async recordSupervisorEvent(event: SupervisorEvent): Promise<void> {
+    this.supervisorEventCount += 1;
+    const payload = redactSecrets(event);
+    await appendFile(this.paths.supervisorEventsFile, `${JSON.stringify(payload)}\n`, "utf8");
+    await this.appendEvent("supervisor_event", payload, this.supervisorEventCount);
+  }
+
   async finishRun(status: HarnessStatus, result?: unknown): Promise<RunSummary> {
     const summary: RunSummary = {
       runId: this.paths.runId,
@@ -126,6 +137,7 @@ export class EvidenceRecorder {
         screenshots: this.screenshotCount,
         llmConversations: this.llmConversationCount,
         errors: this.errorCount,
+        supervisorEvents: this.supervisorEventCount,
         events: this.eventCount + 1
       },
       result: redactSecrets(result)

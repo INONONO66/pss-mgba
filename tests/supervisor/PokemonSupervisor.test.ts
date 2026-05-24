@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FullGameState } from "../../src/pokemon/PokemonTypes.js";
-import { buildPokemonSupervisorPlan, renderSupervisorPlan } from "../../src/supervisor/index.js";
+import { buildPokemonSupervisorPlan, GoalLedger, renderSupervisorPlan, StuckDetector } from "../../src/supervisor/index.js";
 
 describe("PokemonSupervisor", () => {
   it("prioritizes an active battle and cites usable move context", () => {
@@ -53,6 +53,24 @@ describe("PokemonSupervisor", () => {
     expect(plan.activeGoal.kind).toBe("recover-from-loop");
     expect(plan.guidance.join("\n")).toContain("different action category");
     expect(plan.avoid.join("\n")).toContain("Do not repeat the same input");
+  });
+
+  it("exposes reusable stuck detection signals for supervisor evidence", () => {
+    const detector = new StuckDetector({ repeatedActionCount: 2, stableLocationCount: 3 });
+    const detection = detector.analyze({
+      recentActions: Array.from({ length: 2 }, () => ({ action: { type: "press", button: "A", frames: 5 } })),
+      recentStates: Array.from({ length: 3 }, (_value, step) => ({ step, mapId: 38, y: 1, x: 4, screenText: "blank pages" })),
+      fullState: fullState(),
+    });
+
+    expect(detection).toMatchObject({
+      stuck: true,
+      repeatedActionCount: 2,
+      stableLocationCount: 3,
+      repeatedActionSignature: "press:A:5",
+    });
+    expect(detection.stableContextSignature).toContain("loc=38:1:4");
+    expect(detection.reasons.join("\n")).toContain("Same action repeated 2 times");
   });
 
   it("surfaces stale map warnings without discarding the active story goal", () => {
@@ -195,6 +213,57 @@ describe("PokemonSupervisor", () => {
     expect(rendered).toContain("Do not follow a memorized route script");
     expect(rendered).not.toContain("Route 1");
     expect(rendered).not.toContain("step 1");
+  });
+
+  it("records goal, stuck, and improvement loop events in the domain ledger", () => {
+    const plan = buildPokemonSupervisorPlan({
+      step: 40,
+      fullState: fullState(),
+      recentActions: Array.from({ length: 5 }, () => ({ action: { type: "press", button: "A", frames: 5 } })),
+      recentStates: Array.from({ length: 6 }, (_value, step) => ({ step, mapId: 38, y: 3, x: 3 })),
+    });
+    const ledger = new GoalLedger();
+    const metadata = { runId: "ledger-run", step: 40, timestamp: "2026-05-24T00:00:00.000Z" };
+
+    const goalEvent = ledger.updatePlan(plan, metadata);
+    const stuckEvent = ledger.recordStuckDetection(plan.assessment, metadata);
+    const improvementEvent = ledger.recordImprovement({
+      id: "avoid-repeat-a",
+      stuckReason: plan.assessment.reasons[0],
+      hypothesis: "pressing A is targeting the same object without progress",
+      guidance: ["Move away or face a different target before pressing A again."],
+      validation: "next state should change location, facing, dialog, or menu",
+    }, metadata);
+    const snapshot = ledger.snapshot();
+
+    expect(goalEvent).toMatchObject({
+      schema: "openomni.supervisor.event.v1",
+      source: "pss-mgba",
+      type: "supervisor.goal.updated",
+      runId: "ledger-run",
+      step: 40,
+      payload: { activeGoal: { kind: "recover-from-loop" } },
+    });
+    expect(stuckEvent.type).toBe("supervisor.stuck.detected");
+    expect(improvementEvent).toMatchObject({
+      type: "supervisor.improvement.recorded",
+      payload: {
+        id: "avoid-repeat-a",
+        guidance: ["Move away or face a different target before pressing A again."],
+      },
+    });
+    expect(snapshot).toMatchObject({
+      revision: 1,
+      activeGoal: { kind: "recover-from-loop" },
+      improvements: [{ id: "avoid-repeat-a" }],
+    });
+    expect(snapshot.events.map((event) => event.type)).toEqual([
+      "supervisor.goal.updated",
+      "supervisor.stuck.detected",
+      "supervisor.improvement.recorded",
+    ]);
+    expect(ledger.drainEvents()).toHaveLength(3);
+    expect(ledger.snapshot().events).toHaveLength(0);
   });
 });
 

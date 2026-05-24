@@ -9,6 +9,7 @@ import type { HarnessConfig } from "../../src/config.js";
 import type { FullGameState } from "../../src/pokemon/PokemonTypes.js";
 import type { GameWorldSnapshot } from "../../src/pokemon/GameWorld.js";
 import { MapMemory } from "../../src/pokemon/MapMemory.js";
+import type { SupervisorEvent } from "../../src/supervisor/index.js";
 
 const baseConfig: Pick<HarnessConfig, "harnessRunId" | "harnessMode" | "loopMaxSteps" | "loopStepDelayMs" | "maxLlmCalls" | "aiProvider" | "llmVisionEnabled" | "llmVisionMaxImages"> = {
   harnessRunId: "runner-test",
@@ -206,6 +207,54 @@ describe("HarnessRunner", () => {
       decision: waitDecision
     });
     expect(JSON.stringify(evidence.decisions[0])).not.toContain("supervisor");
+  });
+
+  it("records supervisor goal, stuck, and improvement events from the live run loop", async () => {
+    const evidence = new FakeEvidenceRecorder();
+    const repeated = state({ wCurMap: 38, wYCoord: 1, wXCoord: 4 });
+    const runner = createRunner({
+      evidence,
+      states: Array.from({ length: 5 }, () => repeated),
+      fullStates: Array.from({ length: 5 }, () => fullState({
+        player: {
+          ...fullState().player,
+          position: { mapId: 38, y: 1, x: 4, yBlock: 0, xBlock: 1 },
+        },
+        dialog: { active: false, textBoxId: 0, letterPrintingDelayFlags: 0, joyIgnore: 0 },
+        menuText: {
+          ...fullState().menuText,
+          textBoxId: 0,
+          letterPrintingDelayFlags: 0,
+          screenText: "",
+          screenTextKind: "none",
+        },
+      })),
+      policy: {
+        async chooseAction() {
+          return {
+            action: { type: "press", button: "A", frames: 5 },
+            rationale: "try interaction",
+            confidence: 0.5,
+            observedStateCitations: [],
+          };
+        }
+      },
+      budgets: { maxSteps: 5, repeatedStateThreshold: 50 },
+      detector: new Stage1Detector({ stuckStepThreshold: 50 })
+    });
+
+    const result = await runner.run();
+
+    expect(result.status).toBe("failed_timeout");
+    expect(evidence.supervisorEvents.map((event) => event.type)).toContain("supervisor.goal.updated");
+    expect(evidence.supervisorEvents.map((event) => event.type)).toContain("supervisor.stuck.detected");
+    expect(evidence.supervisorEvents.map((event) => event.type)).toContain("supervisor.improvement.recorded");
+    expect(evidence.supervisorEvents.at(-1)).toMatchObject({
+      schema: "openomni.supervisor.event.v1",
+      source: "pss-mgba",
+      runId: "fake-run",
+      step: 5,
+    });
   });
 
   it("clears stale map context and reports map reader failures", async () => {
@@ -632,6 +681,7 @@ class FakeEvidenceRecorder implements RunnerEvidenceRecorder {
   readonly decisions: unknown[] = [];
   readonly actions: unknown[] = [];
   readonly screenshots: unknown[] = [];
+  readonly supervisorEvents: SupervisorEvent[] = [];
   readonly screenshotTargets: string[] = [];
   readonly errors: unknown[] = [];
   started: unknown;
@@ -657,6 +707,10 @@ class FakeEvidenceRecorder implements RunnerEvidenceRecorder {
   async recordScreenshot(metadata: unknown): Promise<string> {
     this.screenshots.push(metadata);
     return `screenshot-${this.screenshots.length}.json`;
+  }
+
+  async recordSupervisorEvent(event: SupervisorEvent): Promise<void> {
+    this.supervisorEvents.push(event);
   }
 
   async recordError(error: unknown): Promise<string> {
