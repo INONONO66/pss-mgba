@@ -1,6 +1,6 @@
 import http, { type Server } from "node:http";
 import type { Dirent } from "node:fs";
-import { mkdir, readFile, readdir } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { buildRunPaths } from "../evidence/RunPaths.js";
@@ -87,9 +87,29 @@ export function createDevViewerServer(options: DevViewerServerOptions): Server {
       }
 
       if (requestUrl.pathname === "/api/llm-conversations") {
-        const conversations = await listLatestLlmConversations(paths.llmConversationsDir, 3);
+        const limitParam = Number(requestUrl.searchParams.get("limit") ?? "10");
+        const limit = Number.isFinite(limitParam) ? Math.max(1, Math.min(50, Math.trunc(limitParam))) : 10;
+        const conversations = await listLatestLlmConversations(paths.llmConversationsDir, limit);
         response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
-        response.end(JSON.stringify({ runId: options.runId, count: conversations.length, conversations }));
+        response.end(JSON.stringify({ runId: options.runId, limit, count: conversations.length, conversations }));
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/game-state") {
+        const limitParam = Number(requestUrl.searchParams.get("limit") ?? "5");
+        const limit = Number.isFinite(limitParam) ? Math.max(1, Math.min(50, Math.trunc(limitParam))) : 5;
+        const states = await listLatestGameStates(paths.statesDir, limit);
+        response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        response.end(JSON.stringify({ runId: options.runId, limit, count: states.length, latest: states[0], states }));
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/screenshots") {
+        const limitParam = Number(requestUrl.searchParams.get("limit") ?? "12");
+        const limit = Number.isFinite(limitParam) ? Math.max(1, Math.min(100, Math.trunc(limitParam))) : 12;
+        const screenshots = await listLatestRawScreenshots(paths.rawScreenshotsDir, limit);
+        response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        response.end(JSON.stringify({ runId: options.runId, limit, count: screenshots.length, screenshots }));
         return;
       }
 
@@ -103,7 +123,7 @@ export function createDevViewerServer(options: DevViewerServerOptions): Server {
       }
 
       if (requestUrl.pathname === "/api/run-summary") {
-        const summary = await readRunSummary(paths.summaryFile, paths.eventsFile, options.runId);
+        const summary = await readRunSummary(paths.summaryFile, options.runId);
         response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
         response.end(JSON.stringify(summary));
         return;
@@ -133,6 +153,33 @@ export function createDevViewerServer(options: DevViewerServerOptions): Server {
           return;
         }
         response.writeHead(200, { "content-type": contentType, "cache-control": "no-store" });
+        response.end(bytes);
+        return;
+      }
+
+      if (requestUrl.pathname.startsWith("/raw-screenshots/")) {
+        const fileName = decodeURIComponent(requestUrl.pathname.slice("/raw-screenshots/".length));
+        if (!isSafeRawScreenshotFileName(fileName)) {
+          response.writeHead(404, { "content-type": "text/plain", "cache-control": "no-store" });
+          response.end("raw screenshot not found");
+          return;
+        }
+
+        const filePath = path.resolve(path.join(paths.rawScreenshotsDir, fileName));
+        const rawDir = path.resolve(paths.rawScreenshotsDir);
+        if (!filePath.startsWith(`${rawDir}${path.sep}`)) {
+          response.writeHead(400, { "content-type": "text/plain", "cache-control": "no-store" });
+          response.end("invalid raw screenshot path");
+          return;
+        }
+
+        const bytes = await readVisionFile(filePath);
+        if (bytes === undefined) {
+          response.writeHead(404, { "content-type": "text/plain", "cache-control": "no-store" });
+          response.end("raw screenshot not found");
+          return;
+        }
+        response.writeHead(200, { "content-type": "image/png", "cache-control": "no-store" });
         response.end(bytes);
         return;
       }
@@ -180,7 +227,14 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     .summary-label { color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; }
     .summary-value { margin-top: 6px; color: var(--color-text); font-size: 14px; line-height: 1.3; word-break: break-word; }
     .layout { display: grid; grid-template-columns: minmax(320px, 2fr) minmax(220px, 1fr); gap: var(--space-3); align-items: stretch; }
-    .conversation-panel { margin-top: var(--space-3); border: var(--line-thin); background: var(--color-surface); min-height: 340px; max-height: 58vh; display: grid; grid-template-columns: 220px minmax(0, 1fr); overflow: hidden; }
+    .observability-grid { margin-top: var(--space-3); display: grid; grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr); gap: var(--space-3); align-items: stretch; }
+    .state-panel, .screenshot-history { border: var(--line-thin); background: var(--color-surface); min-height: 300px; overflow: hidden; }
+    .state-body { margin: 0; padding: var(--space-3); max-height: 420px; overflow: auto; white-space: pre-wrap; word-break: break-word; color: var(--color-muted); font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .screenshot-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); padding: var(--space-3); max-height: 420px; overflow: auto; }
+    .raw-shot { border: var(--line-thin); background: #10100d; min-width: 0; }
+    .raw-shot img { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: contain; image-rendering: pixelated; }
+    .raw-shot .meta { padding: 6px; font-size: 10px; }
+    .conversation-panel { margin-top: var(--space-3); border: var(--line-thin); background: var(--color-surface); min-height: 420px; max-height: 70vh; display: grid; grid-template-columns: 260px minmax(0, 1fr); overflow: hidden; }
     .event-panel { margin-top: var(--space-3); border: var(--line-thin); background: var(--color-surface); max-height: 260px; overflow: auto; }
     .event-list { margin: 0; padding: var(--space-3); display: grid; gap: var(--space-2); }
     .event-item { border: var(--line-thin); background: #10100d; padding: 10px 12px; color: var(--color-muted); font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
@@ -204,7 +258,7 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     .vision-cell img { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; background: var(--color-surface); }
     .meta { color: var(--color-muted); font-size: var(--text-label); line-height: 1.4; word-break: break-word; }
     .empty { box-sizing: border-box; display: grid; grid-column: 1 / -1; grid-row: 1 / -1; height: 100%; place-items: center; padding: var(--space-5); color: var(--color-muted); font-size: var(--text-label); text-align: center; }
-    @media (max-width: 800px) { .summary-strip, .layout { grid-template-columns: 1fr; } .vision-wall { aspect-ratio: 3 / 1; } .vision-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: 1fr; } .vision-cell { border-top: 0; border-left: var(--line-thin); } .vision-cell:first-child { border-left: 0; } .conversation-panel { grid-template-columns: 1fr; max-height: none; } .history-rail { border-right: 0; border-bottom: var(--line-thin); max-height: 130px; } }
+    @media (max-width: 800px) { .summary-strip, .layout, .observability-grid { grid-template-columns: 1fr; } .vision-wall { aspect-ratio: 3 / 1; } .vision-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: 1fr; } .vision-cell { border-top: 0; border-left: var(--line-thin); } .vision-cell:first-child { border-left: 0; } .conversation-panel { grid-template-columns: 1fr; max-height: none; } .history-rail { border-right: 0; border-bottom: var(--line-thin); max-height: 130px; } .screenshot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   </style>
 </head>
 <body>
@@ -213,7 +267,7 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       <article class="summary-card"><div class="summary-label">Run</div><div id="summary-run" class="summary-value">${escapeHtml(runId)}</div></article>
       <article class="summary-card"><div class="summary-label">Status</div><div id="summary-status" class="summary-value">Loading...</div></article>
       <article class="summary-card"><div class="summary-label">Progress</div><div id="summary-progress" class="summary-value">Waiting...</div></article>
-      <article class="summary-card"><div class="summary-label">Supervisor</div><div id="summary-supervisor" class="summary-value">Waiting...</div></article>
+      <article class="summary-card"><div class="summary-label">Player action</div><div id="summary-player" class="summary-value">Waiting...</div></article>
     </section>
     <div class="layout">
       <section class="image-cell">
@@ -231,6 +285,22 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
         <div id="vision-grid" class="vision-grid"></div>
       </section>
     </div>
+    <section class="observability-grid">
+      <article class="state-panel">
+        <div class="conversation-header">
+          <h2>Current game state</h2>
+          <p id="state-status">Waiting for RAM state snapshots...</p>
+        </div>
+        <pre id="game-state" class="state-body">No game state recorded yet.</pre>
+      </article>
+      <article class="screenshot-history">
+        <div class="conversation-header">
+          <h2>Game screen history</h2>
+          <p id="screenshot-status">Waiting for raw screenshots...</p>
+        </div>
+        <div id="screenshot-grid" class="screenshot-grid"></div>
+      </article>
+    </section>
     <section class="conversation-panel">
       <div class="history-rail">
         <div class="conversation-header">
@@ -241,7 +311,7 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       </div>
       <div class="conversation-main">
         <div class="conversation-header">
-          <h2>LLM context + decision</h2>
+          <h2>Injected LLM context + decision</h2>
           <p>Stored in <code>${escapeHtml(llmConversationsPath)}</code></p>
         </div>
         <pre id="llm-conversation" class="conversation-body">No LLM conversation recorded yet.</pre>
@@ -249,7 +319,7 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     </section>
     <section class="event-panel">
       <div class="conversation-header">
-        <h2>Run events</h2>
+        <h2>Detailed run log</h2>
         <p id="event-status">Waiting...</p>
       </div>
       <div id="event-list" class="event-list"></div>
@@ -264,9 +334,13 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     const llmHistory = document.getElementById('llm-history');
     const eventStatus = document.getElementById('event-status');
     const eventList = document.getElementById('event-list');
+    const stateStatus = document.getElementById('state-status');
+    const gameState = document.getElementById('game-state');
+    const screenshotStatus = document.getElementById('screenshot-status');
+    const screenshotGrid = document.getElementById('screenshot-grid');
     const summaryStatus = document.getElementById('summary-status');
     const summaryProgress = document.getElementById('summary-progress');
-    const summarySupervisor = document.getElementById('summary-supervisor');
+    const summaryPlayer = document.getElementById('summary-player');
     let selectedConversationFile = null;
 
     function text(node, value) { node.appendChild(document.createTextNode(value)); }
@@ -306,7 +380,7 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     }
 
     async function refreshLlmConversation() {
-      const payload = await fetch('/api/llm-conversations', { cache: 'no-store' }).then((response) => response.json());
+      const payload = await fetch('/api/llm-conversations?limit=10', { cache: 'no-store' }).then((response) => response.json());
       if (!payload.conversations || payload.conversations.length === 0) {
         llmStatus.textContent = 'No LLM request recorded yet';
         llmHistory.textContent = '';
@@ -329,8 +403,49 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       llmConversation.textContent = formatConversation(selected);
     }
 
+    async function refreshGameState() {
+      const payload = await fetch('/api/game-state?limit=5', { cache: 'no-store' }).then((response) => response.json());
+      if (!payload.latest) {
+        stateStatus.textContent = 'No game state snapshot recorded yet';
+        gameState.textContent = 'No game state recorded yet.';
+        return;
+      }
+      const latest = payload.latest;
+      stateStatus.textContent = payload.count + '/' + payload.limit + ' state snapshot(s) · latest ' + latest.fileName;
+      gameState.textContent = formatStateSnapshot(latest);
+    }
+
+    async function refreshScreenshotHistory() {
+      const payload = await fetch('/api/screenshots?limit=12', { cache: 'no-store' }).then((response) => response.json());
+      screenshotStatus.textContent = payload.count + '/' + payload.limit + ' raw game screenshot(s)';
+      screenshotGrid.textContent = '';
+      if (!payload.screenshots || payload.screenshots.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'empty';
+        empty.textContent = 'No raw game screenshots recorded yet.';
+        screenshotGrid.appendChild(empty);
+        return;
+      }
+
+      for (const screenshot of payload.screenshots) {
+        const card = document.createElement('article');
+        card.className = 'raw-shot';
+        const img = document.createElement('img');
+        img.src = screenshot.url;
+        img.alt = 'Raw game screenshot ' + screenshot.fileName;
+        card.appendChild(img);
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        text(meta, screenshot.fileName);
+        meta.appendChild(document.createElement('br'));
+        text(meta, 'step ' + (screenshot.step ?? '?') + ' · ' + screenshot.bytes + ' bytes');
+        card.appendChild(meta);
+        screenshotGrid.appendChild(card);
+      }
+    }
+
     async function refreshEvents() {
-      const payload = await fetch('/api/events?limit=20', { cache: 'no-store' }).then((response) => response.json());
+      const payload = await fetch('/api/events?limit=100', { cache: 'no-store' }).then((response) => response.json());
       eventStatus.textContent = payload.count + '/' + payload.limit + ' latest event(s)';
       eventList.textContent = '';
       if (!payload.events || payload.events.length === 0) {
@@ -354,23 +469,13 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       summaryStatus.textContent = summary.status ?? 'unknown';
       const counts = summary.counts ?? {};
       summaryProgress.textContent = 'steps ' + (summary.totalSteps ?? '?') + ' · decisions ' + (counts.decisions ?? 0) + ' · errors ' + (counts.errors ?? 0);
-      const supervisor = summary.latestSupervisor;
-      summarySupervisor.textContent = supervisor?.activeGoal?.title
-        ? supervisor.activeGoal.title + ' · ' + (supervisor.state ?? 'unknown')
-        : 'No supervisor decision yet';
+      summaryPlayer.textContent = summary.lastAction
+        ? summarizeAction({ parsedDecision: { action: summary.lastAction.action } }) + ' · ' + (summary.lastAction.rationale ?? 'no rationale')
+        : 'No player action yet';
     }
 
     function formatEvent(event) {
       const header = '[' + (event.sequence ?? '-') + '] ' + event.type + ' · ' + event.timestamp;
-      const supervisor = event.payload?.supervisor;
-      if (supervisor !== undefined) {
-        return [
-          header,
-          'goal: ' + (supervisor.activeGoal?.title ?? '?') + ' (' + (supervisor.activeGoal?.kind ?? '?') + ')',
-          'state: ' + (supervisor.state ?? '?'),
-          'guidance: ' + ((supervisor.guidance ?? []).join(' | ') || '?')
-        ].join('\\n');
-      }
       return header + '\\n' + JSON.stringify(event.payload ?? {}, null, 2);
     }
 
@@ -389,7 +494,7 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
         sections.push('\\n[RAW RESPONSE]');
         sections.push(conversation.responseContent);
       }
-      sections.push('\\n[PROMPT / CONTEXT]');
+      sections.push('\\n[PROMPT / INJECTED LLM CONTEXT]');
       for (const message of conversation.messages ?? []) {
         sections.push('\\n[' + String(message.role).toUpperCase() + ']');
         if (typeof message.content === 'string') {
@@ -405,6 +510,19 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
         }
       }
       return sections.join('\\n');
+    }
+
+    function formatStateSnapshot(snapshot) {
+      const state = snapshot.state?.state ?? snapshot.state;
+      const lines = [
+        'file: ' + snapshot.fileName,
+        'step: ' + (snapshot.state?.step ?? snapshot.step ?? '?'),
+        'frame: ' + (snapshot.state?.frame ?? snapshot.frame ?? '?'),
+        'stateHash: ' + (snapshot.state?.stateHash ?? snapshot.stateHash ?? '?'),
+        '',
+        JSON.stringify(state ?? snapshot, null, 2)
+      ];
+      return lines.join('\\n');
     }
 
     function summarizeAction(conversation) {
@@ -428,7 +546,15 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     }
 
     async function tick() {
-      await Promise.allSettled([refreshLiveFrame(), refreshVisionImages(), refreshLlmConversation(), refreshEvents(), refreshRunSummary()]);
+      await Promise.allSettled([
+        refreshLiveFrame(),
+        refreshVisionImages(),
+        refreshLlmConversation(),
+        refreshGameState(),
+        refreshScreenshotHistory(),
+        refreshEvents(),
+        refreshRunSummary()
+      ]);
     }
 
     setInterval(tick, 1000);
@@ -473,6 +599,70 @@ async function listLatestLlmConversations(directory: string, limit: number): Pro
   return conversations;
 }
 
+async function listLatestGameStates(directory: string, limit: number): Promise<Array<Record<string, unknown>>> {
+  const fileNames = await listLatestJsonFileNames(directory, limit);
+  const states: Array<Record<string, unknown>> = [];
+  for (const fileName of fileNames) {
+    try {
+      const parsed = JSON.parse(await readFile(path.join(directory, fileName), "utf8")) as unknown;
+      states.push({
+        fileName,
+        ...(isRecord(parsed) ? sanitizeConversationForDashboard(parsed) as Record<string, unknown> : { state: parsed })
+      });
+    } catch {
+      states.push({ fileName, error: "failed to read state artifact" });
+    }
+  }
+  return states;
+}
+
+async function listLatestRawScreenshots(directory: string, limit: number): Promise<Array<Record<string, unknown>>> {
+  let entries: Dirent[];
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (isNotFound(error)) return [];
+    throw error;
+  }
+
+  const candidates = entries
+    .filter((entry) => entry.isFile() && isSafeRawScreenshotFileName(entry.name))
+    .map((entry) => entry.name)
+    .sort()
+    .reverse()
+    .slice(0, limit);
+
+  const screenshots: Array<Record<string, unknown>> = [];
+  for (const fileName of candidates) {
+    const fileStat = await stat(path.join(directory, fileName));
+    screenshots.push({
+      fileName,
+      url: `/raw-screenshots/${encodeURIComponent(fileName)}`,
+      bytes: fileStat.size,
+      mtime: fileStat.mtime.toISOString(),
+      step: parseRawScreenshotStep(fileName),
+    });
+  }
+  return screenshots;
+}
+
+async function listLatestJsonFileNames(directory: string, limit: number): Promise<string[]> {
+  let entries: Dirent[];
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (isNotFound(error)) return [];
+    throw error;
+  }
+
+  return entries
+    .filter((entry) => entry.isFile() && /^\d{6}\.json$/.test(entry.name))
+    .map((entry) => entry.name)
+    .sort()
+    .reverse()
+    .slice(0, limit);
+}
+
 async function listLatestEvents(file: string, limit: number): Promise<Array<Record<string, unknown>>> {
   let content: string;
   try {
@@ -501,15 +691,9 @@ async function listLatestEvents(file: string, limit: number): Promise<Array<Reco
   return events;
 }
 
-async function readRunSummary(summaryFile: string, eventsFile: string, runId: string): Promise<Record<string, unknown>> {
-  const [summary, latestEvents] = await Promise.all([
-    readJsonRecord(summaryFile),
-    listLatestEvents(eventsFile, 20),
-  ]);
+async function readRunSummary(summaryFile: string, runId: string): Promise<Record<string, unknown>> {
+  const summary = await readJsonRecord(summaryFile);
   const result = isRecord(summary?.result) ? summary.result : undefined;
-  const latestSupervisor = latestEvents
-    .map((event) => isRecord(event.payload) ? event.payload.supervisor : undefined)
-    .find(isRecord);
 
   return {
     runId,
@@ -524,7 +708,6 @@ async function readRunSummary(summaryFile: string, eventsFile: string, runId: st
       progressStep: numberField(result.detector.progressStep),
       lastProgressStep: numberField(result.detector.lastProgressStep),
     } : undefined,
-    latestSupervisor,
     lastAction: summarizeLastAction(result?.last20Actions),
   };
 }
@@ -561,6 +744,17 @@ function stringField(value: unknown): string | undefined {
 
 function numberField(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function isSafeRawScreenshotFileName(fileName: string): boolean {
+  return /^\d{6}\.png$/i.test(fileName) &&
+    !fileName.includes("/") &&
+    !fileName.includes("\\");
+}
+
+function parseRawScreenshotStep(fileName: string): number | null {
+  const match = fileName.match(/^(\d{6})\.png$/i);
+  return match ? Number(match[1]) : null;
 }
 
 function sanitizeConversationForDashboard(value: unknown): unknown {

@@ -63,7 +63,7 @@ function describeMgbaTools(): string {
     "You can control the already-running game through button tools.",
     "Game progress must never be reset or reloaded by the model; reset and ROM-loading tools are intentionally not exposed.",
     `Available buttons: ${MGBA_BUTTONS.join(", ")}.`,
-    "Use mgba_tap for A/B/Start/Select interactions, dialogue, menus, and facing/very small directional nudges. Use mgba_hold for movement. A local supervisor enforces deterministic timing: single directional movement uses duration 12, non-directional taps use duration 6, and unsafe long movement chains are shortened to one supervised tile before the next observation.",
+    "Use mgba_tap for A/B/Start/Select interactions, dialogue, menus, and facing/very small directional nudges. Use mgba_hold for movement. A local input guard enforces deterministic timing: single directional movement uses duration 12, non-directional taps use duration 6, and unsafe long movement chains are shortened to one safe tile before the next observation.",
     "The runner usually injects current screenshot/status into each turn, so mgba_screenshot and mgba_status are available but not recommended unless the injected observation is stale, ambiguous, or insufficient.",
   ].join("\n");
 }

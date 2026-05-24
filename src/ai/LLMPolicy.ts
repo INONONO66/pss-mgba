@@ -4,7 +4,6 @@ import type { HarnessConfig, HarnessMode, LlmVisionDetail } from "../config.js";
 import type { PolicyDecision } from "../control/ActionTypes.js";
 import { PolicyDecisionSchema, createPolicyDecisionJsonSchema } from "../control/ActionSchema.js";
 import { HarnessError } from "../errors.js";
-import { renderSupervisorPlan } from "../supervisor/SupervisorSummary.js";
 import type { Policy, PolicyInput, VisionImageInput } from "./Policy.js";
 
 interface ChatMessage {
@@ -283,7 +282,7 @@ async function buildMessages(input: PolicyInput, harnessMode: HarnessMode, defau
     return [
       {
         role: "system",
-        content: "You are a Pokemon Red/Blue full-game controller for an mGBA harness. Choose only safe Game Boy actions from the supplied schema. Never invent buttons, memory writes, emulator RAM mutation, shell commands, code execution, ROM assets, walkthrough text, or a hardcoded global input timeline."
+        content: "You are the Pokemon Red/Blue player controlling an mGBA harness. Choose only safe Game Boy actions from the supplied schema. Never invent buttons, memory writes, emulator RAM mutation, shell commands, code execution, ROM assets, walkthrough text, or a hardcoded global input timeline."
       },
       {
         role: "user",
@@ -295,7 +294,7 @@ async function buildMessages(input: PolicyInput, harnessMode: HarnessMode, defau
   return [
     {
       role: "system",
-      content: "You are a bounded Pokemon Red/Blue controller. Choose only safe Game Boy actions from the supplied schema. Never invent buttons, memory writes, shell commands, code execution, or a hardcoded global input timeline."
+      content: "You are the Pokemon Red/Blue player controlling a bounded mGBA harness. Choose only safe Game Boy actions from the supplied schema. Never invent buttons, memory writes, shell commands, code execution, or a hardcoded global input timeline."
     },
     {
       role: "user",
@@ -358,12 +357,6 @@ function buildStateContextSection(input: PolicyInput): string[] {
     lines.push(`Progress: ${formatDetectorStatus(input.detectorStatus)}`);
   }
 
-  if (input.supervisorPlan !== undefined) {
-    lines.push(
-      "Supervisor guidance:",
-      renderSupervisorPlan(input.supervisorPlan)
-    );
-  }
 
   if (input.fullStateSummary !== undefined) {
     lines.push(
