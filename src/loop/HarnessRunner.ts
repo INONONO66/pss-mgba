@@ -11,6 +11,9 @@ import type { MapMemory } from "../pokemon/MapMemory.js";
 import type { GameWorldSnapshot } from "../pokemon/GameWorld.js";
 import type { FullGameState, MenuTextState } from "../pokemon/PokemonTypes.js";
 import { buildStateSummary } from "../pokemon/StateSummary.js";
+import { GoalLedger } from "../supervisor/GoalLedger.js";
+import { buildPokemonSupervisorPlan } from "../supervisor/PokemonSupervisor.js";
+import type { SupervisorEvent } from "../supervisor/SupervisorTypes.js";
 
 export interface RunnerClient {
   currentFrame(): Promise<FrameNumber>;
@@ -34,6 +37,7 @@ export interface RunnerEvidenceRecorder {
   recordDecision(decision: unknown): Promise<void>;
   recordAction(action: unknown): Promise<void>;
   recordScreenshot(metadata: ScreenshotMetadata): Promise<string>;
+  recordSupervisorEvent(event: SupervisorEvent): Promise<void>;
   recordError(error: unknown): Promise<string>;
   finishRun(status: HarnessStatus, result?: unknown): Promise<unknown>;
 }
@@ -127,6 +131,7 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
   private readonly recentVisionImages: VisionImageInput[] = [];
   private readonly recentStateHashes: string[] = [];
   private readonly last20Actions: RecordedActionSummary[] = [];
+  private readonly goalLedger = new GoalLedger();
   private startedAt: string | undefined;
   private step = 0;
   private llmCalls = 0;
@@ -137,6 +142,7 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
   private lastMapFresh: boolean | undefined;
   private lastFullState: FullGameState | undefined;
   private lastFullStateError: string | undefined;
+  private lastImprovementKey: string | undefined;
 
   constructor(options: HarnessRunnerOptions<TState>) {
     this.config = options.config;
@@ -193,6 +199,7 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
         this.recordRecentState(snapshot);
         await this.updateMapMemory();
         await this.updateFullState(snapshot.state);
+        await this.updateSupervisorEvidence();
 
         const policyInput = this.createPolicyInput(snapshot);
         const decision = await this.chooseDecision(policyInput);
@@ -301,6 +308,48 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
     } catch (error) {
       this.lastFullState = undefined;
       this.lastFullStateError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  private async updateSupervisorEvidence(): Promise<void> {
+    const plan = buildPokemonSupervisorPlan({
+      step: this.step,
+      fullState: this.lastFullState,
+      detectorStatus: this.detector.getStatus(),
+      recentActions: [...this.last20Actions],
+      recentStates: [...this.recentStates],
+      mapFresh: this.lastMapFresh,
+      mapStateWarning: this.lastMapStateWarning,
+      mapStateError: this.lastMapStateError,
+    });
+    const metadata = {
+      runId: this.evidence.paths?.runId ?? this.config.harnessRunId,
+      step: this.step,
+      timestamp: this.timestamp(),
+    };
+
+    this.goalLedger.updatePlan(plan, metadata);
+    if (plan.assessment.state === "stuck") {
+      this.goalLedger.recordStuckDetection(plan.assessment, metadata, plan.activeGoal);
+      const stuckReason = plan.assessment.reasons[0] ?? "progress context stayed stable";
+      const improvementKey = `${plan.activeGoal.id}:${stuckReason}`;
+      if (this.lastImprovementKey !== improvementKey) {
+        this.lastImprovementKey = improvementKey;
+        this.goalLedger.recordImprovement({
+          id: `step-${this.step}-break-loop`,
+          stuckReason,
+          hypothesis: "The current repeated action is not changing observable game state.",
+          guidance: [
+            "Choose a different action category than the repeated input.",
+            "Move or turn away before interacting with the same target again.",
+          ],
+          validation: "Next observations should change location, facing, dialog, battle, menu, or story flags.",
+        }, metadata);
+      }
+    }
+
+    for (const event of this.goalLedger.drainEvents()) {
+      await this.evidence.recordSupervisorEvent(event);
     }
   }
 

@@ -1,9 +1,7 @@
-import type { HarnessAction } from "../control/ActionTypes.js";
 import type { FullGameState, PartyPokemon } from "../pokemon/PokemonTypes.js";
+import { analyzeStuckSignals } from "./StuckDetector.js";
 import type { SupervisorAssessment, SupervisorGoal, SupervisorInput, SupervisorPlan, SupervisorProgressState } from "./SupervisorTypes.js";
 
-const LOOP_ACTION_THRESHOLD = 4;
-const STABLE_CONTEXT_THRESHOLD = 5;
 const MAX_GOALS = 4;
 
 export function buildPokemonSupervisorPlan(input: SupervisorInput): SupervisorPlan {
@@ -31,8 +29,9 @@ export function buildPokemonSupervisorPlan(input: SupervisorInput): SupervisorPl
 }
 
 function assessProgress(input: SupervisorInput): SupervisorAssessment {
-  const repeatedActionCount = countRepeatedTrailingActions(input.recentActions);
-  const stableLocationCount = countStableTrailingContexts(input.recentStates);
+  const stuckDetection = analyzeStuckSignals(input);
+  const repeatedActionCount = stuckDetection.repeatedActionCount;
+  const stableLocationCount = stuckDetection.stableLocationCount;
   const reasons: string[] = [];
   let state: SupervisorProgressState = "progressing";
 
@@ -50,9 +49,9 @@ function assessProgress(input: SupervisorInput): SupervisorAssessment {
     reasons.push(input.mapStateWarning);
   }
 
-  if (isRecoverableLoopCandidate(input) && repeatedActionCount >= LOOP_ACTION_THRESHOLD && stableLocationCount >= STABLE_CONTEXT_THRESHOLD) {
+  if (stuckDetection.stuck) {
     state = state === "complete" ? state : "stuck";
-    reasons.push(`Same action repeated ${repeatedActionCount} times while progress context stayed stable for ${stableLocationCount} observations.`);
+    reasons.push(...stuckDetection.reasons);
   }
 
   const lead = input.fullState?.party.members[0];
@@ -226,120 +225,6 @@ function withStatus(goal: SupervisorGoal, status: SupervisorGoal["status"]): Sup
   return { ...goal, status };
 }
 
-function isRecoverableLoopCandidate(input: SupervisorInput): boolean {
-  const state = input.fullState;
-  if (state === undefined) return true;
-  if (state.battle.inBattle) return false;
-  if (state.dialog.active) return false;
-  if (state.menuText.screenText.trim().length > 0) return false;
-  if (state.menuText.screenTextKind === "naming_screen") return false;
-  return true;
-}
-
-function countRepeatedTrailingActions(actions: readonly unknown[] | undefined): number {
-  if (actions === undefined || actions.length === 0) return 0;
-  const signatures = actions.map(actionSignature);
-  const last = signatures[signatures.length - 1];
-  if (last === undefined) return 0;
-
-  let count = 0;
-  for (let index = signatures.length - 1; index >= 0; index -= 1) {
-    if (signatures[index] !== last) break;
-    count += 1;
-  }
-  return count;
-}
-
-function countStableTrailingContexts(states: readonly unknown[] | undefined): number {
-  if (states === undefined || states.length === 0) return 0;
-  const signatures = states.map(progressSignature);
-  const last = signatures[signatures.length - 1];
-  if (last === undefined) return 0;
-
-  let count = 0;
-  for (let index = signatures.length - 1; index >= 0; index -= 1) {
-    if (signatures[index] !== last) break;
-    count += 1;
-  }
-  return count;
-}
-
-function actionSignature(value: unknown): string {
-  const action = unwrapAction(value);
-  if (action === undefined) return stableSignature(value);
-  if (action.type === "press" || action.type === "hold") return `${action.type}:${action.button}:${action.frames}`;
-  if (action.type === "wait") return `wait:${action.frames}`;
-  return `sequence:${action.actions.map(actionSignature).join("|")}`;
-}
-
-function unwrapAction(value: unknown): HarnessAction | undefined {
-  if (value === null || typeof value !== "object") return undefined;
-  const record = value as { readonly action?: unknown; readonly type?: unknown };
-  const candidate = record.action ?? value;
-  if (candidate === null || typeof candidate !== "object") return undefined;
-  const action = candidate as Partial<HarnessAction>;
-  return typeof action.type === "string" ? action as HarnessAction : undefined;
-}
-
-function progressSignature(value: unknown): string {
-  if (value === null || typeof value !== "object") return stableSignature(value);
-  const record = value as Record<string, unknown>;
-  const mapId = firstNumber(record.mapId, record.wCurMap);
-  const y = firstNumber(record.y, record.wYCoord);
-  const x = firstNumber(record.x, record.wXCoord);
-  const battle = firstPrimitive(record.battle, record.wIsInBattle);
-  const textBox = firstPrimitive(record.textBoxId, record.wTextBoxID);
-  const screenTextKind = firstPrimitive(record.screenTextKind);
-  const screenText = firstPrimitive(record.screenText);
-  const menuItem = firstPrimitive(record.menuItem, record.wCurrentMenuItem);
-  const partyHp = firstPrimitive(record.wPartyMon1HP);
-  const enemyHp = firstPrimitive(record.wEnemyMonHP);
-  if (mapId !== undefined && y !== undefined && x !== undefined) {
-    return [
-      `loc=${mapId}:${y}:${x}`,
-      `battle=${battle ?? "unknown"}`,
-      `textBox=${textBox ?? "unknown"}`,
-      `text=${screenTextKind ?? screenText ?? "unknown"}`,
-      `menu=${menuItem ?? "unknown"}`,
-      `partyHp=${partyHp ?? "unknown"}`,
-      `enemyHp=${enemyHp ?? "unknown"}`,
-    ].join("|");
-  }
-  return stableSignature(value);
-}
-
-function firstNumber(...values: readonly unknown[]): number | undefined {
-  return values.find((value): value is number => typeof value === "number");
-}
-
-function firstPrimitive(...values: readonly unknown[]): string | number | boolean | undefined {
-  return values.find((value): value is string | number | boolean => (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ));
-}
-
 function isLowHp(pokemon: PartyPokemon): boolean {
   return pokemon.maxHp > 0 && pokemon.hp / pokemon.maxHp <= 0.25;
-}
-
-function stableSignature(value: unknown): string {
-  return typeof value === "object" && value !== null ? JSON.stringify(sortJson(value)) : String(value);
-}
-
-function sortJson(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sortJson);
-  }
-
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entry]) => [key, sortJson(entry)])
-    );
-  }
-
-  return value;
 }

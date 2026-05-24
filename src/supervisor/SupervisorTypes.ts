@@ -43,6 +43,48 @@ export interface SupervisorPlan {
   readonly citations: readonly string[];
 }
 
+export type SupervisorEventType =
+  | "supervisor.goal.updated"
+  | "supervisor.stuck.detected"
+  | "supervisor.improvement.recorded";
+
+export interface SupervisorEventMetadata {
+  readonly runId?: string;
+  readonly step?: number;
+  readonly timestamp: string;
+}
+
+export interface SupervisorEvent<TPayload extends Record<string, unknown> = Record<string, unknown>> {
+  readonly schema: "openomni.supervisor.event.v1";
+  readonly source: "pss-mgba";
+  readonly type: SupervisorEventType;
+  readonly timestamp: string;
+  readonly runId?: string;
+  readonly step?: number;
+  readonly payload: TPayload;
+}
+
+export interface SupervisorGoalUpdatePayload extends Record<string, unknown> {
+  readonly activeGoal: SupervisorGoal;
+  readonly previousActiveGoal?: SupervisorGoal;
+  readonly assessment: SupervisorAssessment;
+  readonly guidance: readonly string[];
+}
+
+export interface SupervisorStuckPayload extends Record<string, unknown> {
+  readonly assessment: SupervisorAssessment;
+  readonly activeGoal?: SupervisorGoal;
+  readonly reasons: readonly string[];
+}
+
+export interface SupervisorImprovementPayload extends Record<string, unknown> {
+  readonly id: string;
+  readonly stuckReason: string;
+  readonly hypothesis: string;
+  readonly guidance: readonly string[];
+  readonly validation?: string;
+}
+
 export interface SupervisorInput {
   readonly step?: number;
   readonly fullState?: FullGameState;

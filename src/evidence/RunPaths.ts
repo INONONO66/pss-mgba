@@ -6,6 +6,7 @@ export interface RunPaths {
   readonly runDir: string;
   readonly configFile: string;
   readonly eventsFile: string;
+  readonly supervisorEventsFile: string;
   readonly summaryFile: string;
   readonly statesDir: string;
   readonly screenshotsDir: string;
@@ -34,6 +35,7 @@ export function buildRunPaths(rootDir: string, runId: string): RunPaths {
     runDir,
     configFile: path.join(runDir, "config.json"),
     eventsFile: path.join(runDir, "events.jsonl"),
+    supervisorEventsFile: path.join(runDir, "supervisor-events.jsonl"),
     summaryFile: path.join(runDir, "summary.json"),
     statesDir,
     screenshotsDir,
