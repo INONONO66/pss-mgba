@@ -219,9 +219,10 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       --ui: "Avenir Next", "Segoe UI", sans-serif;
     }
     * { box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    html, body { width: 100%; min-height: 100%; margin: 0; }
     body {
-      min-width: 1180px;
+      min-width: 0;
+      overflow: hidden;
       color: var(--ink);
       font-family: var(--ui);
       background:
@@ -246,7 +247,7 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     .shell {
       position: relative;
       z-index: 1;
-      height: 100vh;
+      height: 100svh;
       padding: 12px;
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
@@ -254,7 +255,7 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     }
     .topbar {
       display: grid;
-      grid-template-columns: minmax(260px, 1.1fr) repeat(6, minmax(135px, 0.7fr));
+      grid-template-columns: minmax(220px, 1.15fr) repeat(auto-fit, minmax(132px, 0.72fr));
       gap: 8px;
     }
     .card, .panel {
@@ -284,8 +285,8 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     .grid {
       min-height: 0;
       display: grid;
-      grid-template-columns: minmax(456px, 1.16fr) minmax(360px, 0.92fr) minmax(470px, 1fr);
-      grid-template-rows: minmax(0, 1.08fr) minmax(0, 0.92fr);
+      grid-template-columns: minmax(390px, 1.08fr) minmax(340px, 0.92fr) minmax(430px, 1.12fr);
+      grid-template-rows: minmax(0, 1fr) minmax(230px, 0.58fr);
       gap: 10px;
     }
     .panel {
@@ -345,10 +346,9 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     .chip.bad { color: var(--red); background: rgba(255, 118, 92, 0.10); border-color: rgba(255, 118, 92, 0.24); }
     .state-panel { grid-row: 1; grid-column: 2; }
     .llm-panel { grid-row: 1 / span 2; grid-column: 3; }
-    .history-panel { grid-row: 2; grid-column: 1; }
-    .context-panel { grid-row: 2; grid-column: 2; }
+    .context-panel { grid-row: 2; grid-column: 1 / span 2; }
     .scroll { min-height: 0; overflow: auto; }
-    .state-body, .context-body, .event-list, .history-grid, .vision-grid, .llm-detail { padding: 10px; }
+    .state-body, .context-body, .event-list, .vision-grid, .llm-detail, .raw-log { padding: 10px; }
     .state-block { display: grid; gap: 8px; }
     .kv-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .kv { padding: 9px; background: var(--panel-soft); border: 1px solid rgba(196, 255, 166, 0.12); }
@@ -365,11 +365,8 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       background: rgba(0, 0, 0, 0.22);
       border: 1px solid rgba(196, 255, 166, 0.12);
     }
-    .history-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
-    .raw-shot { min-width: 0; background: var(--panel-soft); border: 1px solid rgba(196, 255, 166, 0.12); }
-    .raw-shot img { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: contain; image-rendering: pixelated; background: #020302; }
-    .raw-shot .meta { padding: 6px; color: var(--muted); font: 10px/1.28 var(--mono); overflow-wrap: anywhere; }
-    .context-tabs, .llm-tabs { display: flex; gap: 6px; padding: 8px 10px 0; background: rgba(7, 11, 8, 0.35); }
+    .raw-log { margin: 0; min-height: 100%; }
+    .context-tabs, .llm-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px 0; background: rgba(7, 11, 8, 0.35); }
     .tab {
       padding: 6px 8px;
       color: var(--muted);
@@ -399,22 +396,36 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     }
     .history-button:hover, .history-button.active { color: var(--ink); background: rgba(140, 255, 113, 0.08); }
     .decision-card { display: grid; gap: 8px; margin-bottom: 10px; padding: 10px; color: var(--ink); background: rgba(140,255,113,0.08); border: 1px solid var(--line-strong); }
-    .vision-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .injection-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-bottom: 10px; }
+    .injection-summary .kv { min-height: 64px; }
+    .vision-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; }
     .vision-cell { position: relative; min-width: 0; background: var(--panel-soft); border: 1px solid rgba(196, 255, 166, 0.12); }
     .vision-cell img { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: contain; image-rendering: pixelated; background: #020302; }
     .vision-cell .meta { position: absolute; left: 0; right: 0; bottom: 0; padding: 6px; color: var(--muted); font: 10px/1.25 var(--mono); background: rgba(7,11,8,0.78); overflow-wrap: anywhere; }
     .event-list { display: grid; gap: 8px; }
     .event-item { padding: 9px; color: var(--muted); background: var(--panel-soft); border: 1px solid rgba(196, 255, 166, 0.12); font: 10px/1.35 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
     .empty { display: grid; min-height: 100%; place-items: center; padding: 18px; color: var(--muted-2); text-align: center; font: 12px/1.4 var(--mono); }
-    @media (max-width: 1250px) {
-      body { min-width: 0; overflow: auto; }
-      html, body { height: auto; }
-      .shell { min-height: 100vh; height: auto; }
-      .topbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .grid { grid-template-columns: 1fr; grid-template-rows: repeat(6, minmax(320px, auto)); }
-      .screen-panel, .state-panel, .llm-panel, .history-panel, .context-panel { grid-row: auto; grid-column: auto; }
+    @media (max-width: 1320px) {
+      body { overflow: auto; }
+      .shell { min-height: 100svh; height: auto; }
+      .grid {
+        grid-template-columns: minmax(360px, 1.1fr) minmax(360px, 0.9fr);
+        grid-template-rows: minmax(420px, 44vh) minmax(420px, auto) minmax(300px, auto);
+      }
+      .screen-panel { grid-row: 1; grid-column: 1; }
+      .state-panel { grid-row: 1; grid-column: 2; }
+      .llm-panel { grid-row: 2; grid-column: 1 / span 2; }
+      .context-panel { grid-row: 3; grid-column: 1 / span 2; }
+    }
+    @media (max-width: 820px) {
+      .shell { padding: 8px; }
+      .topbar { grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); }
+      .grid { grid-template-columns: 1fr; grid-template-rows: none; }
+      .screen-panel, .state-panel, .llm-panel, .context-panel { grid-row: auto; grid-column: auto; min-height: 320px; }
+      .screen-panel { min-height: 420px; }
       .llm-layout { grid-template-columns: 1fr; }
       .llm-rail { max-height: 160px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .kv-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -467,20 +478,17 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
         </div>
       </article>
 
-      <article class="panel history-panel">
-        <div class="panel-header"><h2>Screen history</h2><p id="screenshot-status">Waiting for raw screenshots...</p></div>
-        <div id="screenshot-grid" class="history-grid scroll"></div>
-      </article>
-
       <article class="panel context-panel">
-        <div class="panel-header"><h2>Input context images + event log</h2><p id="vision-status">Loading latest ${visionImageLimit} processed input(s)...</p></div>
+        <div class="panel-header"><h2>Input context + run logs</h2><p id="vision-status">Loading latest ${visionImageLimit} processed input(s)...</p></div>
         <div class="context-tabs">
           <button class="tab active" data-context-tab="vision">Images</button>
           <button class="tab" data-context-tab="events">Events</button>
+          <button class="tab" data-context-tab="raw">Raw logs</button>
         </div>
         <div class="context-body scroll">
           <div id="vision-grid" class="vision-grid"></div>
           <div id="event-list" class="event-list" hidden></div>
+          <pre id="raw-log" class="raw-log mono-block" hidden>No raw run log recorded yet.</pre>
         </div>
       </article>
     </section>
@@ -493,11 +501,10 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     const llmConversation = document.getElementById('llm-conversation');
     const llmHistory = document.getElementById('llm-history');
     const eventList = document.getElementById('event-list');
+    const rawLog = document.getElementById('raw-log');
     const stateStatus = document.getElementById('state-status');
     const statePretty = document.getElementById('state-pretty');
     const gameState = document.getElementById('game-state');
-    const screenshotStatus = document.getElementById('screenshot-status');
-    const screenshotGrid = document.getElementById('screenshot-grid');
     const summaryStatus = document.getElementById('summary-status');
     const summaryProgress = document.getElementById('summary-progress');
     const summaryMap = document.getElementById('summary-map');
@@ -530,6 +537,7 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
         document.querySelectorAll('[data-context-tab]').forEach((node) => node.classList.toggle('active', node === tab));
         visionGrid.hidden = selectedContextTab !== 'vision';
         eventList.hidden = selectedContextTab !== 'events';
+        rawLog.hidden = selectedContextTab !== 'raw';
       });
     }
 
@@ -619,36 +627,15 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       updateStateCards(latest, state);
     }
 
-    async function refreshScreenshotHistory() {
-      const payload = await fetch('/api/screenshots?limit=12', { cache: 'no-store' }).then((response) => response.json());
-      screenshotStatus.textContent = payload.count + '/' + payload.limit + ' raw screenshot(s)';
-      screenshotGrid.textContent = '';
-      if (!payload.screenshots || payload.screenshots.length === 0) {
-        const empty = document.createElement('div');
-        empty.className = 'empty';
-        empty.textContent = 'No raw game screenshots recorded yet.';
-        screenshotGrid.appendChild(empty);
-        return;
-      }
-
-      for (const screenshot of payload.screenshots) {
-        const card = document.createElement('article');
-        card.className = 'raw-shot';
-        const img = document.createElement('img');
-        img.src = screenshot.url;
-        img.alt = 'Raw game screenshot ' + screenshot.fileName;
-        card.appendChild(img);
-        const meta = document.createElement('div');
-        meta.className = 'meta';
-        text(meta, screenshot.fileName + '\\nstep ' + value(screenshot.step));
-        card.appendChild(meta);
-        screenshotGrid.appendChild(card);
-      }
-    }
-
     async function refreshEvents() {
       const payload = await fetch('/api/events?limit=80', { cache: 'no-store' }).then((response) => response.json());
       eventList.textContent = '';
+      rawLog.textContent = compactJson({
+        runId: payload.runId,
+        limit: payload.limit,
+        count: payload.count,
+        events: payload.events ?? []
+      });
       if (!payload.events || payload.events.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'empty';
@@ -794,7 +781,9 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
         lines.push('<div><span class="label">Status</span><div class="value muted">No parsed decision yet</div></div>');
       }
       lines.push('</div>');
-      lines.push('<pre class="mono-block">' + escapeHtml(formatConversationTab(conversation, 'state')) + '</pre>');
+      const injectedState = formatConversationTab(conversation, 'state');
+      lines.push(formatInjectedSummaryHtml(injectedState));
+      lines.push('<pre class="mono-block">' + escapeHtml(injectedState) + '</pre>');
       return lines.join('');
     }
 
@@ -839,6 +828,41 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
         if (index >= 0) end = Math.min(end, index);
       }
       return userText.slice(actualStart, end).trim() || userText;
+    }
+
+    function formatInjectedSummaryHtml(stateContext) {
+      const items = injectedSummaryItems(stateContext);
+      if (items.length === 0) return '';
+      return '<div class="injection-summary">' + items.map((item) => (
+        '<div class="kv"><b>' + escapeHtml(item.label) + '</b><span>' + escapeHtml(item.value) + '</span></div>'
+      )).join('') + '</div>';
+    }
+
+    function injectedSummaryItems(stateContext) {
+      if (!stateContext || stateContext === 'No state context recorded.') return [];
+      const lines = stateContext.split('\\n').map((line) => line.trim()).filter(Boolean);
+      const specs = [
+        ['Objective', /^Objective:/i],
+        ['Progress', /^Progress:/i],
+        ['Location', /^(Location|Map|Position):/i],
+        ['Loop', /^Loop signal:/i],
+        ['Adjacent', /^Adjacent tiles:/i],
+        ['Battle', /^Battle:/i],
+        ['Party', /^Party:/i],
+        ['Dialog', /^(Dialog|Text|Menu):/i]
+      ];
+      const seen = new Set();
+      const items = [];
+      for (const [label, pattern] of specs) {
+        const line = lines.find((candidate) => pattern.test(candidate));
+        if (line && !seen.has(label)) {
+          const textValue = line.replace(/^[^:]+:\\s*/, '').slice(0, 220);
+          items.push({ label, value: textValue || line.slice(0, 220) });
+          seen.add(label);
+        }
+      }
+      if (items.length > 0) return items.slice(0, 6);
+      return lines.slice(0, 6).map((line, index) => ({ label: 'Context ' + (index + 1), value: line.slice(0, 220) }));
     }
 
     function formatConversation(conversation) {
@@ -917,7 +941,6 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
         refreshVisionImages(),
         refreshLlmConversation(),
         refreshGameState(),
-        refreshScreenshotHistory(),
         refreshEvents(),
         refreshRunSummary()
       ]);
