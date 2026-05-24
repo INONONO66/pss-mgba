@@ -19,6 +19,8 @@ import { PokemonStateReader } from "./pokemon/PokemonStateReader.js";
 import { FullGameDetector } from "./pokemon/FullGameDetector.js";
 import { Stage1Detector } from "./pokemon/Stage1Detector.js";
 import { ScreenshotProcessor } from "./vision/ScreenshotProcessor.js";
+import { MapMemory } from "./pokemon/MapMemory.js";
+import { readGameWorld } from "./pokemon/GameWorld.js";
 
 type HarnessCommand = "snapshot" | "preflight" | "run" | "press" | "smoke";
 
@@ -288,16 +290,25 @@ function createSmokeDependencies(config: HarnessConfig): MgbaSmokeWorkflowDepend
     defaultTapFrames: config.defaultTapFrames,
     defaultHoldFrames: config.defaultHoldFrames
   });
+  const smokeMapMemory = new MapMemory();
+  const smokeWorldReader = async (context?: { readonly tileMapBytes?: Uint8Array }) => {
+    const world = await readGameWorld(client, { tileMapBytes: context?.tileMapBytes });
+    return { world, tileMapBytes: world.tileMapBytes };
+  };
+
+  const stateReader = new PokemonStateReader({ client, version: config.pokemonVersion });
   const runner = new HarnessRunner({
     config,
     client,
-    stateReader: new PokemonStateReader({ client, version: config.pokemonVersion }),
+    stateReader,
     policy: new HeuristicPolicy(),
     controller,
     evidence,
     detector: createDetector(config),
     visionProcessor,
-    budgets: { maxSteps: 1 }
+    budgets: { maxSteps: 1 },
+    mapMemory: smokeMapMemory,
+    worldReader: smokeWorldReader,
   });
 
   return {
@@ -316,14 +327,25 @@ function createRunner(config: HarnessConfig, options: RunnerCommandOptions): Cli
   const client = new MgbaHttpClient({ baseUrl: config.mgbaHttpBaseUrl, screenshotDir: evidence.paths.rawScreenshotsDir });
   const heuristicPolicy = new HeuristicPolicy();
   const policy = isLlmProvider(config.aiProvider)
-    ? LLMPolicy.fromConfig(config, heuristicPolicy)
+    ? LLMPolicy.fromConfig(config, heuristicPolicy, {
+      onConversation: async (conversation) => {
+        await evidence.recordLlmConversation(conversation);
+      }
+    })
     : heuristicPolicy;
   const visionProcessor = config.llmVisionEnabled ? createVisionProcessor(config, evidence.paths.visionDir) : undefined;
 
+  const mapMemory = new MapMemory();
+  const worldReader = async (context?: { readonly tileMapBytes?: Uint8Array }) => {
+    const world = await readGameWorld(client, { tileMapBytes: context?.tileMapBytes });
+    return { world, tileMapBytes: world.tileMapBytes };
+  };
+
+  const stateReader = new PokemonStateReader({ client, version: config.pokemonVersion });
   return new HarnessRunner({
     config,
     client,
-    stateReader: new PokemonStateReader({ client, version: config.pokemonVersion }),
+    stateReader,
     policy,
     controller: new Controller({
       client,
@@ -333,7 +355,9 @@ function createRunner(config: HarnessConfig, options: RunnerCommandOptions): Cli
     evidence,
     detector: createDetector(config),
     visionProcessor,
-    budgets: { maxSteps: options.maxSteps }
+    budgets: { maxSteps: options.maxSteps },
+    mapMemory,
+    worldReader,
   });
 }
 

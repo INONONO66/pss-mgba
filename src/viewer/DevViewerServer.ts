@@ -1,5 +1,6 @@
 import http, { type Server } from "node:http";
-import { mkdir, readFile } from "node:fs/promises";
+import type { Dirent } from "node:fs";
+import { mkdir, readFile, readdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { buildRunPaths } from "../evidence/RunPaths.js";
@@ -58,7 +59,7 @@ export function createDevViewerServer(options: DevViewerServerOptions): Server {
 
       if (requestUrl.pathname === "/") {
         response.writeHead(200, { "content-type": "text/html", "cache-control": "no-store" });
-        response.end(renderPage(options.runId, visionImageLimit));
+        response.end(renderPage(options.runId, visionImageLimit, paths.llmConversationsDir));
         return;
       }
 
@@ -82,6 +83,13 @@ export function createDevViewerServer(options: DevViewerServerOptions): Server {
         const images = await listLatestVisionImages({ evidenceDir: options.evidenceDir, runId: options.runId, limit: visionImageLimit });
         response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
         response.end(JSON.stringify({ runId: options.runId, limit: visionImageLimit, count: images.length, images }));
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/llm-conversations") {
+        const conversations = await listLatestLlmConversations(paths.llmConversationsDir, 3);
+        response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        response.end(JSON.stringify({ runId: options.runId, count: conversations.length, conversations }));
         return;
       }
 
@@ -122,7 +130,7 @@ export function createDevViewerServer(options: DevViewerServerOptions): Server {
   });
 }
 
-function renderPage(runId: string, visionImageLimit: number): string {
+function renderPage(runId: string, visionImageLimit: number, llmConversationsPath: string): string {
   return `<!doctype html>
 <html>
 <head>
@@ -146,26 +154,34 @@ function renderPage(runId: string, visionImageLimit: number): string {
       --line-thin: 1px solid var(--color-line);
     }
     html, body { margin: 0; min-height: 100%; background: var(--color-page); color: var(--color-text); font-family: var(--font-ui); }
-    body { box-sizing: border-box; min-height: 100vh; padding: clamp(var(--space-3), 4vw, var(--space-5)); display: grid; align-items: center; }
-    main { width: min(100%, calc((100vh - (clamp(var(--space-3), 4vw, var(--space-5)) * 2)) * 4 / 3)); margin: 0 auto; }
+    body { box-sizing: border-box; min-height: 100vh; padding: clamp(var(--space-3), 3vw, var(--space-5)); display: grid; align-items: start; }
+    main { width: min(100%, 1440px); margin: 0 auto; }
     h1, h2 { margin: 0; font-size: var(--text-title); font-weight: 600; letter-spacing: -0.02em; }
     p { margin: var(--space-2) 0 0; color: var(--color-muted); font-size: var(--text-label); line-height: 1.35; }
     code { color: var(--color-text); font-family: inherit; }
-    .layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); gap: 0; align-items: stretch; }
+    .layout { display: grid; grid-template-columns: minmax(320px, 2fr) minmax(220px, 1fr); gap: var(--space-3); align-items: stretch; }
+    .conversation-panel { margin-top: var(--space-3); border: var(--line-thin); background: var(--color-surface); min-height: 340px; max-height: 58vh; display: grid; grid-template-columns: 220px minmax(0, 1fr); overflow: hidden; }
+    .conversation-header { padding: var(--space-3); background: var(--color-overlay); border-bottom: var(--line-thin); }
+    .conversation-main { min-width: 0; overflow: auto; }
+    .conversation-body { margin: 0; padding: var(--space-3); white-space: pre-wrap; word-break: break-word; color: var(--color-muted); font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .history-rail { border-right: var(--line-thin); overflow: auto; }
+    .history-button { width: 100%; display: block; padding: 10px 12px; border: 0; border-bottom: var(--line-thin); background: transparent; color: var(--color-muted); text-align: left; font: 12px/1.3 var(--font-ui); cursor: pointer; }
+    .history-button:hover, .history-button.active { background: #151510; color: var(--color-text); }
+    .decision-card { color: var(--color-text); border: var(--line-thin); padding: var(--space-3); margin-bottom: var(--space-3); background: #10100d; }
     .image-cell, .vision-wall { position: relative; overflow: hidden; background: var(--color-surface); border: var(--line-thin); }
     .image-cell { aspect-ratio: 1 / 1; }
     #live-frame { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; background: var(--color-surface); }
     .overlay { position: absolute; left: 0; right: 0; z-index: 1; padding: var(--space-3); background: linear-gradient(180deg, var(--color-overlay), rgba(5, 5, 4, 0)); pointer-events: none; }
     .overlay-top { top: 0; }
     .overlay-bottom { bottom: 0; background: linear-gradient(0deg, var(--color-overlay), rgba(5, 5, 4, 0)); }
-    .vision-wall { aspect-ratio: 1 / 3; border-left: 0; }
+    .vision-wall { aspect-ratio: 1 / 2; }
     .vision-grid { display: grid; grid-template-columns: 1fr; grid-template-rows: repeat(3, minmax(0, 1fr)); height: 100%; }
     .vision-cell { position: relative; min-height: 0; aspect-ratio: 1 / 1; border-top: var(--line-thin); }
     .vision-cell:first-child { border-top: 0; }
     .vision-cell img { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; background: var(--color-surface); }
     .meta { color: var(--color-muted); font-size: var(--text-label); line-height: 1.4; word-break: break-word; }
     .empty { box-sizing: border-box; display: grid; grid-column: 1 / -1; grid-row: 1 / -1; height: 100%; place-items: center; padding: var(--space-5); color: var(--color-muted); font-size: var(--text-label); text-align: center; }
-    @media (max-width: 700px) { body { align-items: start; } main { width: min(100%, calc((100vh - (clamp(var(--space-3), 4vw, var(--space-5)) * 2)) * 3 / 4)); } .layout { grid-template-columns: 1fr; } .vision-wall { aspect-ratio: 3 / 1; border-left: var(--line-thin); border-top: 0; } .vision-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: 1fr; } .vision-cell { border-top: 0; border-left: var(--line-thin); } .vision-cell:first-child { border-left: 0; } }
+    @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } .vision-wall { aspect-ratio: 3 / 1; } .vision-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: 1fr; } .vision-cell { border-top: 0; border-left: var(--line-thin); } .vision-cell:first-child { border-left: 0; } .conversation-panel { grid-template-columns: 1fr; max-height: none; } .history-rail { border-right: 0; border-bottom: var(--line-thin); max-height: 130px; } }
   </style>
 </head>
 <body>
@@ -186,11 +202,31 @@ function renderPage(runId: string, visionImageLimit: number): string {
         <div id="vision-grid" class="vision-grid"></div>
       </section>
     </div>
+    <section class="conversation-panel">
+      <div class="history-rail">
+        <div class="conversation-header">
+          <h2>LLM history</h2>
+          <p id="llm-status">Waiting...</p>
+        </div>
+        <div id="llm-history"></div>
+      </div>
+      <div class="conversation-main">
+        <div class="conversation-header">
+          <h2>LLM context + decision</h2>
+          <p>Stored in <code>${escapeHtml(llmConversationsPath)}</code></p>
+        </div>
+        <pre id="llm-conversation" class="conversation-body">No LLM conversation recorded yet.</pre>
+      </div>
+    </section>
   </main>
   <script>
     const liveFrame = document.getElementById('live-frame');
     const visionGrid = document.getElementById('vision-grid');
     const visionStatus = document.getElementById('vision-status');
+    const llmStatus = document.getElementById('llm-status');
+    const llmConversation = document.getElementById('llm-conversation');
+    const llmHistory = document.getElementById('llm-history');
+    let selectedConversationFile = null;
 
     function text(node, value) { node.appendChild(document.createTextNode(value)); }
 
@@ -228,8 +264,85 @@ function renderPage(runId: string, visionImageLimit: number): string {
       }
     }
 
+    async function refreshLlmConversation() {
+      const payload = await fetch('/api/llm-conversations', { cache: 'no-store' }).then((response) => response.json());
+      if (!payload.conversations || payload.conversations.length === 0) {
+        llmStatus.textContent = 'No LLM request recorded yet';
+        llmHistory.textContent = '';
+        llmConversation.textContent = 'No LLM conversation recorded yet.';
+        return;
+      }
+      if (!selectedConversationFile || !payload.conversations.some((item) => item.fileName === selectedConversationFile)) {
+        selectedConversationFile = payload.conversations[0].fileName;
+      }
+      llmHistory.textContent = '';
+      for (const conversation of payload.conversations) {
+        const button = document.createElement('button');
+        button.className = 'history-button' + (conversation.fileName === selectedConversationFile ? ' active' : '');
+        button.textContent = conversation.fileName + '\\ncall ' + (conversation.call ?? '?') + ' · ' + summarizeAction(conversation);
+        button.onclick = () => { selectedConversationFile = conversation.fileName; llmConversation.textContent = formatConversation(conversation); };
+        llmHistory.appendChild(button);
+      }
+      const selected = payload.conversations.find((item) => item.fileName === selectedConversationFile) ?? payload.conversations[0];
+      llmStatus.textContent = payload.count + ' stored · latest ' + payload.conversations[0].fileName;
+      llmConversation.textContent = formatConversation(selected);
+    }
+
+    function formatConversation(conversation) {
+      const sections = [];
+      sections.push('MODEL: ' + (conversation.model ?? '?') + ' | MODE: ' + (conversation.harnessMode ?? '?'));
+      if (conversation.parsedDecision !== undefined) {
+        sections.push('\\n[DECISION]');
+        sections.push(formatDecision(conversation.parsedDecision));
+      }
+      if (conversation.error !== undefined) {
+        sections.push('\\n[ERROR]');
+        sections.push(JSON.stringify(conversation.error, null, 2));
+      }
+      if (conversation.responseContent !== undefined) {
+        sections.push('\\n[RAW RESPONSE]');
+        sections.push(conversation.responseContent);
+      }
+      sections.push('\\n[PROMPT / CONTEXT]');
+      for (const message of conversation.messages ?? []) {
+        sections.push('\\n[' + String(message.role).toUpperCase() + ']');
+        if (typeof message.content === 'string') {
+          sections.push(message.content);
+        } else {
+          for (const part of message.content ?? []) {
+            if (part.type === 'text') sections.push(part.text);
+            if (part.type === 'image_url') {
+              const detail = part.image_url?.detail ? ' detail=' + part.image_url.detail : '';
+              sections.push('[image input omitted from dashboard log' + detail + ']');
+            }
+          }
+        }
+      }
+      return sections.join('\\n');
+    }
+
+    function summarizeAction(conversation) {
+      const action = conversation.parsedDecision?.action;
+      if (!action) return conversation.error ? 'error' : 'pending';
+      if (action.type === 'wait') return 'wait ' + action.frames;
+      if (action.type === 'sequence') {
+        const childActions = (action.actions ?? []).map((child) => summarizeAction({ parsedDecision: { action: child } }));
+        return 'sequence (' + childActions.join(' → ') + ')';
+      }
+      return action.type + ' ' + action.button + ' ' + action.frames;
+    }
+
+    function formatDecision(decision) {
+      return [
+        'action: ' + summarizeAction({ parsedDecision: decision }),
+        'confidence: ' + decision.confidence,
+        'rationale: ' + decision.rationale,
+        'citations: ' + (decision.observedStateCitations ?? []).join(', ')
+      ].join('\\n');
+    }
+
     async function tick() {
-      await Promise.allSettled([refreshLiveFrame(), refreshVisionImages()]);
+      await Promise.allSettled([refreshLiveFrame(), refreshVisionImages(), refreshLlmConversation()]);
     }
 
     setInterval(tick, 1000);
@@ -237,6 +350,89 @@ function renderPage(runId: string, visionImageLimit: number): string {
   </script>
 </body>
 </html>`;
+}
+
+async function listLatestLlmConversations(directory: string, limit: number): Promise<Array<Record<string, unknown>>> {
+  let entries: Dirent[];
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (isNotFound(error)) {
+      return [];
+    }
+    throw error;
+  }
+
+  const files = entries
+    .filter((entry) => entry.isFile() && /^\d{6}\.json$/.test(entry.name))
+    .map((entry) => entry.name)
+    .sort()
+    .reverse()
+    .slice(0, limit);
+
+  const conversations: Array<Record<string, unknown>> = [];
+  for (const fileName of files) {
+    const filePath = path.join(directory, fileName);
+    try {
+      const parsed = JSON.parse(await readFile(filePath, "utf8")) as Record<string, unknown>;
+      const sanitized = sanitizeConversationForDashboard(parsed);
+      conversations.push({
+        ...(isRecord(sanitized) ? sanitized : {}),
+        fileName
+      });
+    } catch {
+      conversations.push({ fileName, error: "failed to read conversation artifact" });
+    }
+  }
+  return conversations;
+}
+
+function sanitizeConversationForDashboard(value: unknown): unknown {
+  if (typeof value === "string") {
+    return isInlineImageDataUrl(value) ? "[image input omitted from dashboard log]" : value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeConversationForDashboard(entry));
+  }
+
+  if (value !== null && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(record).map(([key, entry]) => [
+        key,
+        key === "image_url" ? sanitizeImageUrlObject(entry) : sanitizeConversationForDashboard(entry)
+      ])
+    );
+  }
+
+  return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function sanitizeImageUrlObject(value: unknown): unknown {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return sanitizeConversationForDashboard(value);
+  }
+
+  const record = value as Record<string, unknown>;
+  return {
+    ...Object.fromEntries(
+      Object.entries(record).map(([key, entry]) => [
+        key,
+        key === "url" && typeof entry === "string" && isInlineImageDataUrl(entry)
+          ? "[image input omitted from dashboard log]"
+          : sanitizeConversationForDashboard(entry)
+      ])
+    )
+  };
+}
+
+function isInlineImageDataUrl(value: string): boolean {
+  return /^data:image\//i.test(value) || /;base64,/i.test(value);
 }
 
 function escapeHtml(value: string): string {

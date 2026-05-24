@@ -11,9 +11,11 @@ export interface RunPaths {
   readonly screenshotsDir: string;
   readonly rawScreenshotsDir: string;
   readonly visionDir: string;
+  readonly llmConversationsDir: string;
   readonly errorsDir: string;
   stateFile(sequence: number): string;
   screenshotFile(sequence: number): string;
+  llmConversationFile(sequence: number): string;
   errorFile(sequence: number): string;
 }
 
@@ -23,6 +25,7 @@ export function buildRunPaths(rootDir: string, runId: string): RunPaths {
   const screenshotsDir = path.join(runDir, "screenshots");
   const rawScreenshotsDir = path.join(runDir, "raw-screenshots");
   const visionDir = path.join(runDir, "vision");
+  const llmConversationsDir = path.join(runDir, "llm-conversations");
   const errorsDir = path.join(runDir, "errors");
 
   return {
@@ -36,9 +39,11 @@ export function buildRunPaths(rootDir: string, runId: string): RunPaths {
     screenshotsDir,
     rawScreenshotsDir,
     visionDir,
+    llmConversationsDir,
     errorsDir,
     stateFile: (sequence: number) => path.join(statesDir, `${formatSequence(sequence)}.json`),
     screenshotFile: (sequence: number) => path.join(screenshotsDir, `${formatSequence(sequence)}.json`),
+    llmConversationFile: (sequence: number) => path.join(llmConversationsDir, `${formatSequence(sequence)}.json`),
     errorFile: (sequence: number) => path.join(errorsDir, `${formatSequence(sequence)}.json`)
   };
 }

@@ -17,6 +17,7 @@ describe("EvidenceRecorder", () => {
     await recorder.recordDecision({ reason: "current state", action: "A" });
     await recorder.recordAction({ type: "press", button: "A" });
     const screenshotFile = await recorder.recordScreenshot({ path: "/tmp/frame.png", frame: 12, step: 1 });
+    const llmFile = await recorder.recordLlmConversation({ model: "grok", prompt: "state", response: "A" });
     const errorFile = await recorder.recordError(new Error(`bad token ${fakeSecret}`));
     const summary = await recorder.finishRun("completed", { checkpoint: "starter acquired" });
 
@@ -28,22 +29,25 @@ describe("EvidenceRecorder", () => {
     await expect(stat(paths.screenshotsDir)).resolves.toMatchObject({ isDirectory: expect.any(Function) });
     await expect(stat(paths.rawScreenshotsDir)).resolves.toMatchObject({ isDirectory: expect.any(Function) });
     await expect(stat(paths.visionDir)).resolves.toMatchObject({ isDirectory: expect.any(Function) });
+    await expect(stat(paths.llmConversationsDir)).resolves.toMatchObject({ isDirectory: expect.any(Function) });
     await expect(stat(paths.errorsDir)).resolves.toMatchObject({ isDirectory: expect.any(Function) });
 
     expect(stateFile).toBe(paths.stateFile(1));
     expect(screenshotFile).toBe(paths.screenshotFile(1));
+    expect(llmFile).toBe(paths.llmConversationFile(1));
     expect(errorFile).toBe(paths.errorFile(1));
     expect(summary.status).toBe("completed");
-    expect(summary.counts).toEqual({ states: 1, decisions: 1, actions: 1, screenshots: 1, errors: 1, events: 7 });
+    expect(summary.counts).toEqual({ states: 1, decisions: 1, actions: 1, screenshots: 1, llmConversations: 1, errors: 1, events: 8 });
 
     const events = await readJsonLines(paths.eventsFile);
-    expect(events).toHaveLength(7);
+    expect(events).toHaveLength(8);
     expect(events.map((event) => event.type)).toEqual([
       "run_started",
       "state",
       "decision",
       "action",
       "screenshot",
+      "llm_conversation",
       "error",
       "run_finished"
     ]);
@@ -77,6 +81,23 @@ describe("EvidenceRecorder", () => {
       password: "[REDACTED]",
       value: "before [REDACTED] after"
     });
+  });
+
+  it("redacts inline image payloads from persisted LLM conversations", async () => {
+    const evidenceDir = await mkdtemp(path.join(os.tmpdir(), "evidence-llm-image-redaction-"));
+    const recorder = new EvidenceRecorder({ evidenceDir, runId: "run-images", now: fixedNow });
+    const echoedImage = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB";
+
+    await recorder.startRun({});
+    const llmFile = await recorder.recordLlmConversation({
+      model: "grok",
+      responseContent: `echoed ${echoedImage}`
+    });
+
+    const content = await readFile(llmFile, "utf8");
+    expect(content).toContain("data:image/[redacted];base64,[REDACTED]");
+    expect(content).not.toContain(echoedImage);
+    expect(content).not.toContain("iVBORw0KGgoAAAANS");
   });
 });
 

@@ -131,4 +131,13 @@ describe("redactSecrets", () => {
     expect(redacted).not.toContain("example-secret-value");
     expect(redacted).not.toContain(secretLikeValue);
   });
+
+  it("redacts inline image data URLs from shared redaction output", () => {
+    const imageUrl = "data:image/jpeg;base64,AAAABBBBCCCCDDDDEEEE";
+    const redacted = redactSecrets({ responseContent: `echo ${imageUrl}` });
+
+    expect(redacted).toContain("data:image/[redacted];base64,[REDACTED]");
+    expect(redacted).not.toContain(imageUrl);
+    expect(redacted).not.toContain("AAAABBBB");
+  });
 });

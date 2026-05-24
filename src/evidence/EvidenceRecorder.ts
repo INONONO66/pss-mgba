@@ -32,6 +32,7 @@ interface RunSummary {
     readonly decisions: number;
     readonly actions: number;
     readonly screenshots: number;
+    readonly llmConversations: number;
     readonly errors: number;
     readonly events: number;
   };
@@ -40,6 +41,7 @@ interface RunSummary {
 
 const secretKeyPattern = /(api[_-]?key|token|secret|password|authorization|credential)/i;
 const secretValuePattern = /\b(sk-[A-Za-z0-9_-]{8,}|[A-Za-z0-9_-]*api[_-]?key[A-Za-z0-9_-]*[:=][A-Za-z0-9._-]+)\b/g;
+const inlineImageDataUrlPattern = /data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=_-]+/gi;
 
 export class EvidenceRecorder {
   readonly paths: RunPaths;
@@ -50,6 +52,7 @@ export class EvidenceRecorder {
   private decisionCount = 0;
   private actionCount = 0;
   private screenshotCount = 0;
+  private llmConversationCount = 0;
   private errorCount = 0;
   private eventCount = 0;
 
@@ -93,6 +96,14 @@ export class EvidenceRecorder {
     return file;
   }
 
+  async recordLlmConversation(conversation: unknown): Promise<string> {
+    const sequence = ++this.llmConversationCount;
+    const file = this.paths.llmConversationFile(sequence);
+    await writeJson(file, redactSecrets(conversation));
+    await this.appendEvent("llm_conversation", { file, conversation }, sequence);
+    return file;
+  }
+
   async recordError(error: unknown): Promise<string> {
     const sequence = ++this.errorCount;
     const file = this.paths.errorFile(sequence);
@@ -113,6 +124,7 @@ export class EvidenceRecorder {
         decisions: this.decisionCount,
         actions: this.actionCount,
         screenshots: this.screenshotCount,
+        llmConversations: this.llmConversationCount,
         errors: this.errorCount,
         events: this.eventCount + 1
       },
@@ -130,6 +142,7 @@ export class EvidenceRecorder {
       mkdir(this.paths.screenshotsDir, { recursive: true }),
       mkdir(this.paths.rawScreenshotsDir, { recursive: true }),
       mkdir(this.paths.visionDir, { recursive: true }),
+      mkdir(this.paths.llmConversationsDir, { recursive: true }),
       mkdir(this.paths.errorsDir, { recursive: true })
     ]);
   }
@@ -156,7 +169,9 @@ export function createRunId(date: Date = new Date()): string {
 
 export function redactSecrets(value: unknown): unknown {
   if (typeof value === "string") {
-    return value.replace(secretValuePattern, "[REDACTED]");
+    return value
+      .replace(inlineImageDataUrlPattern, "data:image/[redacted];base64,[REDACTED]")
+      .replace(secretValuePattern, "[REDACTED]");
   }
 
   if (Array.isArray(value)) {

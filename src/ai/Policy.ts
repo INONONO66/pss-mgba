@@ -1,5 +1,6 @@
 import type { PolicyDecision } from "../control/ActionTypes.js";
 import type { LlmVisionDetail } from "../config.js";
+import type { FullGameState } from "../pokemon/PokemonTypes.js";
 
 export interface VisionImageInput {
   readonly path: string;
@@ -59,6 +60,19 @@ export interface PolicyInput {
   recentStates?: readonly RecentStateSnapshot[];
   visionImages?: readonly VisionImageInput[];
   step?: number;
+  objective?: string;
+  detectorStatus?: unknown;
+  fullState?: FullGameState;
+  fullStateSummary?: string;
+  fullStateError?: string;
+  mapAscii?: string;
+  mapStateError?: string;
+  mapStateWarning?: string;
+  mapFresh?: boolean;
+  walkGrid?: { grid: boolean[][]; width: number; height: number };
+  mapTileCount?: number;
+  mapTotalTiles?: number;
+  visitedMaps?: number[];
 }
 
 export interface Policy {
