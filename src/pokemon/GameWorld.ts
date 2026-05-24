@@ -137,7 +137,7 @@ export async function readGameWorld(client: RamClient, options: GameWorldReadOpt
     mode,
     modeFlags,
     tileMapBytes,
-    mapLayout: { mapId: modeFlags.curMap, tilesetId: 0, height: 0, width: 0, grid: [] },
+    mapLayout: { mapId: modeFlags.curMap, tilesetId: 0, height: 0, width: 0 },
     sprites: { player: undefined, npcs: [], spriteCount: 0 },
     warps: { warps: [], connections: { north: undefined, south: undefined, west: undefined, east: undefined } },
     tileCollision: { tilesetId: 0, walkableTiles: new Set(), grassTile: undefined },

@@ -49,6 +49,13 @@ export interface RunnerBudgets {
   readonly repeatedStateThreshold?: number;
 }
 
+export interface RunnerMapMemoryStore {
+  loadInto(memory: MapMemory): Promise<void>;
+  onUpdate(memory: MapMemory): void;
+  flush(memory: MapMemory): Promise<void>;
+  dispose(): void;
+}
+
 export interface HarnessRunnerOptions<TState = PokemonStateSnapshot> {
   readonly config: Pick<HarnessConfig, "harnessRunId" | "harnessMode" | "loopMaxSteps" | "loopStepDelayMs" | "maxLlmCalls" | "aiProvider" | "llmVisionEnabled" | "llmVisionMaxImages">;
   readonly client: RunnerClient;
@@ -62,6 +69,7 @@ export interface HarnessRunnerOptions<TState = PokemonStateSnapshot> {
   readonly now?: () => Date;
   readonly visionProcessor?: RunnerVisionProcessor;
   readonly mapMemory?: MapMemory;
+  readonly mapMemoryStore?: RunnerMapMemoryStore;
   readonly worldReader?: (context?: { readonly tileMapBytes?: Uint8Array }) => Promise<{ world: GameWorldSnapshot; tileMapBytes: Uint8Array }>;
 }
 
@@ -126,6 +134,7 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
   private readonly now: () => Date;
   private readonly visionProcessor?: RunnerVisionProcessor;
   private readonly mapMemory?: MapMemory;
+  private readonly mapMemoryStore?: RunnerMapMemoryStore;
   private readonly worldReader?: (context?: { readonly tileMapBytes?: Uint8Array }) => Promise<{ world: GameWorldSnapshot; tileMapBytes: Uint8Array }>;
   private readonly recentStates: RecentStateSnapshot[] = [];
   private readonly recentVisionImages: VisionImageInput[] = [];
@@ -160,6 +169,7 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
     this.now = options.now ?? (() => new Date());
     this.visionProcessor = options.visionProcessor;
     this.mapMemory = options.mapMemory;
+    this.mapMemoryStore = options.mapMemoryStore;
     this.worldReader = options.worldReader;
   }
 
@@ -181,6 +191,10 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
   async run(): Promise<HarnessRunResult> {
     this.startedAt = this.timestamp();
     await this.evidence.startRun(this.startConfig());
+
+    if (this.mapMemory !== undefined && this.mapMemoryStore !== undefined) {
+      await this.mapMemoryStore.loadInto(this.mapMemory);
+    }
 
     let failure: RunnerFailure | undefined;
     let status: HarnessStatus = "running";
@@ -237,6 +251,10 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
 
     if (failure !== undefined) {
       await this.evidence.recordError(failure.error);
+    }
+
+    if (this.mapMemory !== undefined && this.mapMemoryStore !== undefined) {
+      await this.mapMemoryStore.flush(this.mapMemory);
     }
 
     const result = this.createResult(status, failure?.error);
@@ -362,6 +380,9 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
       this.lastMapStateError = undefined;
       const updateResult = this.mapMemory.update(world, tileMapBytes);
       this.lastMapFresh = updateResult.status === "updated";
+      if (updateResult.status === "updated" && this.mapMemoryStore !== undefined) {
+        this.mapMemoryStore.onUpdate(this.mapMemory);
+      }
       this.lastMapStateWarning = updateResult.status === "skipped"
         ? `Map context reused; latest map update skipped: ${updateResult.reason}`
         : undefined;

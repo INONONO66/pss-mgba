@@ -44,8 +44,4 @@ export function classifyTile(data: TileCollisionData, tileId: number): TileType 
   return data.walkableTiles.has(tileId) ? "walkable" : "wall";
 }
 
-export type BlockType = "unknown";
 
-export function lookupBlockType(_tilesetId: number, _blockId: number): BlockType {
-  return "unknown";
-}
