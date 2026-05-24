@@ -152,23 +152,6 @@ You can override run options after the script name, for example:
 pnpm run dev --policy heuristic --max-steps 3 --run-id local-dev-viewer
 ```
 
-To launch the same workflow in a tmux grid:
-
-```bash
-pnpm run dev:tmux
-```
-
-The tmux launcher still depends on mGBA-http. It creates panes for the mGBA-http process, mGBA with `mGBASocketServer.lua`, the harness/dev viewer, a live decision watcher, and a live processed-vision watcher. It reads `.env`, uses `POKEMON_ROM_PATH` for the mGBA pane, defaults to the workspace-local `.local-tools/mgba-http/` install, and passes one shared run id through every pane. Use `START_MGBA_HTTP=0` or `START_MGBA=0` when those processes are already running elsewhere. The launcher treats mGBA-http as ready only when `/core/currentframe` succeeds; if a stale server is listening but the emulator is not connected, panes stay open with that diagnostic. Add `--fresh` to stop an existing tmux session and restart local mGBA-http/mGBA processes before launching.
-
-Useful launcher examples:
-
-```bash
-pnpm run dev:tmux --print
-pnpm run dev:tmux --session pss-live --run-id local-live --policy heuristic
-pnpm run dev:tmux --fresh --run-id clean-local-live
-START_MGBA_HTTP=0 START_MGBA=0 pnpm run dev:tmux --run-id attach-existing
-```
-
 Send one safe button press for manual smoke checks:
 
 ```bash
@@ -194,10 +177,7 @@ Supported common options:
 --vision               Enable and require processed LLM image input for snapshot, preflight, or run.
 --max-steps N          Override LOOP_MAX_STEPS for snapshot or run.
 --run-id ID            Override HARNESS_RUN_ID for evidence paths.
---fresh                In dev:tmux, stop an existing session and local emulator bridge processes first.
 DEV_VIEWER_PORT        Override the integrated dev viewer port; default is 8787.
-START_MGBA_HTTP=0      In dev:tmux, do not start the mGBA-http pane process.
-START_MGBA=0           In dev:tmux, do not start the mGBA emulator pane process.
 ```
 
 `press` also accepts `--frames N`.
@@ -231,6 +211,28 @@ Full-game mode is opt in through `HARNESS_MODE=full-game` or `--mode full-game`.
 The detector tracks early Stage 1 milestones, badge observation, all-badges observation, and Hall of Fame observation. It does not complete on Rival battle exit or all badges alone. Completion requires observing Hall of Fame map id `0x76` or the derived `hallOfFameComplete` state field.
 
 The LLM full-game prompt treats badges as progress only, forbids memory writes and hardcoded global input timelines, and forbids route-facts-alone completion claims. The local heuristic policy remains a Stage 1-oriented fallback and does not claim reliable full-game clears.
+
+## Upstream Runtime Utilities
+
+This fork keeps its richer Pokemon state reader and memory map as the authoritative
+LLM context source. The upstream runtime refresh has been pulled in as additive
+utilities for future wiring: run traces, behavior metrics, token usage tracking,
+Prometheus/Grafana assets, stuck-movement memory, and screenshot normalization.
+Do not replace `src/pokemon/memoryMap.ts`, `src/pokemon/PokemonStateReader.ts`,
+`src/pokemon/GameWorld.ts`, `src/pokemon/MapMemory.ts`, or the modular readers
+with the compact upstream `src/pokemon-state.ts` reader.
+
+The optional upstream trace report command is available as:
+
+```bash
+pnpm run trace:report
+```
+
+The Grafana/Prometheus assets are under `observability/` and can be started with:
+
+```bash
+docker compose -f docker-compose.grafana.yml up -d
+```
 
 ## Tests
 
