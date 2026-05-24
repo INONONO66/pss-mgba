@@ -90,8 +90,18 @@ export async function executeNavigate(
   }
 
   const mapId = current.mapId;
+  const warps = mapSource.warpPositions?.(mapId) ?? [];
 
-  const goal = { y: command.y, x: command.x };
+  const originalGoal = { y: command.y, x: command.x };
+  const isGoalWarp = warps.some((w) => w.y === originalGoal.y && w.x === originalGoal.x);
+  const isGoalWalkable = originalGoal.y >= 0 && originalGoal.y < map.height &&
+    originalGoal.x >= 0 && originalGoal.x < map.width &&
+    map.grid[originalGoal.y]?.[originalGoal.x] === true;
+
+  const goal = (isGoalWarp && !isGoalWalkable)
+    ? findAdjacentWalkable(map.grid, originalGoal, map.width, map.height) ?? originalGoal
+    : originalGoal;
+
   const pathResult = findPath(
     map.grid,
     { y: current.y, x: current.x },
@@ -111,9 +121,13 @@ export async function executeNavigate(
     current = stepResult.position;
   }
 
+  if (isGoalWarp && !isGoalWalkable && isAdjacent(current, originalGoal)) {
+    const pushResult = await tryPushIntoGoal(current, originalGoal, controller, worldReader, mapId, warps);
+    if (pushResult !== undefined) return pushResult;
+  }
+
   if (pathResult.status === "partial") {
-    const warps = mapSource.warpPositions?.(mapId) ?? [];
-    const pushResult = await tryPushIntoGoal(current, goal, controller, worldReader, mapId, warps);
+    const pushResult = await tryPushIntoGoal(current, originalGoal, controller, worldReader, mapId, warps);
     if (pushResult !== undefined) return pushResult;
 
     return {
@@ -177,6 +191,17 @@ async function tryPushIntoGoal(
   if (interrupt !== undefined) return interrupt;
 
   return { status: "success", reason: "arrived" };
+}
+
+function findAdjacentWalkable(grid: boolean[][], target: Position, width: number, height: number): Position | undefined {
+  for (const [dy, dx] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const ny = target.y + dy;
+    const nx = target.x + dx;
+    if (ny >= 0 && ny < height && nx >= 0 && nx < width && grid[ny]?.[nx] === true) {
+      return { y: ny, x: nx };
+    }
+  }
+  return undefined;
 }
 
 function isAdjacent(a: Position, b: Position): boolean {
