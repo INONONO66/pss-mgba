@@ -1,8 +1,8 @@
 import "dotenv/config";
 import { pathToFileURL } from "node:url";
 import { inspect } from "node:util";
-import { HeuristicPolicy, HeuristicCommandPolicy } from "./ai/HeuristicPolicy.js";
-import { LLMPolicy, LLMCommandPolicy } from "./ai/LLMPolicy.js";
+import { HeuristicCommandPolicy } from "./ai/HeuristicPolicy.js";
+import { LLMCommandPolicy } from "./ai/LLMPolicy.js";
 import { Controller } from "./control/Controller.js";
 import type { MgbaButton } from "./mgba/MgbaTypes.js";
 import { MGBA_BUTTONS } from "./mgba/MgbaTypes.js";
@@ -11,7 +11,6 @@ import { loadConfig, type AiProvider, type HarnessConfig, type HarnessMode } fro
 import { EvidenceRecorder } from "./evidence/EvidenceRecorder.js";
 import { redactSecrets } from "./evidence/redaction.js";
 import { HarnessError } from "./errors.js";
-import { HarnessRunner } from "./loop/HarnessRunner.js";
 import { CommandHarnessRunner, type CommandRunnerGameState } from "./loop/CommandHarnessRunner.js";
 import { runMgbaSmokeWorkflow, type MgbaSmokeWorkflowDependencies } from "./loop/MgbaSmokeWorkflow.js";
 import { MgbaHttpClient } from "./mgba/MgbaHttpClient.js";
@@ -19,7 +18,6 @@ import { runMgbaPreflight, type MgbaPreflightReport } from "./mgba/preflight.js"
 import { PokemonStateReader } from "./pokemon/PokemonStateReader.js";
 import { FullGameDetector } from "./pokemon/FullGameDetector.js";
 import { Stage1Detector } from "./pokemon/Stage1Detector.js";
-import { ScreenshotProcessor } from "./vision/ScreenshotProcessor.js";
 import { MapMemory } from "./pokemon/MapMemory.js";
 import { MapGraph, type MapGraphInput } from "./pokemon/MapGraph.js";
 import { readGameWorld, type GameWorldSnapshot } from "./pokemon/GameWorld.js";
@@ -299,37 +297,20 @@ async function handleSmoke(options: CliOptions, io: CliIo): Promise<number> {
 function createSmokeDependencies(config: HarnessConfig): MgbaSmokeWorkflowDependencies {
   const evidence = new EvidenceRecorder({ evidenceDir: config.evidenceDir, runId: config.harnessRunId });
   const client = new MgbaHttpClient({ baseUrl: config.mgbaHttpBaseUrl, screenshotDir: evidence.paths.rawScreenshotsDir });
-  const visionProcessor = config.llmVisionEnabled ? createVisionProcessor(config, evidence.paths.visionDir) : undefined;
   const controller = new Controller({
     client,
     defaultTapFrames: config.defaultTapFrames,
     defaultHoldFrames: config.defaultHoldFrames
   });
-  const smokeMapMemory = new MapMemory();
-  const smokeWorldReader = async (context?: { readonly tileMapBytes?: Uint8Array }) => {
-    const world = await readGameWorld(client, { tileMapBytes: context?.tileMapBytes });
-    return { world, tileMapBytes: world.tileMapBytes };
-  };
-
   const stateReader = new PokemonStateReader({ client, version: config.pokemonVersion });
-  const runner = new HarnessRunner({
-    config,
-    client,
-    stateReader,
-    policy: new HeuristicPolicy(),
-    controller,
-    evidence,
-    detector: createDetector(config),
-    visionProcessor,
-    budgets: { maxSteps: 1 },
-    mapMemory: smokeMapMemory,
-    worldReader: smokeWorldReader,
-  });
 
   return {
     startEvidence: (startConfig) => evidence.startRun(startConfig),
     runPreflight: () => runMgbaPreflight({ config, client }),
-    snapshot: () => runner.snapshot(),
+    snapshot: async () => {
+      const state = await stateReader.readState();
+      return { state, frame: await client.currentFrame() };
+    },
     press: (action) => controller.execute(action),
     recordAction: (action) => evidence.recordAction(action),
     recordError: (error) => evidence.recordError(error),
@@ -338,9 +319,6 @@ function createSmokeDependencies(config: HarnessConfig): MgbaSmokeWorkflowDepend
 }
 
 function createRunner(config: HarnessConfig, options: RunnerCommandOptions): CliRunner {
-  if (process.env.USE_LEGACY_RUNNER === "1") {
-    return createLegacyRunner(config, options);
-  }
   return createCommandRunner(config, options);
 }
 
@@ -441,60 +419,6 @@ function createCommandRunner(config: HarnessConfig, options: RunnerCommandOption
       return runner.run();
     },
   };
-}
-
-function createLegacyRunner(config: HarnessConfig, options: RunnerCommandOptions): CliRunner {
-  const evidence = new EvidenceRecorder({ evidenceDir: config.evidenceDir, runId: config.harnessRunId });
-  const client = new MgbaHttpClient({ baseUrl: config.mgbaHttpBaseUrl, screenshotDir: evidence.paths.rawScreenshotsDir });
-  const heuristicPolicy = new HeuristicPolicy();
-  const policy = isLlmProvider(config.aiProvider)
-    ? LLMPolicy.fromConfig(config, heuristicPolicy, {
-      onConversation: async (conversation) => {
-        await evidence.recordLlmConversation(conversation);
-      }
-    })
-    : heuristicPolicy;
-  const visionProcessor = config.llmVisionEnabled ? createVisionProcessor(config, evidence.paths.visionDir) : undefined;
-
-  const mapMemory = new MapMemory();
-  const worldReader = async (context?: { readonly tileMapBytes?: Uint8Array }) => {
-    const world = await readGameWorld(client, { tileMapBytes: context?.tileMapBytes });
-    return { world, tileMapBytes: world.tileMapBytes };
-  };
-
-  const stateReader = new PokemonStateReader({ client, version: config.pokemonVersion });
-  return new HarnessRunner({
-    config,
-    client,
-    stateReader,
-    policy,
-    controller: new Controller({
-      client,
-      defaultTapFrames: config.defaultTapFrames,
-      defaultHoldFrames: config.defaultHoldFrames
-    }),
-    evidence,
-    detector: createDetector(config),
-    visionProcessor,
-    budgets: { maxSteps: options.maxSteps },
-    mapMemory,
-    worldReader,
-  });
-}
-
-function createVisionProcessor(config: HarnessConfig, outputDir: string): ScreenshotProcessor {
-  return new ScreenshotProcessor({
-    outputDir,
-    cropLeft: config.llmVisionCropLeft,
-    cropTop: config.llmVisionCropTop,
-    cropWidth: config.llmVisionCropWidth,
-    cropHeight: config.llmVisionCropHeight,
-    maxWidth: config.llmVisionMaxWidth,
-    maxHeight: config.llmVisionMaxHeight,
-    format: config.llmVisionFormat,
-    quality: config.llmVisionQuality,
-    detail: config.llmVisionDetail
-  });
 }
 
 async function executePress(config: HarnessConfig, action: { type: "press"; button: MgbaButton; frames: number }): Promise<void> {
