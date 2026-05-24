@@ -23,6 +23,8 @@ describe("CLI", () => {
     const harnessHelp = getHarnessHelp();
     expect(output).toBe(harnessHelp);
     expect(harnessHelp.slice(harnessHelp.indexOf("Usage:"), harnessHelp.indexOf("\n\nCommands:"))).toBe(usageBlock);
+    expect(harnessHelp).toContain("--mode full-game uses the full-game detector and completes only after stable Hall of Fame state observation.");
+    expect(harnessHelp).toContain("Badge count is progress only; all badges alone never complete the run.");
   });
 
   it("parses commands and common options without a CLI framework", () => {
