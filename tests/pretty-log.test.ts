@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   createPrettyLogger,
   renderAgentEvent,
+  renderObservationInjection,
   renderRunTrace,
   renderTokenUsageMetric,
+  renderTotalStep,
 } from "../src/pretty-log";
 
 describe("pretty log rendering", () => {
@@ -15,7 +17,7 @@ describe("pretty log rendering", () => {
         toolName: "mgba_tap",
         type: "tool-call",
       })
-    ).toBe("🛠 call mgba_tap #call_kJQ · button=Start");
+    ).toBe("ACTION tap button=Start #call_kJQ");
 
     expect(
       renderAgentEvent({
@@ -52,7 +54,7 @@ describe("pretty log rendering", () => {
     expect(
       renderTokenUsageMetric({
         iteration: 1,
-        modelId: "openai-compatible.chat:gpt-5.3-codex-spark",
+        modelId: "openai.responses:gpt-5.3-codex-spark",
         runId: "run-1",
         schemaVersion: 1,
         step: 15,
@@ -71,8 +73,178 @@ describe("pretty log rendering", () => {
         },
       })
     ).toBe(
-      "🤖 step 15 · turn 1 · openai-compatible.chat:gpt-5.3-codex-spark · tokens 25,041 (in 23,198 / out 1,843 / reasoning 1,826)"
+      "🤖 step 15 · turn 1 · openai.responses:gpt-5.3-codex-spark · tokens 25,041 (in 23,198 / out 1,843 / reasoning 1,826)"
     );
+  });
+
+  it("renders blue observation injection markers", () => {
+    const injection = {
+      nextTurn: 2,
+      observation: {
+        screenshot: {
+          data: "iVBORw0KGgo=",
+          mediaType: "image/png" as const,
+          path: "/tmp/mgba.png",
+        },
+        status: {
+          activeButtons: [],
+          frame: 2817,
+          gameCode: "DMG-AR",
+          gameTitle: "PKMN RED ST",
+        },
+      },
+    };
+
+    expect(renderObservationInjection(injection)).toBe(
+      "INJECT turn 2 · frame 2,817 · [status + screenshot + prompt] injected"
+    );
+    expect(renderObservationInjection(injection, { color: true })).toContain(
+      "\u001b[34mINJECT\u001b[0m"
+    );
+  });
+
+  it("summarizes injected user messages instead of dumping prompts", () => {
+    expect(
+      renderAgentEvent({
+        content: [
+          {
+            text: "Turn 8 ended.\n\nCurrent mGBA status:\nframe: 15148\ngame: PKMN RED ST DMG-AR",
+            type: "text",
+          },
+          {
+            image: "data:image/png;base64,iVBORw0KGgo=",
+            mediaType: "image/png",
+            type: "image",
+          },
+        ],
+        type: "user-message",
+      })
+    ).toBe(
+      "INJECT turn prompt · frame 15148 · [status + screenshot + prompt] injected"
+    );
+  });
+
+  it("makes action tool calls visually obvious", () => {
+    expect(
+      renderAgentEvent({
+        input: { buttons: ["Down"], duration: 18 },
+        toolCallId: "call_r4nEXAMPLE",
+        toolName: "mgba_hold_many",
+        type: "tool-call",
+      })
+    ).toBe("ACTION hold_many buttons=[Down] · duration=18 #call_r4n");
+  });
+
+  it("colors button values red in action lines", () => {
+    expect(
+      renderAgentEvent(
+        {
+          input: { buttons: ["Down", "Right"], duration: 18 },
+          toolCallId: "call_redBUTTON",
+          toolName: "mgba_hold_many",
+          type: "tool-call",
+        },
+        { color: true }
+      )
+    ).toContain("buttons=\u001b[31m[Down, Right]\u001b[0m");
+  });
+
+  it("combines action calls and results into one terminal line", () => {
+    const lines: string[] = [];
+    const logger = createPrettyLogger({
+      color: false,
+      write: (line) => lines.push(line),
+    });
+
+    logger.event({
+      input: { button: "Start" },
+      toolCallId: "call_kJQOuFtbBukhgYS3Rw71yu10",
+      toolName: "mgba_tap",
+      type: "tool-call",
+    });
+    logger.event({
+      output: { type: "json", value: { ok: true, tapped: "Start" } },
+      toolCallId: "call_kJQOuFtbBukhgYS3Rw71yu10",
+      toolName: "mgba_tap",
+      type: "tool-result",
+    });
+
+    expect(lines).toEqual([
+      "ACTION tap button=Start → DONE ok=true · tapped=Start #call_kJQ\n",
+    ]);
+  });
+
+  it("suppresses duplicate injected user message after explicit injection log", () => {
+    const lines: string[] = [];
+    const logger = createPrettyLogger({
+      color: false,
+      write: (line) => lines.push(line),
+    });
+
+    logger.observationInjection({
+      nextTurn: 1,
+      observation: {
+        screenshot: { data: "", mediaType: "image/png", path: "/tmp/shot.png" },
+        status: {
+          activeButtons: [],
+          frame: 38_070,
+          gameCode: "DMG-AR",
+          gameTitle: "PKMN RED ST",
+        },
+      },
+    });
+    logger.event({
+      content: [
+        {
+          text: "Load ROM.\n\nCurrent mGBA status:\nframe: 38070\ngame: PKMN RED ST DMG-AR",
+          type: "text",
+        },
+        {
+          image: "data:image/png;base64,iVBORw0KGgo=",
+          mediaType: "image/png",
+          type: "image",
+        },
+      ],
+      type: "user-message",
+    });
+
+    expect(lines).toEqual([
+      "INJECT turn 1 · frame 38,070 · [status + screenshot + prompt] injected\n",
+    ]);
+  });
+
+  it("renders red total step markers every ten step starts", () => {
+    expect(renderTotalStep(10)).toBe("[TOTAL STEP: 10]");
+    expect(renderTotalStep(1000, { color: true })).toBe(
+      "\u001b[31m[TOTAL STEP: 1,000]\u001b[0m"
+    );
+
+    const lines: string[] = [];
+    const logger = createPrettyLogger({
+      color: false,
+      write: (line) => lines.push(line),
+    });
+
+    for (let index = 0; index < 10; index += 1) {
+      logger.event({ type: "step-start" });
+    }
+
+    expect(lines).toEqual(["[TOTAL STEP: 10]\n"]);
+  });
+
+  it("suppresses turn and step lifecycle noise in the logger facade", () => {
+    const lines: string[] = [];
+    const logger = createPrettyLogger({
+      color: false,
+      write: (line) => lines.push(line),
+    });
+
+    logger.event({ type: "turn-start" });
+    logger.event({ type: "step-start" });
+    logger.event({ type: "step-end" });
+    logger.event({ type: "turn-end" });
+
+    expect(lines).toEqual([]);
   });
 
   it("can emit ANSI color", () => {
@@ -89,7 +261,22 @@ describe("pretty log rendering", () => {
     });
 
     logger.event({ text: "hello", type: "assistant-text" });
+    logger.observationInjection({
+      nextTurn: 3,
+      observation: {
+        screenshot: { data: "", mediaType: "image/png", path: "/tmp/shot.png" },
+        status: {
+          activeButtons: [],
+          frame: null,
+          gameCode: "",
+          gameTitle: "",
+        },
+      },
+    });
 
-    expect(lines).toEqual(["💬 assistant · hello"]);
+    expect(lines).toEqual([
+      "💬 assistant · hello\n",
+      "INJECT turn 3 · frame unknown · [status + screenshot + prompt] injected\n",
+    ]);
   });
 });

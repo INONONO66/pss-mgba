@@ -1,6 +1,12 @@
 import type { AgentEvent } from "@minpeter/pss-runtime";
+import type { MgbaObservation } from "./observation";
 import type { RunTrace } from "./run-trace";
 import type { TokenUsageMetric } from "./token-usage";
+
+export interface ObservationInjectionLog {
+  nextTurn: number;
+  observation: MgbaObservation;
+}
 
 export interface PrettyLoggerOptions {
   color?: boolean;
@@ -12,6 +18,10 @@ interface RenderOptions {
 }
 
 type JsonObject = Record<string, unknown>;
+
+const STATUS_FRAME_PATTERN = /frame: ([^\n]+)/;
+const ACTION_BUTTON_VALUE_PATTERN =
+  /((?:button|buttons|tapped|held|released)=)(\[[^\]]+\]|[^ ·]+)/g;
 
 const COLORS = {
   blue: "\u001b[34m",
@@ -29,15 +39,67 @@ export function createPrettyLogger({
   write = (line) => console.log(line),
 }: PrettyLoggerOptions = {}): {
   event: (event: AgentEvent) => void;
+  observationInjection: (log: ObservationInjectionLog) => void;
   runTrace: (trace: RunTrace) => void;
   tokenUsage: (metric: TokenUsageMetric) => void;
 } {
   const options = { color } satisfies RenderOptions;
+  const writeSpaced = (line: string) => write(`${line}\n`);
+  const pendingActionCalls = new Map<
+    string,
+    Extract<AgentEvent, { type: "tool-call" }>
+  >();
+  let suppressNextInjectedUserMessage = false;
+  let totalSteps = 0;
 
   return {
-    event: (event) => write(renderAgentEvent(event, options)),
-    runTrace: (trace) => write(renderRunTrace(trace, options)),
-    tokenUsage: (metric) => write(renderTokenUsageMetric(metric, options)),
+    event: (event) => {
+      if (
+        event.type === "user-message" &&
+        isInjectedUserMessage(event) &&
+        suppressNextInjectedUserMessage
+      ) {
+        suppressNextInjectedUserMessage = false;
+        return;
+      }
+
+      if (event.type === "step-start") {
+        totalSteps += 1;
+        if (totalSteps % 10 === 0) {
+          writeSpaced(renderTotalStep(totalSteps, options));
+        }
+        return;
+      }
+
+      if (isLifecycleNoise(event)) {
+        return;
+      }
+
+      if (event.type === "tool-call" && isActionTool(event.toolName)) {
+        pendingActionCalls.set(event.toolCallId, event);
+        return;
+      }
+
+      if (event.type === "tool-result" && isActionTool(event.toolName)) {
+        const call = pendingActionCalls.get(event.toolCallId);
+        pendingActionCalls.delete(event.toolCallId);
+        writeSpaced(
+          call
+            ? renderCombinedAction(call, event, options)
+            : renderAgentEvent(event, options)
+        );
+        return;
+      }
+
+      writeSpaced(renderAgentEvent(event, options));
+    },
+    observationInjection: (log) => {
+      suppressNextInjectedUserMessage = true;
+      writeSpaced(renderObservationInjection(log, options));
+    },
+    runTrace: (trace) => writeSpaced(renderRunTrace(trace, options)),
+    tokenUsage: (metric) =>
+      writeSpaced(renderTokenUsageMetric(metric, options)),
   };
 }
 
@@ -67,12 +129,7 @@ export function renderAgentEvent(
     case "assistant-reasoning":
       return line(options, "magenta", "🧠", `reasoning · ${event.text}`);
     case "user-message":
-      return line(
-        options,
-        "blue",
-        "👤",
-        `user · ${formatContentParts(event.content)}`
-      );
+      return renderUserMessage(event, options);
     case "tool-call":
       return renderToolCall(event, options);
     case "tool-result":
@@ -92,6 +149,26 @@ export function renderRunTrace(
     "🏁",
     `run ${trace.runId} · iteration ${trace.iteration} · metrics ${trace.metricsDir}`
   );
+}
+
+export function renderObservationInjection(
+  { nextTurn, observation }: ObservationInjectionLog,
+  { color = false }: Partial<RenderOptions> = {}
+): string {
+  const status = observation.status;
+  return line(
+    { color },
+    "blue",
+    "INJECT",
+    `turn ${nextTurn} · frame ${formatMaybeNumber(status.frame)} · [status + screenshot + prompt] injected`
+  );
+}
+
+export function renderTotalStep(
+  totalSteps: number,
+  { color = false }: Partial<RenderOptions> = {}
+): string {
+  return paint({ color }, "red", `[TOTAL STEP: ${formatNumber(totalSteps)}]`);
 }
 
 export function renderTokenUsageMetric(
@@ -118,10 +195,40 @@ export function renderTokenUsageMetric(
   );
 }
 
+function isLifecycleNoise(event: AgentEvent): boolean {
+  return ["turn-start", "turn-end", "step-end"].includes(event.type);
+}
+
+function renderUserMessage(
+  event: Extract<AgentEvent, { type: "user-message" }>,
+  options: RenderOptions
+): string {
+  const summary = summarizeInjectedUserMessage(event.content);
+  if (summary) {
+    return line(options, "blue", "INJECT", summary);
+  }
+
+  return line(
+    options,
+    "blue",
+    "👤",
+    `user · ${formatContentParts(event.content)}`
+  );
+}
+
 function renderToolCall(
   event: Extract<AgentEvent, { type: "tool-call" }>,
   options: RenderOptions
 ): string {
+  if (isActionTool(event.toolName)) {
+    return line(
+      options,
+      "yellow",
+      "ACTION",
+      `${event.toolName.replace("mgba_", "")} ${formatActionDetails(formatValue(event.input), options)} ${dim(options, shortId(event.toolCallId))}`
+    );
+  }
+
   return line(
     options,
     "blue",
@@ -130,11 +237,34 @@ function renderToolCall(
   );
 }
 
+function renderCombinedAction(
+  call: Extract<AgentEvent, { type: "tool-call" }>,
+  result: Extract<AgentEvent, { type: "tool-result" }>,
+  options: RenderOptions
+): string {
+  const output = unwrapToolOutput(result.output);
+  return line(
+    options,
+    "yellow",
+    "ACTION",
+    `${call.toolName.replace("mgba_", "")} ${formatActionDetails(formatValue(call.input), options)} → DONE ${formatActionDetails(formatToolOutput(result.toolName, output), options)} ${dim(options, shortId(call.toolCallId))}`
+  );
+}
+
 function renderToolResult(
   event: Extract<AgentEvent, { type: "tool-result" }>,
   options: RenderOptions
 ): string {
   const output = unwrapToolOutput(event.output);
+  if (isActionTool(event.toolName)) {
+    return line(
+      options,
+      "green",
+      "DONE",
+      `${event.toolName.replace("mgba_", "")} ${formatActionDetails(formatToolOutput(event.toolName, output), options)} ${dim(options, shortId(event.toolCallId))}`
+    );
+  }
+
   return line(
     options,
     "green",
@@ -179,6 +309,14 @@ function formatToolOutput(toolName: string, output: unknown): string {
   return formatValue(output);
 }
 
+function formatActionDetails(details: string, options: RenderOptions): string {
+  return details.replace(
+    ACTION_BUTTON_VALUE_PATTERN,
+    (_match, prefix: string, value: string) =>
+      `${prefix}${paint(options, "red", value)}`
+  );
+}
+
 function summarizeKnownFields(
   output: JsonObject,
   keys: readonly string[]
@@ -216,6 +354,44 @@ function resultIcon(toolName: string, output: unknown): string {
     return "⚠";
   }
   return toolIcon(toolName) === "🛠" ? "✅" : toolIcon(toolName);
+}
+
+function isInjectedUserMessage(
+  event: Extract<AgentEvent, { type: "user-message" }>
+): boolean {
+  return summarizeInjectedUserMessage(event.content) !== null;
+}
+
+function summarizeInjectedUserMessage(
+  content: readonly Extract<
+    AgentEvent,
+    { type: "user-message" }
+  >["content"][number][]
+): string | null {
+  const textPart = content.find((part) => part.type === "text");
+  const hasImage = content.some((part) => part.type === "image");
+  if (
+    !(textPart && hasImage && textPart.text.includes("Current mGBA status:"))
+  ) {
+    return null;
+  }
+
+  return `turn prompt · ${extractFrameSummary(textPart.text)} · [status + screenshot + prompt] injected`;
+}
+
+function extractFrameSummary(text: string): string {
+  const match = text.match(STATUS_FRAME_PATTERN);
+  return `frame ${match?.[1] ?? "unknown"}`;
+}
+
+function isActionTool(toolName: string): boolean {
+  return [
+    "mgba_tap",
+    "mgba_tap_many",
+    "mgba_hold",
+    "mgba_hold_many",
+    "mgba_release",
+  ].includes(toolName);
 }
 
 function formatText(text: string | readonly string[]): string {
@@ -267,6 +443,9 @@ function formatValue(value: unknown): string {
 }
 
 function formatMaybeNumber(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "unknown";
+  }
   return typeof value === "number" ? formatNumber(value) : formatValue(value);
 }
 
