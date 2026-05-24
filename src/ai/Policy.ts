@@ -1,6 +1,7 @@
 import type { PolicyDecision } from "../control/ActionTypes.js";
 import type { LlmVisionDetail } from "../config.js";
 import type { FullGameState } from "../pokemon/PokemonTypes.js";
+import type { SupervisorPlan } from "../supervisor/SupervisorTypes.js";
 
 export interface VisionImageInput {
   readonly path: string;
@@ -62,6 +63,7 @@ export interface PolicyInput {
   step?: number;
   objective?: string;
   detectorStatus?: unknown;
+  supervisorPlan?: SupervisorPlan;
   fullState?: FullGameState;
   fullStateSummary?: string;
   fullStateError?: string;

@@ -7,6 +7,7 @@ import type { PolicyDecision } from "../../src/control/ActionTypes.js";
 import { LLMPolicy, type ChatCompletionRequest, type ChatCompletionsClient, type LLMConversationTrace, type OpenAIClientOptions } from "../../src/ai/LLMPolicy.js";
 import type { Policy, PolicyInput } from "../../src/ai/Policy.js";
 import { HarnessError } from "../../src/errors.js";
+import { buildPokemonSupervisorPlan } from "../../src/supervisor/index.js";
 
 const validDecision: PolicyDecision = {
   action: { type: "press", button: "A", frames: 5 },
@@ -342,6 +343,29 @@ describe("LLMPolicy", () => {
     expect(prompt).not.toContain("Full game state JSON");
     expect(prompt).not.toContain("\"mapName\":\"Reds House 2f\"");
     expect(prompt.indexOf("Game state:")).toBeLessThan(prompt.indexOf("Recent actions summary"));
+  });
+
+  it("injects supervisor guidance before detailed game state context", async () => {
+    const requests: ChatCompletionRequest[] = [];
+    const client = fakeClient(async (request) => {
+      requests.push(request);
+      return JSON.stringify(validDecision);
+    });
+    const supervisorPlan = buildPokemonSupervisorPlan({
+      step: enrichedPolicyInput.step,
+      fullState: enrichedPolicyInput.fullState,
+      recentActions: Array.from({ length: 4 }, () => ({ action: { type: "press", button: "A", frames: 5 } })),
+      recentStates: Array.from({ length: 5 }, () => ({ mapId: 38, y: 3, x: 3 })),
+    });
+    const policy = createPolicy({ client });
+
+    await expect(policy.chooseAction({ ...enrichedPolicyInput, supervisorPlan })).resolves.toEqual(validDecision);
+
+    const prompt = getUserText(requests[0]);
+    expect(prompt).toContain("Supervisor guidance:");
+    expect(prompt).toContain("Active goal: Break the current input loop");
+    expect(prompt).toContain("Do not follow a memorized route script");
+    expect(prompt.indexOf("Supervisor guidance:")).toBeLessThan(prompt.indexOf("Game state:"));
   });
 
   it("uses a full-game prompt with Hall of Fame-only completion when configured", async () => {

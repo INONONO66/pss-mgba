@@ -4,6 +4,7 @@ import type { HarnessConfig, HarnessMode, LlmVisionDetail } from "../config.js";
 import type { PolicyDecision } from "../control/ActionTypes.js";
 import { PolicyDecisionSchema, createPolicyDecisionJsonSchema } from "../control/ActionSchema.js";
 import { HarnessError } from "../errors.js";
+import { renderSupervisorPlan } from "../supervisor/SupervisorSummary.js";
 import type { Policy, PolicyInput, VisionImageInput } from "./Policy.js";
 
 interface ChatMessage {
@@ -355,6 +356,13 @@ function buildStateContextSection(input: PolicyInput): string[] {
 
   if (input.detectorStatus !== undefined) {
     lines.push(`Progress: ${formatDetectorStatus(input.detectorStatus)}`);
+  }
+
+  if (input.supervisorPlan !== undefined) {
+    lines.push(
+      "Supervisor guidance:",
+      renderSupervisorPlan(input.supervisorPlan)
+    );
   }
 
   if (input.fullStateSummary !== undefined) {

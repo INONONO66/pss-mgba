@@ -11,6 +11,7 @@ import type { MapMemory } from "../pokemon/MapMemory.js";
 import type { GameWorldSnapshot } from "../pokemon/GameWorld.js";
 import type { FullGameState, MenuTextState } from "../pokemon/PokemonTypes.js";
 import { buildStateSummary } from "../pokemon/StateSummary.js";
+import { buildPokemonSupervisorPlan } from "../supervisor/PokemonSupervisor.js";
 
 export interface RunnerClient {
   currentFrame(): Promise<FrameNumber>;
@@ -284,6 +285,17 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
     } else if (this.lastFullStateError !== undefined) {
       base.fullStateError = this.lastFullStateError;
     }
+
+    base.supervisorPlan = buildPokemonSupervisorPlan({
+      step: this.step,
+      fullState: base.fullState,
+      detectorStatus: base.detectorStatus,
+      recentActions: base.recentActions,
+      recentStates: base.recentStates,
+      mapFresh: base.mapFresh,
+      mapStateWarning: base.mapStateWarning,
+      mapStateError: base.mapStateError,
+    });
 
     return base;
   }
