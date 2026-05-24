@@ -198,131 +198,291 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
 <html>
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pokemon Harness Dev Viewer</title>
   <style>
     :root {
-      --color-page: #0c0c0a;
-      --color-surface: #050504;
-      --color-line: #34342f;
-      --color-text: #f2f0e8;
-      --color-muted: #b9b4a7;
-      --color-overlay: rgba(5, 5, 4, 0.76);
-      --space-2: 8px;
-      --space-3: 12px;
-      --space-4: 16px;
-      --space-5: 20px;
-      --font-ui: "Avenir Next", "Segoe UI", sans-serif;
-      --text-label: 12px;
-      --text-title: 18px;
-      --line-thin: 1px solid var(--color-line);
+      --bg: #070b08;
+      --panel: rgba(13, 21, 15, 0.94);
+      --panel-strong: rgba(20, 30, 19, 0.98);
+      --panel-soft: rgba(7, 11, 8, 0.72);
+      --line: rgba(196, 255, 166, 0.18);
+      --line-strong: rgba(140, 255, 113, 0.38);
+      --green: #8cff71;
+      --amber: #ffc857;
+      --red: #ff765c;
+      --ink: #edf8d8;
+      --muted: #91a487;
+      --muted-2: #64725f;
+      --shadow: 0 22px 70px rgba(0, 0, 0, 0.46);
+      --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+      --ui: "Avenir Next", "Segoe UI", sans-serif;
     }
-    html, body { margin: 0; min-height: 100%; background: var(--color-page); color: var(--color-text); font-family: var(--font-ui); }
-    body { box-sizing: border-box; min-height: 100vh; padding: clamp(var(--space-3), 3vw, var(--space-5)); display: grid; align-items: start; }
-    main { width: min(100%, 1440px); margin: 0 auto; }
-    h1, h2 { margin: 0; font-size: var(--text-title); font-weight: 600; letter-spacing: -0.02em; }
-    p { margin: var(--space-2) 0 0; color: var(--color-muted); font-size: var(--text-label); line-height: 1.35; }
-    code { color: var(--color-text); font-family: inherit; }
-    .summary-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-3); }
-    .summary-card { border: var(--line-thin); background: var(--color-surface); padding: var(--space-3); min-height: 68px; }
-    .summary-label { color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; }
-    .summary-value { margin-top: 6px; color: var(--color-text); font-size: 14px; line-height: 1.3; word-break: break-word; }
-    .layout { display: grid; grid-template-columns: minmax(320px, 2fr) minmax(220px, 1fr); gap: var(--space-3); align-items: stretch; }
-    .observability-grid { margin-top: var(--space-3); display: grid; grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr); gap: var(--space-3); align-items: stretch; }
-    .state-panel, .screenshot-history { border: var(--line-thin); background: var(--color-surface); min-height: 300px; overflow: hidden; }
-    .state-body { margin: 0; padding: var(--space-3); max-height: 420px; overflow: auto; white-space: pre-wrap; word-break: break-word; color: var(--color-muted); font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .screenshot-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); padding: var(--space-3); max-height: 420px; overflow: auto; }
-    .raw-shot { border: var(--line-thin); background: #10100d; min-width: 0; }
-    .raw-shot img { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: contain; image-rendering: pixelated; }
-    .raw-shot .meta { padding: 6px; font-size: 10px; }
-    .conversation-panel { margin-top: var(--space-3); border: var(--line-thin); background: var(--color-surface); min-height: 420px; max-height: 70vh; display: grid; grid-template-columns: 260px minmax(0, 1fr); overflow: hidden; }
-    .event-panel { margin-top: var(--space-3); border: var(--line-thin); background: var(--color-surface); max-height: 260px; overflow: auto; }
-    .event-list { margin: 0; padding: var(--space-3); display: grid; gap: var(--space-2); }
-    .event-item { border: var(--line-thin); background: #10100d; padding: 10px 12px; color: var(--color-muted); font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
-    .conversation-header { padding: var(--space-3); background: var(--color-overlay); border-bottom: var(--line-thin); }
-    .conversation-main { min-width: 0; overflow: auto; }
-    .conversation-body { margin: 0; padding: var(--space-3); white-space: pre-wrap; word-break: break-word; color: var(--color-muted); font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .history-rail { border-right: var(--line-thin); overflow: auto; }
-    .history-button { width: 100%; display: block; padding: 10px 12px; border: 0; border-bottom: var(--line-thin); background: transparent; color: var(--color-muted); text-align: left; font: 12px/1.3 var(--font-ui); cursor: pointer; }
-    .history-button:hover, .history-button.active { background: #151510; color: var(--color-text); }
-    .decision-card { color: var(--color-text); border: var(--line-thin); padding: var(--space-3); margin-bottom: var(--space-3); background: #10100d; }
-    .image-cell, .vision-wall { position: relative; overflow: hidden; background: var(--color-surface); border: var(--line-thin); }
-    .image-cell { aspect-ratio: 1 / 1; }
-    #live-frame { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; background: var(--color-surface); }
-    .overlay { position: absolute; left: 0; right: 0; z-index: 1; padding: var(--space-3); background: linear-gradient(180deg, var(--color-overlay), rgba(5, 5, 4, 0)); pointer-events: none; }
-    .overlay-top { top: 0; }
-    .overlay-bottom { bottom: 0; background: linear-gradient(0deg, var(--color-overlay), rgba(5, 5, 4, 0)); }
-    .vision-wall { aspect-ratio: 1 / 2; }
-    .vision-grid { display: grid; grid-template-columns: 1fr; grid-template-rows: repeat(3, minmax(0, 1fr)); height: 100%; }
-    .vision-cell { position: relative; min-height: 0; aspect-ratio: 1 / 1; border-top: var(--line-thin); }
-    .vision-cell:first-child { border-top: 0; }
-    .vision-cell img { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; background: var(--color-surface); }
-    .meta { color: var(--color-muted); font-size: var(--text-label); line-height: 1.4; word-break: break-word; }
-    .empty { box-sizing: border-box; display: grid; grid-column: 1 / -1; grid-row: 1 / -1; height: 100%; place-items: center; padding: var(--space-5); color: var(--color-muted); font-size: var(--text-label); text-align: center; }
-    @media (max-width: 800px) { .summary-strip, .layout, .observability-grid { grid-template-columns: 1fr; } .vision-wall { aspect-ratio: 3 / 1; } .vision-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: 1fr; } .vision-cell { border-top: 0; border-left: var(--line-thin); } .vision-cell:first-child { border-left: 0; } .conversation-panel { grid-template-columns: 1fr; max-height: none; } .history-rail { border-right: 0; border-bottom: var(--line-thin); max-height: 130px; } .screenshot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    body {
+      min-width: 1180px;
+      color: var(--ink);
+      font-family: var(--ui);
+      background:
+        radial-gradient(circle at 8% -8%, rgba(140, 255, 113, 0.18), transparent 30rem),
+        radial-gradient(circle at 92% 4%, rgba(255, 200, 87, 0.12), transparent 28rem),
+        linear-gradient(rgba(110, 255, 132, 0.065) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(110, 255, 132, 0.065) 1px, transparent 1px),
+        var(--bg);
+      background-size: auto, auto, 32px 32px, 32px 32px, auto;
+    }
+    body::before {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      content: "";
+      background-image: repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0, rgba(255,255,255,0.025) 1px, transparent 1px, transparent 4px);
+      opacity: 0.38;
+    }
+    button, code, pre { font: inherit; }
+    h1, h2, h3, p, pre { margin: 0; }
+    code { color: var(--amber); }
+    .shell {
+      position: relative;
+      z-index: 1;
+      height: 100vh;
+      padding: 12px;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 10px;
+    }
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(260px, 1.1fr) repeat(6, minmax(135px, 0.7fr));
+      gap: 8px;
+    }
+    .card, .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+    .card {
+      min-height: 64px;
+      padding: 10px 12px;
+      overflow: hidden;
+    }
+    .label {
+      color: var(--green);
+      font: 700 10px/1 var(--mono);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    .value {
+      margin-top: 7px;
+      color: var(--ink);
+      font: 600 13px/1.28 var(--mono);
+      overflow-wrap: anywhere;
+    }
+    .value.muted, .muted { color: var(--muted); font-weight: 500; }
+    .value.bad { color: var(--red); }
+    .grid {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(456px, 1.16fr) minmax(360px, 0.92fr) minmax(470px, 1fr);
+      grid-template-rows: minmax(0, 1.08fr) minmax(0, 0.92fr);
+      gap: 10px;
+    }
+    .panel {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      overflow: hidden;
+    }
+    .panel-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      background: linear-gradient(90deg, rgba(140, 255, 113, 0.10), rgba(7, 11, 8, 0.24));
+      border-bottom: 1px solid var(--line);
+    }
+    .panel-header h1, .panel-header h2 {
+      color: #f7ffe4;
+      font: 800 13px/1 var(--mono);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .panel-header p { color: var(--muted); font: 11px/1.35 var(--mono); overflow-wrap: anywhere; }
+    .screen-panel { grid-row: 1; grid-column: 1; }
+    .screen-wrap { position: relative; min-height: 0; display: grid; place-items: center; background: #020302; }
+    #live-frame { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+    .screen-hud {
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      bottom: 10px;
+      display: grid;
+      gap: 6px;
+      padding: 10px;
+      color: var(--muted);
+      font: 11px/1.35 var(--mono);
+      background: rgba(7, 11, 8, 0.72);
+      border: 1px solid var(--line);
+      pointer-events: none;
+    }
+    .status-line { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+      padding: 4px 7px;
+      color: var(--ink);
+      background: rgba(140, 255, 113, 0.09);
+      border: 1px solid rgba(140, 255, 113, 0.20);
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .chip.warn { color: var(--amber); background: rgba(255, 200, 87, 0.10); border-color: rgba(255, 200, 87, 0.24); }
+    .chip.bad { color: var(--red); background: rgba(255, 118, 92, 0.10); border-color: rgba(255, 118, 92, 0.24); }
+    .state-panel { grid-row: 1; grid-column: 2; }
+    .llm-panel { grid-row: 1 / span 2; grid-column: 3; }
+    .history-panel { grid-row: 2; grid-column: 1; }
+    .context-panel { grid-row: 2; grid-column: 2; }
+    .scroll { min-height: 0; overflow: auto; }
+    .state-body, .context-body, .event-list, .history-grid, .vision-grid, .llm-detail { padding: 10px; }
+    .state-block { display: grid; gap: 8px; }
+    .kv-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .kv { padding: 9px; background: var(--panel-soft); border: 1px solid rgba(196, 255, 166, 0.12); }
+    .kv b { display: block; margin-bottom: 5px; color: var(--muted); font: 10px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.1em; }
+    .kv span { color: var(--ink); font: 12px/1.35 var(--mono); overflow-wrap: anywhere; }
+    .pretty-text, .mono-block {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      color: var(--muted);
+      font: 11px/1.42 var(--mono);
+    }
+    .mono-block {
+      padding: 10px;
+      background: rgba(0, 0, 0, 0.22);
+      border: 1px solid rgba(196, 255, 166, 0.12);
+    }
+    .history-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+    .raw-shot { min-width: 0; background: var(--panel-soft); border: 1px solid rgba(196, 255, 166, 0.12); }
+    .raw-shot img { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: contain; image-rendering: pixelated; background: #020302; }
+    .raw-shot .meta { padding: 6px; color: var(--muted); font: 10px/1.28 var(--mono); overflow-wrap: anywhere; }
+    .context-tabs, .llm-tabs { display: flex; gap: 6px; padding: 8px 10px 0; background: rgba(7, 11, 8, 0.35); }
+    .tab {
+      padding: 6px 8px;
+      color: var(--muted);
+      cursor: pointer;
+      background: rgba(0,0,0,0.22);
+      border: 1px solid rgba(196, 255, 166, 0.12);
+      border-bottom-color: var(--line);
+      font: 700 10px/1 var(--mono);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .tab.active { color: var(--ink); border-color: var(--line-strong); background: rgba(140, 255, 113, 0.10); }
+    .llm-layout { min-height: 0; display: grid; grid-template-columns: 170px minmax(0, 1fr); }
+    .llm-rail { min-height: 0; overflow: auto; border-right: 1px solid var(--line); }
+    .history-button {
+      width: 100%;
+      display: block;
+      padding: 10px;
+      color: var(--muted);
+      text-align: left;
+      cursor: pointer;
+      background: transparent;
+      border: 0;
+      border-bottom: 1px solid rgba(196, 255, 166, 0.12);
+      font: 11px/1.35 var(--mono);
+      white-space: pre-wrap;
+    }
+    .history-button:hover, .history-button.active { color: var(--ink); background: rgba(140, 255, 113, 0.08); }
+    .decision-card { display: grid; gap: 8px; margin-bottom: 10px; padding: 10px; color: var(--ink); background: rgba(140,255,113,0.08); border: 1px solid var(--line-strong); }
+    .vision-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .vision-cell { position: relative; min-width: 0; background: var(--panel-soft); border: 1px solid rgba(196, 255, 166, 0.12); }
+    .vision-cell img { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: contain; image-rendering: pixelated; background: #020302; }
+    .vision-cell .meta { position: absolute; left: 0; right: 0; bottom: 0; padding: 6px; color: var(--muted); font: 10px/1.25 var(--mono); background: rgba(7,11,8,0.78); overflow-wrap: anywhere; }
+    .event-list { display: grid; gap: 8px; }
+    .event-item { padding: 9px; color: var(--muted); background: var(--panel-soft); border: 1px solid rgba(196, 255, 166, 0.12); font: 10px/1.35 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .empty { display: grid; min-height: 100%; place-items: center; padding: 18px; color: var(--muted-2); text-align: center; font: 12px/1.4 var(--mono); }
+    @media (max-width: 1250px) {
+      body { min-width: 0; overflow: auto; }
+      html, body { height: auto; }
+      .shell { min-height: 100vh; height: auto; }
+      .topbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid { grid-template-columns: 1fr; grid-template-rows: repeat(6, minmax(320px, auto)); }
+      .screen-panel, .state-panel, .llm-panel, .history-panel, .context-panel { grid-row: auto; grid-column: auto; }
+      .llm-layout { grid-template-columns: 1fr; }
+      .llm-rail { max-height: 160px; border-right: 0; border-bottom: 1px solid var(--line); }
+    }
   </style>
 </head>
 <body>
-  <main>
-    <section class="summary-strip" aria-label="Run summary">
-      <article class="summary-card"><div class="summary-label">Run</div><div id="summary-run" class="summary-value">${escapeHtml(runId)}</div></article>
-      <article class="summary-card"><div class="summary-label">Status</div><div id="summary-status" class="summary-value">Loading...</div></article>
-      <article class="summary-card"><div class="summary-label">Progress</div><div id="summary-progress" class="summary-value">Waiting...</div></article>
-      <article class="summary-card"><div class="summary-label">Player action</div><div id="summary-player" class="summary-value">Waiting...</div></article>
+  <main class="shell">
+    <section class="topbar" aria-label="Run summary">
+      <article class="card"><div class="label">Run</div><div id="summary-run" class="value">${escapeHtml(runId)}</div></article>
+      <article class="card"><div class="label">Status</div><div id="summary-status" class="value muted">Loading...</div></article>
+      <article class="card"><div class="label">Progress</div><div id="summary-progress" class="value muted">Waiting...</div></article>
+      <article class="card"><div class="label">Map</div><div id="summary-map" class="value muted">Waiting...</div></article>
+      <article class="card"><div class="label">Party</div><div id="summary-party" class="value muted">Waiting...</div></article>
+      <article class="card"><div class="label">Player action</div><div id="summary-player" class="value muted">Waiting...</div></article>
+      <article class="card"><div class="label">Refresh</div><div id="summary-refresh" class="value muted">Starting...</div></article>
     </section>
-    <div class="layout">
-      <section class="image-cell">
-        <div class="overlay overlay-top">
-          <h1>Main game screen</h1>
-          <p>Live mGBA screenshot | run <code>${escapeHtml(runId)}</code></p>
+
+    <section class="grid" aria-label="Live observability dashboard">
+      <article class="panel screen-panel">
+        <div class="panel-header"><h1>Live game screen</h1><p>mGBA frame · <code>${escapeHtml(runId)}</code></p></div>
+        <div class="screen-wrap">
+          <img id="live-frame" src="/api/live-frame" alt="Live mGBA screen">
+          <div class="screen-hud">
+            <div id="screen-location" class="status-line"><span class="chip">waiting for state</span></div>
+            <div id="screen-dialog" class="muted">Dialog/text will appear here.</div>
+          </div>
         </div>
-        <img id="live-frame" src="/api/live-frame" alt="Live mGBA screen">
-      </section>
-      <section class="vision-wall">
-        <div class="overlay overlay-top">
-          <h2>LLM context images</h2>
-          <p id="vision-status">Loading latest ${visionImageLimit} processed input(s)...</p>
-        </div>
-        <div id="vision-grid" class="vision-grid"></div>
-      </section>
-    </div>
-    <section class="observability-grid">
-      <article class="state-panel">
-        <div class="conversation-header">
-          <h2>Current game state</h2>
-          <p id="state-status">Waiting for RAM state snapshots...</p>
-        </div>
-        <pre id="game-state" class="state-body">No game state recorded yet.</pre>
       </article>
-      <article class="screenshot-history">
-        <div class="conversation-header">
-          <h2>Game screen history</h2>
-          <p id="screenshot-status">Waiting for raw screenshots...</p>
+
+      <article class="panel state-panel">
+        <div class="panel-header"><h2>Current state</h2><p id="state-status">Waiting for RAM snapshots...</p></div>
+        <div class="state-body scroll">
+          <div id="state-pretty" class="state-block"></div>
+          <pre id="game-state" class="mono-block" style="margin-top:10px">No game state recorded yet.</pre>
         </div>
-        <div id="screenshot-grid" class="screenshot-grid"></div>
       </article>
-    </section>
-    <section class="conversation-panel">
-      <div class="history-rail">
-        <div class="conversation-header">
-          <h2>LLM history</h2>
-          <p id="llm-status">Waiting...</p>
+
+      <article class="panel llm-panel">
+        <div class="panel-header"><h2>LLM prompt + decision</h2><p id="llm-status">Waiting...</p></div>
+        <div class="llm-layout">
+          <div class="llm-rail"><div id="llm-history"></div></div>
+          <div class="panel" style="border:0; box-shadow:none; background:transparent">
+            <div class="llm-tabs">
+              <button class="tab active" data-llm-tab="overview">Decision</button>
+              <button class="tab" data-llm-tab="system">System</button>
+              <button class="tab" data-llm-tab="state">State</button>
+              <button class="tab" data-llm-tab="user">Injected</button>
+              <button class="tab" data-llm-tab="raw">Raw</button>
+            </div>
+            <div class="llm-detail scroll"><div id="llm-conversation" class="pretty-text">No LLM conversation recorded yet.</div></div>
+          </div>
         </div>
-        <div id="llm-history"></div>
-      </div>
-      <div class="conversation-main">
-        <div class="conversation-header">
-          <h2>Injected LLM context + decision</h2>
-          <p>Stored in <code>${escapeHtml(llmConversationsPath)}</code></p>
+      </article>
+
+      <article class="panel history-panel">
+        <div class="panel-header"><h2>Screen history</h2><p id="screenshot-status">Waiting for raw screenshots...</p></div>
+        <div id="screenshot-grid" class="history-grid scroll"></div>
+      </article>
+
+      <article class="panel context-panel">
+        <div class="panel-header"><h2>Input context images + event log</h2><p id="vision-status">Loading latest ${visionImageLimit} processed input(s)...</p></div>
+        <div class="context-tabs">
+          <button class="tab active" data-context-tab="vision">Images</button>
+          <button class="tab" data-context-tab="events">Events</button>
         </div>
-        <pre id="llm-conversation" class="conversation-body">No LLM conversation recorded yet.</pre>
-      </div>
-    </section>
-    <section class="event-panel">
-      <div class="conversation-header">
-        <h2>Detailed run log</h2>
-        <p id="event-status">Waiting...</p>
-      </div>
-      <div id="event-list" class="event-list"></div>
+        <div class="context-body scroll">
+          <div id="vision-grid" class="vision-grid"></div>
+          <div id="event-list" class="event-list" hidden></div>
+        </div>
+      </article>
     </section>
   </main>
   <script>
@@ -332,18 +492,46 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     const llmStatus = document.getElementById('llm-status');
     const llmConversation = document.getElementById('llm-conversation');
     const llmHistory = document.getElementById('llm-history');
-    const eventStatus = document.getElementById('event-status');
     const eventList = document.getElementById('event-list');
     const stateStatus = document.getElementById('state-status');
+    const statePretty = document.getElementById('state-pretty');
     const gameState = document.getElementById('game-state');
     const screenshotStatus = document.getElementById('screenshot-status');
     const screenshotGrid = document.getElementById('screenshot-grid');
     const summaryStatus = document.getElementById('summary-status');
     const summaryProgress = document.getElementById('summary-progress');
+    const summaryMap = document.getElementById('summary-map');
+    const summaryParty = document.getElementById('summary-party');
     const summaryPlayer = document.getElementById('summary-player');
+    const summaryRefresh = document.getElementById('summary-refresh');
+    const screenLocation = document.getElementById('screen-location');
+    const screenDialog = document.getElementById('screen-dialog');
     let selectedConversationFile = null;
+    let selectedLlmTab = 'overview';
+    let selectedContextTab = 'vision';
+    let latestConversation = null;
 
     function text(node, value) { node.appendChild(document.createTextNode(value)); }
+    function value(value, fallback = '?') { return value === undefined || value === null || value === '' ? fallback : String(value); }
+    function boolText(value) { return value ? 'yes' : 'no'; }
+    function compactJson(input) { return JSON.stringify(input ?? {}, null, 2); }
+    function setRefreshLabel() { summaryRefresh.textContent = new Date().toLocaleTimeString(); }
+
+    for (const tab of document.querySelectorAll('[data-llm-tab]')) {
+      tab.addEventListener('click', () => {
+        selectedLlmTab = tab.getAttribute('data-llm-tab');
+        document.querySelectorAll('[data-llm-tab]').forEach((node) => node.classList.toggle('active', node === tab));
+        renderSelectedConversation();
+      });
+    }
+    for (const tab of document.querySelectorAll('[data-context-tab]')) {
+      tab.addEventListener('click', () => {
+        selectedContextTab = tab.getAttribute('data-context-tab');
+        document.querySelectorAll('[data-context-tab]').forEach((node) => node.classList.toggle('active', node === tab));
+        visionGrid.hidden = selectedContextTab !== 'vision';
+        eventList.hidden = selectedContextTab !== 'events';
+      });
+    }
 
     async function refreshLiveFrame() {
       liveFrame.src = '/api/live-frame?nonce=' + Date.now();
@@ -351,12 +539,12 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
 
     async function refreshVisionImages() {
       const payload = await fetch('/api/vision-images', { cache: 'no-store' }).then((response) => response.json());
-      visionStatus.textContent = payload.count + '/' + payload.limit + ' processed image(s) currently available to LLM context';
+      visionStatus.textContent = payload.count + '/' + payload.limit + ' image(s) sent as visual context';
       visionGrid.textContent = '';
       if (!payload.images || payload.images.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'empty';
-        empty.textContent = 'No processed LLM context images yet. They appear after the first --vision runner snapshot.';
+        empty.textContent = 'No processed visual inputs yet. They appear after the first vision snapshot.';
         visionGrid.appendChild(empty);
         return;
       }
@@ -368,23 +556,21 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
         img.src = image.url;
         img.alt = 'LLM context image ' + image.fileName;
         card.appendChild(img);
-
         const meta = document.createElement('div');
-        meta.className = 'overlay overlay-bottom meta';
-        text(meta, image.fileName);
-        meta.appendChild(document.createElement('br'));
-        text(meta, 'step ' + (image.step ?? '?') + ' | frame ' + (image.frame ?? '?') + ' | ' + image.bytes + ' bytes');
+        meta.className = 'meta';
+        text(meta, image.fileName + '\\nstep ' + value(image.step) + ' · frame ' + value(image.frame));
         card.appendChild(meta);
         visionGrid.appendChild(card);
       }
     }
 
     async function refreshLlmConversation() {
-      const payload = await fetch('/api/llm-conversations?limit=10', { cache: 'no-store' }).then((response) => response.json());
+      const payload = await fetch('/api/llm-conversations?limit=20', { cache: 'no-store' }).then((response) => response.json());
       if (!payload.conversations || payload.conversations.length === 0) {
         llmStatus.textContent = 'No LLM request recorded yet';
         llmHistory.textContent = '';
-        llmConversation.textContent = 'No LLM conversation recorded yet.';
+        latestConversation = null;
+        renderSelectedConversation();
         return;
       }
       if (!selectedConversationFile || !payload.conversations.some((item) => item.fileName === selectedConversationFile)) {
@@ -394,30 +580,48 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       for (const conversation of payload.conversations) {
         const button = document.createElement('button');
         button.className = 'history-button' + (conversation.fileName === selectedConversationFile ? ' active' : '');
-        button.textContent = conversation.fileName + '\\ncall ' + (conversation.call ?? '?') + ' · ' + summarizeAction(conversation);
-        button.onclick = () => { selectedConversationFile = conversation.fileName; llmConversation.textContent = formatConversation(conversation); };
+        button.textContent = conversation.fileName + '\\ncall ' + value(conversation.call) + ' · ' + summarizeAction(conversation) + '\\n' + conversationStatus(conversation);
+        button.onclick = () => {
+          selectedConversationFile = conversation.fileName;
+          latestConversation = conversation;
+          for (const node of llmHistory.querySelectorAll('.history-button')) node.classList.remove('active');
+          button.classList.add('active');
+          renderSelectedConversation();
+        };
         llmHistory.appendChild(button);
       }
-      const selected = payload.conversations.find((item) => item.fileName === selectedConversationFile) ?? payload.conversations[0];
-      llmStatus.textContent = payload.count + ' stored · latest ' + payload.conversations[0].fileName;
-      llmConversation.textContent = formatConversation(selected);
+      latestConversation = payload.conversations.find((item) => item.fileName === selectedConversationFile) ?? payload.conversations[0];
+      llmStatus.textContent = payload.count + ' stored · latest ' + payload.conversations[0].fileName + ' · ' + conversationStatus(payload.conversations[0]);
+      renderSelectedConversation();
     }
 
     async function refreshGameState() {
-      const payload = await fetch('/api/game-state?limit=5', { cache: 'no-store' }).then((response) => response.json());
+      const payload = await fetch('/api/game-state?limit=8', { cache: 'no-store' }).then((response) => response.json());
       if (!payload.latest) {
         stateStatus.textContent = 'No game state snapshot recorded yet';
+        statePretty.textContent = '';
         gameState.textContent = 'No game state recorded yet.';
+        summaryMap.textContent = 'No state';
+        summaryParty.textContent = 'No state';
+        screenLocation.textContent = '';
+        const chip = document.createElement('span');
+        chip.className = 'chip warn';
+        chip.textContent = 'waiting for state';
+        screenLocation.appendChild(chip);
+        screenDialog.textContent = 'Dialog/text will appear here.';
         return;
       }
       const latest = payload.latest;
-      stateStatus.textContent = payload.count + '/' + payload.limit + ' state snapshot(s) · latest ' + latest.fileName;
+      const state = unwrapState(latest);
+      stateStatus.textContent = payload.count + '/' + payload.limit + ' snapshot(s) · latest ' + latest.fileName;
       gameState.textContent = formatStateSnapshot(latest);
+      renderPrettyState(latest, state);
+      updateStateCards(latest, state);
     }
 
     async function refreshScreenshotHistory() {
       const payload = await fetch('/api/screenshots?limit=12', { cache: 'no-store' }).then((response) => response.json());
-      screenshotStatus.textContent = payload.count + '/' + payload.limit + ' raw game screenshot(s)';
+      screenshotStatus.textContent = payload.count + '/' + payload.limit + ' raw screenshot(s)';
       screenshotGrid.textContent = '';
       if (!payload.screenshots || payload.screenshots.length === 0) {
         const empty = document.createElement('div');
@@ -436,17 +640,14 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
         card.appendChild(img);
         const meta = document.createElement('div');
         meta.className = 'meta';
-        text(meta, screenshot.fileName);
-        meta.appendChild(document.createElement('br'));
-        text(meta, 'step ' + (screenshot.step ?? '?') + ' · ' + screenshot.bytes + ' bytes');
+        text(meta, screenshot.fileName + '\\nstep ' + value(screenshot.step));
         card.appendChild(meta);
         screenshotGrid.appendChild(card);
       }
     }
 
     async function refreshEvents() {
-      const payload = await fetch('/api/events?limit=100', { cache: 'no-store' }).then((response) => response.json());
-      eventStatus.textContent = payload.count + '/' + payload.limit + ' latest event(s)';
+      const payload = await fetch('/api/events?limit=80', { cache: 'no-store' }).then((response) => response.json());
       eventList.textContent = '';
       if (!payload.events || payload.events.length === 0) {
         const empty = document.createElement('div');
@@ -455,7 +656,6 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
         eventList.appendChild(empty);
         return;
       }
-
       for (const event of payload.events) {
         const item = document.createElement('article');
         item.className = 'event-item';
@@ -467,28 +667,190 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     async function refreshRunSummary() {
       const summary = await fetch('/api/run-summary', { cache: 'no-store' }).then((response) => response.json());
       summaryStatus.textContent = summary.status ?? 'unknown';
+      summaryStatus.className = 'value ' + ((summary.status ?? '').startsWith('failed') ? 'bad' : '');
       const counts = summary.counts ?? {};
-      summaryProgress.textContent = 'steps ' + (summary.totalSteps ?? '?') + ' · decisions ' + (counts.decisions ?? 0) + ' · errors ' + (counts.errors ?? 0);
+      summaryProgress.textContent = 'steps ' + value(summary.totalSteps) + ' · decisions ' + (counts.decisions ?? 0) + ' · errors ' + (counts.errors ?? 0);
       summaryPlayer.textContent = summary.lastAction
         ? summarizeAction({ parsedDecision: { action: summary.lastAction.action } }) + ' · ' + (summary.lastAction.rationale ?? 'no rationale')
         : 'No player action yet';
     }
 
+    function renderPrettyState(snapshot, state) {
+      statePretty.textContent = '';
+      const block = document.createElement('div');
+      block.className = 'kv-grid';
+      const entries = stateEntries(snapshot, state);
+      for (const entry of entries) {
+        const item = document.createElement('div');
+        item.className = 'kv';
+        const label = document.createElement('b');
+        label.textContent = entry[0];
+        const span = document.createElement('span');
+        span.textContent = entry[1];
+        item.appendChild(label);
+        item.appendChild(span);
+        block.appendChild(item);
+      }
+      statePretty.appendChild(block);
+      const dialog = dialogText(state);
+      if (dialog) {
+        const pre = document.createElement('pre');
+        pre.className = 'mono-block';
+        pre.textContent = 'Dialog/text\\n' + dialog;
+        statePretty.appendChild(pre);
+      }
+    }
+
+    function updateStateCards(snapshot, state) {
+      const mapId = state?.map?.mapId ?? state?.coordinates?.mapId ?? state?.wCurMap ?? state?.mapId;
+      const mapName = state?.map?.mapName;
+      const y = state?.player?.position?.y ?? state?.coordinates?.y ?? state?.wYCoord ?? state?.y;
+      const x = state?.player?.position?.x ?? state?.coordinates?.x ?? state?.wXCoord ?? state?.x;
+      const facing = state?.player?.facing?.direction ?? state?.playerFacing?.direction ?? state?.playerFacingDirection;
+      const partyCount = state?.party?.count ?? state?.wPartyCount ?? state?.partyCount;
+      const hp = state?.party?.firstPokemonHp ?? {};
+      const lead = Array.isArray(state?.party?.members) ? state.party.members[0] : undefined;
+      const badgeCount = state?.player?.badges?.count ?? state?.badges?.count ?? state?.badgeCount;
+      const battle = state?.battle?.inBattle ?? state?.battle?.kind ?? state?.wIsInBattle;
+      const dialog = dialogText(state);
+      summaryMap.textContent = (mapName ? mapName + ' ' : '') + 'map ' + value(mapId) + ' · y' + value(y) + ' x' + value(x);
+      summaryParty.textContent = lead
+        ? partyCount + '/6 · ' + lead.nickname + ' Lv' + lead.level + ' HP ' + lead.hp + '/' + lead.maxHp
+        : value(partyCount, 0) + '/6 · lead HP ' + value(hp.current ?? state?.wPartyMon1HP) + '/' + value(hp.max ?? state?.wPartyMon1MaxHP);
+      screenLocation.textContent = '';
+      for (const chip of [
+        'map ' + value(mapId),
+        'y' + value(y) + ' x' + value(x),
+        'facing ' + value(facing),
+        'badges ' + value(badgeCount, 0),
+        'battle ' + value(battle)
+      ]) {
+        const node = document.createElement('span');
+        node.className = 'chip';
+        node.textContent = chip;
+        screenLocation.appendChild(node);
+      }
+      screenDialog.textContent = dialog || 'No active dialog/text detected.';
+    }
+
+    function stateEntries(snapshot, state) {
+      const mapId = state?.map?.mapId ?? state?.coordinates?.mapId ?? state?.wCurMap ?? state?.mapId;
+      const mapName = state?.map?.mapName;
+      const y = state?.player?.position?.y ?? state?.coordinates?.y ?? state?.wYCoord ?? state?.y;
+      const x = state?.player?.position?.x ?? state?.coordinates?.x ?? state?.wXCoord ?? state?.x;
+      const facing = state?.player?.facing?.direction ?? state?.playerFacing?.direction ?? state?.playerFacingDirection;
+      const badges = state?.player?.badges?.names?.join(', ') || state?.badges?.names?.join(', ') || 'none';
+      const badgeCount = state?.player?.badges?.count ?? state?.badges?.count ?? state?.badgeCount ?? 0;
+      const battleKind = state?.battle?.type ?? state?.battle?.kind ?? state?.battleState?.flag?.kind ?? (state?.wIsInBattle ? 'battle' : 'none');
+      const partyCount = state?.party?.count ?? state?.wPartyCount ?? state?.partyCount;
+      const hp = state?.party?.firstPokemonHp ?? {};
+      const lead = Array.isArray(state?.party?.members) ? state.party.members[0] : undefined;
+      const dialog = state?.dialog?.active ?? state?.textActive ?? Boolean(dialogText(state));
+      return [
+        ['Snapshot', 'step ' + value(snapshot.state?.step ?? snapshot.step) + ' · frame ' + value(snapshot.state?.frame ?? snapshot.frame)],
+        ['Location', (mapName ? mapName + ' · ' : '') + 'map ' + value(mapId) + ' · y=' + value(y) + ' x=' + value(x) + ' · ' + value(facing)],
+        ['Progress', 'badges ' + badgeCount + ' (' + badges + ') · Hall of Fame ' + boolText(Boolean(state?.hallOfFameComplete))],
+        ['Party', lead ? lead.nickname + ' ' + lead.species + ' Lv' + lead.level + ' HP ' + lead.hp + '/' + lead.maxHp : value(partyCount, 0) + '/6 · lead HP ' + value(hp.current ?? state?.wPartyMon1HP) + '/' + value(hp.max ?? state?.wPartyMon1MaxHP)],
+        ['Battle', battleKind + (state?.battle?.enemy ? ' · enemy ' + state.battle.enemy.species + ' Lv' + state.battle.enemy.level : '')],
+        ['Dialog/menu', 'active ' + boolText(Boolean(dialog)) + ' · textBox ' + value(state?.dialog?.textBoxId ?? state?.textBoxId ?? state?.wTextBoxID) + ' · menu ' + value(state?.menuText?.currentMenuItem ?? state?.menuItem)]
+      ];
+    }
+
+    function unwrapState(snapshot) {
+      return snapshot?.state?.state ?? snapshot?.state ?? snapshot;
+    }
+
+    function dialogText(state) {
+      return state?.menuText?.screenText || state?.screenText || '';
+    }
+
     function formatEvent(event) {
-      const header = '[' + (event.sequence ?? '-') + '] ' + event.type + ' · ' + event.timestamp;
-      return header + '\\n' + JSON.stringify(event.payload ?? {}, null, 2);
+      const header = '[' + (event.sequence ?? '-') + '] ' + event.type + ' · ' + (event.timestamp ?? '');
+      return header + '\\n' + compactJson(event.payload ?? {});
+    }
+
+    function renderSelectedConversation() {
+      if (!latestConversation) {
+        llmConversation.textContent = 'No LLM conversation recorded yet.';
+        return;
+      }
+      if (selectedLlmTab === 'overview') llmConversation.innerHTML = formatConversationOverview(latestConversation);
+      else llmConversation.textContent = formatConversationTab(latestConversation, selectedLlmTab);
+    }
+
+    function formatConversationOverview(conversation) {
+      const decision = conversation.parsedDecision;
+      const error = conversation.error;
+      const lines = [];
+      lines.push('<div class="decision-card">');
+      lines.push('<div><span class="label">Model</span><div class="value">' + escapeHtml(value(conversation.model)) + ' · call ' + escapeHtml(value(conversation.call)) + ' · ' + escapeHtml(value(conversation.harnessMode)) + '</div></div>');
+      if (decision) {
+        lines.push('<div><span class="label">Action</span><div class="value">' + escapeHtml(summarizeAction({ parsedDecision: decision })) + '</div></div>');
+        lines.push('<div><span class="label">Rationale</span><div class="value muted">' + escapeHtml(value(decision.rationale)) + '</div></div>');
+        lines.push('<div><span class="label">Confidence</span><div class="value">' + escapeHtml(value(decision.confidence)) + '</div></div>');
+      } else if (error) {
+        lines.push('<div><span class="label">Error</span><div class="value bad">' + escapeHtml(error.code + ': ' + error.message) + '</div></div>');
+      } else {
+        lines.push('<div><span class="label">Status</span><div class="value muted">No parsed decision yet</div></div>');
+      }
+      lines.push('</div>');
+      lines.push('<pre class="mono-block">' + escapeHtml(formatConversationTab(conversation, 'state')) + '</pre>');
+      return lines.join('');
+    }
+
+    function formatConversationTab(conversation, tab) {
+      const messages = conversation.messages ?? [];
+      const system = messages.filter((message) => message.role === 'system').map(messageText).join('\\n\\n');
+      const user = messages.filter((message) => message.role === 'user').map(messageText).join('\\n\\n');
+      if (tab === 'system') return system || 'No system prompt recorded.';
+      if (tab === 'state') return extractStateContext(user);
+      if (tab === 'user') return user || 'No user prompt recorded.';
+      if (tab === 'raw') {
+        return [
+          '[RAW RESPONSE]', conversation.responseContent ?? 'No raw response recorded.',
+          '',
+          '[ERROR]', conversation.error ? compactJson(conversation.error) : 'none',
+          '',
+          '[FULL TRACE]', compactJson(conversation)
+        ].join('\\n');
+      }
+      return formatConversation(conversation);
+    }
+
+    function messageText(message) {
+      if (typeof message.content === 'string') return message.content;
+      const chunks = [];
+      for (const part of message.content ?? []) {
+        if (part.type === 'text') chunks.push(part.text);
+        if (part.type === 'image_url') chunks.push('[image input omitted from dashboard log' + (part.image_url?.detail ? ' detail=' + part.image_url.detail : '') + ']');
+      }
+      return chunks.join('\\n');
+    }
+
+    function extractStateContext(userText) {
+      if (!userText) return 'No state context recorded.';
+      const start = userText.indexOf('Objective:');
+      const fallbackStart = userText.indexOf('Progress:');
+      const actualStart = start >= 0 ? start : Math.max(0, fallbackStart);
+      const markers = ['Recent actions summary:', 'Current map (ASCII grid', 'Rules:', 'Output schema:'];
+      let end = userText.length;
+      for (const marker of markers) {
+        const index = userText.indexOf(marker, actualStart);
+        if (index >= 0) end = Math.min(end, index);
+      }
+      return userText.slice(actualStart, end).trim() || userText;
     }
 
     function formatConversation(conversation) {
       const sections = [];
-      sections.push('MODEL: ' + (conversation.model ?? '?') + ' | MODE: ' + (conversation.harnessMode ?? '?'));
+      sections.push('MODEL: ' + value(conversation.model) + ' | MODE: ' + value(conversation.harnessMode) + ' | CALL: ' + value(conversation.call));
       if (conversation.parsedDecision !== undefined) {
         sections.push('\\n[DECISION]');
         sections.push(formatDecision(conversation.parsedDecision));
       }
-      if (conversation.error !== undefined) {
+      if (conversation.error !== undefined && conversation.error !== null) {
         sections.push('\\n[ERROR]');
-        sections.push(JSON.stringify(conversation.error, null, 2));
+        sections.push(compactJson(conversation.error));
       }
       if (conversation.responseContent !== undefined) {
         sections.push('\\n[RAW RESPONSE]');
@@ -497,30 +859,20 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       sections.push('\\n[PROMPT / INJECTED LLM CONTEXT]');
       for (const message of conversation.messages ?? []) {
         sections.push('\\n[' + String(message.role).toUpperCase() + ']');
-        if (typeof message.content === 'string') {
-          sections.push(message.content);
-        } else {
-          for (const part of message.content ?? []) {
-            if (part.type === 'text') sections.push(part.text);
-            if (part.type === 'image_url') {
-              const detail = part.image_url?.detail ? ' detail=' + part.image_url.detail : '';
-              sections.push('[image input omitted from dashboard log' + detail + ']');
-            }
-          }
-        }
+        sections.push(messageText(message));
       }
       return sections.join('\\n');
     }
 
     function formatStateSnapshot(snapshot) {
-      const state = snapshot.state?.state ?? snapshot.state;
+      const state = unwrapState(snapshot);
       const lines = [
         'file: ' + snapshot.fileName,
-        'step: ' + (snapshot.state?.step ?? snapshot.step ?? '?'),
-        'frame: ' + (snapshot.state?.frame ?? snapshot.frame ?? '?'),
-        'stateHash: ' + (snapshot.state?.stateHash ?? snapshot.stateHash ?? '?'),
+        'step: ' + value(snapshot.state?.step ?? snapshot.step),
+        'frame: ' + value(snapshot.state?.frame ?? snapshot.frame),
+        'stateHash: ' + value(snapshot.state?.stateHash ?? snapshot.stateHash),
         '',
-        JSON.stringify(state ?? snapshot, null, 2)
+        compactJson(state ?? snapshot)
       ];
       return lines.join('\\n');
     }
@@ -536,6 +888,12 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       return action.type + ' ' + action.button + ' ' + action.frames;
     }
 
+    function conversationStatus(conversation) {
+      if (conversation.error) return 'error ' + conversation.error.code;
+      if (conversation.parsedDecision) return 'decision ok';
+      return 'pending';
+    }
+
     function formatDecision(decision) {
       return [
         'action: ' + summarizeAction({ parsedDecision: decision }),
@@ -543,6 +901,14 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
         'rationale: ' + decision.rationale,
         'citations: ' + (decision.observedStateCitations ?? []).join(', ')
       ].join('\\n');
+    }
+
+    function escapeHtml(input) {
+      return String(input)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;');
     }
 
     async function tick() {
@@ -555,6 +921,7 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
         refreshEvents(),
         refreshRunSummary()
       ]);
+      setRefreshLabel();
     }
 
     setInterval(tick, 1000);
