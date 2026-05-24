@@ -577,18 +577,74 @@ function buildMapSection(input: PolicyInput): string[] {
     const px = (state as Record<string, unknown> | undefined)?.wXCoord as number | undefined;
 
     if (py !== undefined && px !== undefined) {
-      const nearby: string[] = [];
-      for (const [dy, dx, dir] of [[- 1, 0, "Up"], [1, 0, "Down"], [0, -1, "Left"], [0, 1, "Right"]] as const) {
-        const ny = py + dy;
-        const nx = px + dx;
-        const passable = ny >= 0 && ny < height && nx >= 0 && nx < width && grid[ny][nx];
-        nearby.push(`${dir}:${passable ? "open" : "blocked"}`);
+      const asciiGrid = parsePromptAsciiGrid(input.mapAscii);
+      if (asciiGrid !== undefined) {
+        lines.push(`Adjacent tiles: ${formatAsciiAdjacentTiles(asciiGrid, px, py)}`);
+      } else if (!isWithinWalkGrid(px, py, width, height)) {
+        lines.push("Adjacent tiles: unknown (player position is outside current map-memory bounds; rely on screenshot/live state instead of treating directions as blocked).");
+      } else {
+        const nearby: string[] = [];
+        for (const [dy, dx, dir] of [[- 1, 0, "Up"], [1, 0, "Down"], [0, -1, "Left"], [0, 1, "Right"]] as const) {
+          const ny = py + dy;
+          const nx = px + dx;
+          nearby.push(`${dir}:${walkGridTileStatus(grid, nx, ny, width, height)}`);
+        }
+        lines.push(`Adjacent tiles: ${nearby.join(", ")}`);
       }
-      lines.push(`Adjacent tiles: ${nearby.join(", ")}`);
     }
   }
 
   return lines;
+}
+
+
+function formatAsciiAdjacentTiles(grid: string[][], x: number, y: number): string {
+  if (asciiTileAt(grid, x, y) === undefined) {
+    return "unknown (player position is outside current map-memory bounds; rely on screenshot/live state instead of treating directions as blocked)";
+  }
+
+  return [
+    ["Up", x, y - 1],
+    ["Down", x, y + 1],
+    ["Left", x - 1, y],
+    ["Right", x + 1, y]
+  ].map(([direction, tileX, tileY]) => `${direction}:${asciiTileStatus(grid, Number(tileX), Number(tileY))}`).join(", ");
+}
+
+function parsePromptAsciiGrid(mapAscii?: string): string[][] | undefined {
+  if (mapAscii === undefined || mapAscii.trim().length === 0) {
+    return undefined;
+  }
+
+  const rows = mapAscii
+    .split("\n")
+    .map((line) => line.match(/^\s*\d+\s+([.#"?@NW]+)\s*$/)?.[1])
+    .filter((row): row is string => row !== undefined);
+
+  return rows.length > 0 ? rows.map((line) => [...line]) : undefined;
+}
+
+function asciiTileStatus(grid: string[][], x: number, y: number): "open" | "blocked" | "unknown" {
+  const tile = asciiTileAt(grid, x, y);
+  if (tile === undefined || tile === "?") {
+    return "unknown";
+  }
+  return ["#", "N"].includes(tile) ? "blocked" : "open";
+}
+
+function asciiTileAt(grid: string[][], x: number, y: number): string | undefined {
+  return grid[y]?.[x];
+}
+
+function walkGridTileStatus(grid: boolean[][], x: number, y: number, width: number, height: number): "open" | "unknown" {
+  if (!isWithinWalkGrid(x, y, width, height)) {
+    return "unknown";
+  }
+  return grid[y]?.[x] === true ? "open" : "unknown";
+}
+
+function isWithinWalkGrid(x: number, y: number, width: number, height: number): boolean {
+  return y >= 0 && y < height && x >= 0 && x < width;
 }
 
 function outputContract(): string {

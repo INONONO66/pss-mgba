@@ -118,12 +118,16 @@ function formatAdjacentTiles(state: FullGameState, mapAscii?: string): string {
 
   const y = state.player.position.y;
   const x = state.player.position.x;
+  if (tileAt(grid, y, x) === undefined) {
+    return "unknown (player position is outside current map-memory bounds)";
+  }
+
   return [
     ["Up", y - 1, x],
     ["Down", y + 1, x],
     ["Left", y, x - 1],
     ["Right", y, x + 1]
-  ].map(([direction, tileY, tileX]) => `${direction}:${isOpen(grid, Number(tileY), Number(tileX)) ? "open" : "blocked"}`).join(", ");
+  ].map(([direction, tileY, tileX]) => `${direction}:${tileStatus(grid, Number(tileY), Number(tileX))}`).join(", ");
 }
 
 function parseAsciiGrid(mapAscii?: string): string[][] | undefined {
@@ -143,9 +147,16 @@ function parseAsciiGrid(mapAscii?: string): string[][] | undefined {
   return mapAscii.split("\n").map((line) => [...line]);
 }
 
-function isOpen(grid: string[][], y: number, x: number): boolean {
-  const tile = grid[y]?.[x];
-  return tile !== undefined && !["#", "N", "?"].includes(tile);
+function tileStatus(grid: string[][], y: number, x: number): "open" | "blocked" | "unknown" {
+  const tile = tileAt(grid, y, x);
+  if (tile === undefined || tile === "?") {
+    return "unknown";
+  }
+  return ["#", "N"].includes(tile) ? "blocked" : "open";
+}
+
+function tileAt(grid: string[][], y: number, x: number): string | undefined {
+  return grid[y]?.[x];
 }
 
 function yesNo(value: boolean): "yes" | "no" {

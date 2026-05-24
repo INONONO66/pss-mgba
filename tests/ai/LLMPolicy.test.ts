@@ -359,6 +359,59 @@ describe("LLMPolicy", () => {
     expect(prompt.indexOf("Recent observed state summary")).toBeLessThan(prompt.indexOf("Recent actions summary"));
   });
 
+  it("marks map adjacency unknown when player coordinates exceed current map memory", async () => {
+    const requests: ChatCompletionRequest[] = [];
+    const client = fakeClient(async (request) => {
+      requests.push(request);
+      return JSON.stringify(validDecision);
+    });
+    const policy = createPolicy({ client, harnessMode: "full-game" });
+
+    await expect(policy.chooseAction({
+      ...policyInput,
+      state: { wCurMap: 40, wYCoord: 9, wXCoord: 4, playerFacingDirection: "down" },
+      mapAscii: [
+        "   01234",
+        " 0 ?????",
+        " 1 ?????",
+        " 2 ?????",
+        " 3 ?????",
+        " 4 ?????",
+        " 5 ....."
+      ].join("\n"),
+      walkGrid: { width: 5, height: 6, grid: Array.from({ length: 6 }, () => Array.from({ length: 5 }, () => false)) }
+    })).resolves.toEqual(validDecision);
+
+    const prompt = getUserText(requests[0]);
+    expect(prompt).toContain("Adjacent tiles: unknown (player position is outside current map-memory bounds");
+    expect(prompt).not.toContain("Adjacent tiles: Up:blocked, Down:blocked, Left:blocked, Right:blocked");
+  });
+
+  it("marks in-bounds unseen map cells unknown instead of blocked in the prompt", async () => {
+    const requests: ChatCompletionRequest[] = [];
+    const client = fakeClient(async (request) => {
+      requests.push(request);
+      return JSON.stringify(validDecision);
+    });
+    const policy = createPolicy({ client, harnessMode: "full-game" });
+
+    await expect(policy.chooseAction({
+      ...policyInput,
+      state: { wCurMap: 40, wYCoord: 1, wXCoord: 1, playerFacingDirection: "down" },
+      mapAscii: [
+        "   012",
+        " 0 ???",
+        " 1 ?@.",
+        " 2 ?#N"
+      ].join("\n"),
+      walkGrid: { width: 3, height: 3, grid: Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => false)) }
+    })).resolves.toEqual(validDecision);
+
+    const prompt = getUserText(requests[0]);
+    expect(prompt).toContain("Adjacent tiles: Up:unknown, Down:blocked, Left:unknown, Right:open");
+    expect(prompt).not.toContain("Adjacent tiles: Up:blocked, Down:blocked, Left:blocked, Right:blocked");
+  });
+
   it("does not emit loop signal when recent observations and actions are changing", async () => {
     const requests: ChatCompletionRequest[] = [];
     const client = fakeClient(async (request) => {

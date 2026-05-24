@@ -15,6 +15,34 @@ describe("buildStateSummary", () => {
 
     expect(summary).toContain("Adjacent tiles: Up:blocked, Down:open, Left:blocked, Right:open");
   });
+  it("does not report every direction blocked when the player is outside current map memory", () => {
+    const summary = buildStateSummary(stateAt(9, 4), [
+      "   01234",
+      " 0 ?????",
+      " 1 ?????",
+      " 2 ?????",
+      " 3 ?????",
+      " 4 ?????",
+      " 5 .....",
+      "",
+      "  Legend: .=walkable #=wall grass ?=unknown @=player N=NPC"
+    ].join("\n"));
+
+    expect(summary).toContain("Adjacent tiles: unknown (player position is outside current map-memory bounds)");
+    expect(summary).not.toContain("Adjacent tiles: Up:blocked, Down:blocked, Left:blocked, Right:blocked");
+  });
+
+  it("reports unknown rather than blocked for unseen adjacent map cells", () => {
+    const summary = buildStateSummary(stateAt(1, 1), [
+      "   012",
+      " 0 ???",
+      " 1 ?@.",
+      " 2 ?#N"
+    ].join("\n"));
+
+    expect(summary).toContain("Adjacent tiles: Up:unknown, Down:blocked, Left:unknown, Right:open");
+  });
+
   it("uses explicit max PP when formatting damaged moves", () => {
     const damagedMoveState: FullGameState = {
       ...stateAt(1, 1),
