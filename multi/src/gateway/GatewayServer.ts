@@ -30,8 +30,9 @@ export function createGatewayServer(
     (c) => c.html('<html><body><h1>mGBA Gateway Dashboard</h1><p>Coming soon...</p></body></html>'),
   )
 
-  app.route('/api/v1/:token', createApiRouter(registry))
   app.route('/admin', createAdminRouter(config, registry, instanceManager))
+  app.route('/api/v1/:token', createApiRouter(registry))
+  app.route('/', createApiRouter(registry, { fallbackToSingleInstance: true }))
 
   const httpServer = createServer(getRequestListener(app.fetch))
   const wss = new WebSocketServer({ server: httpServer })

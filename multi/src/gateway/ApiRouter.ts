@@ -13,6 +13,10 @@ export interface InstanceEntry {
 
 export type InstanceRegistry = Map<string, InstanceEntry>
 
+interface ApiRouterOptions {
+  fallbackToSingleInstance?: boolean
+}
+
 interface ApiVariables {
   entry: InstanceEntry
 }
@@ -23,12 +27,19 @@ interface ApiEnv {
 
 const CAPTURE_PATH = '/tmp/capture.png'
 
-export function createApiRouter(registry: InstanceRegistry): Hono<ApiEnv> {
+export function createApiRouter(registry: InstanceRegistry, options: ApiRouterOptions = {}): Hono<ApiEnv> {
   const app = new Hono<ApiEnv>()
 
   app.use('*', async (c, next) => {
     const token = c.req.param('token')
     if (token === undefined) {
+      if (options.fallbackToSingleInstance && registry.size === 1) {
+        const [entry] = registry.values()
+        c.set('entry', entry)
+        await next()
+        return
+      }
+
       return c.text('Unauthorized', 401)
     }
 
