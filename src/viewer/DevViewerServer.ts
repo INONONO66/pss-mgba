@@ -102,6 +102,13 @@ export function createDevViewerServer(options: DevViewerServerOptions): Server {
         return;
       }
 
+      if (requestUrl.pathname === "/api/run-summary") {
+        const summary = await readRunSummary(paths.summaryFile, paths.eventsFile, options.runId);
+        response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        response.end(JSON.stringify(summary));
+        return;
+      }
+
       if (requestUrl.pathname.startsWith("/vision/")) {
         const fileName = decodeURIComponent(requestUrl.pathname.slice("/vision/".length));
         const contentType = isSafeVisionFileName(fileName) ? visionImageContentType(fileName) : undefined;
@@ -168,6 +175,10 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     h1, h2 { margin: 0; font-size: var(--text-title); font-weight: 600; letter-spacing: -0.02em; }
     p { margin: var(--space-2) 0 0; color: var(--color-muted); font-size: var(--text-label); line-height: 1.35; }
     code { color: var(--color-text); font-family: inherit; }
+    .summary-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-3); }
+    .summary-card { border: var(--line-thin); background: var(--color-surface); padding: var(--space-3); min-height: 68px; }
+    .summary-label { color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; }
+    .summary-value { margin-top: 6px; color: var(--color-text); font-size: 14px; line-height: 1.3; word-break: break-word; }
     .layout { display: grid; grid-template-columns: minmax(320px, 2fr) minmax(220px, 1fr); gap: var(--space-3); align-items: stretch; }
     .conversation-panel { margin-top: var(--space-3); border: var(--line-thin); background: var(--color-surface); min-height: 340px; max-height: 58vh; display: grid; grid-template-columns: 220px minmax(0, 1fr); overflow: hidden; }
     .event-panel { margin-top: var(--space-3); border: var(--line-thin); background: var(--color-surface); max-height: 260px; overflow: auto; }
@@ -193,11 +204,17 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     .vision-cell img { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; background: var(--color-surface); }
     .meta { color: var(--color-muted); font-size: var(--text-label); line-height: 1.4; word-break: break-word; }
     .empty { box-sizing: border-box; display: grid; grid-column: 1 / -1; grid-row: 1 / -1; height: 100%; place-items: center; padding: var(--space-5); color: var(--color-muted); font-size: var(--text-label); text-align: center; }
-    @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } .vision-wall { aspect-ratio: 3 / 1; } .vision-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: 1fr; } .vision-cell { border-top: 0; border-left: var(--line-thin); } .vision-cell:first-child { border-left: 0; } .conversation-panel { grid-template-columns: 1fr; max-height: none; } .history-rail { border-right: 0; border-bottom: var(--line-thin); max-height: 130px; } }
+    @media (max-width: 800px) { .summary-strip, .layout { grid-template-columns: 1fr; } .vision-wall { aspect-ratio: 3 / 1; } .vision-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: 1fr; } .vision-cell { border-top: 0; border-left: var(--line-thin); } .vision-cell:first-child { border-left: 0; } .conversation-panel { grid-template-columns: 1fr; max-height: none; } .history-rail { border-right: 0; border-bottom: var(--line-thin); max-height: 130px; } }
   </style>
 </head>
 <body>
   <main>
+    <section class="summary-strip" aria-label="Run summary">
+      <article class="summary-card"><div class="summary-label">Run</div><div id="summary-run" class="summary-value">${escapeHtml(runId)}</div></article>
+      <article class="summary-card"><div class="summary-label">Status</div><div id="summary-status" class="summary-value">Loading...</div></article>
+      <article class="summary-card"><div class="summary-label">Progress</div><div id="summary-progress" class="summary-value">Waiting...</div></article>
+      <article class="summary-card"><div class="summary-label">Supervisor</div><div id="summary-supervisor" class="summary-value">Waiting...</div></article>
+    </section>
     <div class="layout">
       <section class="image-cell">
         <div class="overlay overlay-top">
@@ -247,6 +264,9 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     const llmHistory = document.getElementById('llm-history');
     const eventStatus = document.getElementById('event-status');
     const eventList = document.getElementById('event-list');
+    const summaryStatus = document.getElementById('summary-status');
+    const summaryProgress = document.getElementById('summary-progress');
+    const summarySupervisor = document.getElementById('summary-supervisor');
     let selectedConversationFile = null;
 
     function text(node, value) { node.appendChild(document.createTextNode(value)); }
@@ -329,6 +349,17 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       }
     }
 
+    async function refreshRunSummary() {
+      const summary = await fetch('/api/run-summary', { cache: 'no-store' }).then((response) => response.json());
+      summaryStatus.textContent = summary.status ?? 'unknown';
+      const counts = summary.counts ?? {};
+      summaryProgress.textContent = 'steps ' + (summary.totalSteps ?? '?') + ' · decisions ' + (counts.decisions ?? 0) + ' · errors ' + (counts.errors ?? 0);
+      const supervisor = summary.latestSupervisor;
+      summarySupervisor.textContent = supervisor?.activeGoal?.title
+        ? supervisor.activeGoal.title + ' · ' + (supervisor.state ?? 'unknown')
+        : 'No supervisor decision yet';
+    }
+
     function formatEvent(event) {
       const header = '[' + (event.sequence ?? '-') + '] ' + event.type + ' · ' + event.timestamp;
       const supervisor = event.payload?.supervisor;
@@ -397,7 +428,7 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     }
 
     async function tick() {
-      await Promise.allSettled([refreshLiveFrame(), refreshVisionImages(), refreshLlmConversation(), refreshEvents()]);
+      await Promise.allSettled([refreshLiveFrame(), refreshVisionImages(), refreshLlmConversation(), refreshEvents(), refreshRunSummary()]);
     }
 
     setInterval(tick, 1000);
@@ -468,6 +499,68 @@ async function listLatestEvents(file: string, limit: number): Promise<Array<Reco
   }
 
   return events;
+}
+
+async function readRunSummary(summaryFile: string, eventsFile: string, runId: string): Promise<Record<string, unknown>> {
+  const [summary, latestEvents] = await Promise.all([
+    readJsonRecord(summaryFile),
+    listLatestEvents(eventsFile, 20),
+  ]);
+  const result = isRecord(summary?.result) ? summary.result : undefined;
+  const latestSupervisor = latestEvents
+    .map((event) => isRecord(event.payload) ? event.payload.supervisor : undefined)
+    .find(isRecord);
+
+  return {
+    runId,
+    status: stringField(summary?.status) ?? stringField(result?.status) ?? "running",
+    startedAt: stringField(summary?.startedAt),
+    finishedAt: stringField(summary?.finishedAt),
+    totalSteps: numberField(result?.totalSteps),
+    finalFrame: numberField(result?.finalFrame),
+    counts: isRecord(summary?.counts) ? summary.counts : undefined,
+    detectorStatus: isRecord(result?.detector) ? {
+      status: stringField(result.detector.status),
+      progressStep: numberField(result.detector.progressStep),
+      lastProgressStep: numberField(result.detector.lastProgressStep),
+    } : undefined,
+    latestSupervisor,
+    lastAction: summarizeLastAction(result?.last20Actions),
+  };
+}
+
+async function readJsonRecord(file: string): Promise<Record<string, unknown> | undefined> {
+  try {
+    const parsed = JSON.parse(await readFile(file, "utf8")) as unknown;
+    const sanitized = sanitizeConversationForDashboard(parsed);
+    return isRecord(sanitized) ? sanitized : undefined;
+  } catch (error) {
+    if (isNotFound(error)) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+function summarizeLastAction(value: unknown): unknown {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  const last = value[value.length - 1];
+  if (!isRecord(last)) return undefined;
+  return {
+    step: numberField(last.step),
+    frame: numberField(last.frame),
+    action: last.action,
+    confidence: numberField(last.confidence),
+    rationale: stringField(last.rationale),
+  };
+}
+
+function stringField(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function numberField(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function sanitizeConversationForDashboard(value: unknown): unknown {
