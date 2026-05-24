@@ -92,8 +92,11 @@ export class CommandHarnessRunner {
       this.updateExecutionContext(state);
 
       if (state.mode === "dialog" && !(await this.isDialogDecisionNeeded())) {
-        console.log(`[auto-advance] dialog detected, pressing A...`);
-        await this.autoAdvanceDialog();
+        console.log(`[auto-advance] dialog detected at loop start, pressing A...`);
+        const texts = await this.autoAdvanceDialog();
+        if (texts.length > 0) {
+          this.lastResult = { status: "success", reason: "dialog_ended", details: `Dialog: ${texts.join(" | ")}` };
+        }
         continue;
       }
 
@@ -103,6 +106,16 @@ export class CommandHarnessRunner {
       const commandStatus = await this.chooseAndExecute(state);
       if (commandStatus !== "running") {
         return this.result(commandStatus, startedAt);
+      }
+
+      const postState = await this.options.readGameState();
+      this.updateExecutionContext(postState);
+      if (postState.mode === "dialog" && !(await this.isDialogDecisionNeeded())) {
+        console.log(`[auto-advance] dialog detected after command, pressing A...`);
+        const texts = await this.autoAdvanceDialog();
+        if (texts.length > 0) {
+          this.lastResult = { status: "success", reason: "dialog_ended", details: `Dialog: ${texts.join(" | ")}` };
+        }
       }
 
       const detectorStatus = this.options.detector.update(state.fullState as unknown as Record<string, unknown>, undefined, this.step as FrameNumber);
@@ -170,18 +183,37 @@ export class CommandHarnessRunner {
     }
   }
 
-  private async autoAdvanceDialog(): Promise<void> {
+  private async autoAdvanceDialog(): Promise<string[]> {
+    const collectedTexts: string[] = [];
     for (let press = 0; press < AUTO_ADVANCE_LIMIT; press += 1) {
+      const preText = await this.options.executionContext.dialogStateReader.readScreenText();
+      if (preText.trim().length > 0 && !collectedTexts.includes(preText.trim())) {
+        collectedTexts.push(preText.trim());
+      }
+
       await this.options.executionContext.controller.pressButton("A", AUTO_ADVANCE_FRAMES);
       await this.options.onAutoAdvance?.(this.step);
       await this.sleep(AUTO_ADVANCE_DELAY_MS);
 
       const state = await this.options.readGameState();
       this.updateExecutionContext(state);
-      if (state.mode !== "dialog" || state.fullState.dialog.textBoxId === 0 || await this.isDialogDecisionNeeded()) {
-        return;
+
+      if (await this.isDialogDecisionNeeded()) {
+        const choiceText = await this.options.executionContext.dialogStateReader.readScreenText();
+        if (choiceText.trim().length > 0 && !collectedTexts.includes(choiceText.trim())) {
+          collectedTexts.push(choiceText.trim());
+        }
+        console.log(`[auto-advance] choice detected after ${press + 1} presses, collected ${collectedTexts.length} text(s)`);
+        return collectedTexts;
+      }
+
+      if (state.mode !== "dialog" && state.fullState.dialog.textBoxId === 0) {
+        console.log(`[auto-advance] dialog ended after ${press + 1} presses, collected ${collectedTexts.length} text(s)`);
+        return collectedTexts;
       }
     }
+    console.log(`[auto-advance] max presses reached, collected ${collectedTexts.length} text(s)`);
+    return collectedTexts;
   }
 
   private async isDialogDecisionNeeded(): Promise<boolean> {
