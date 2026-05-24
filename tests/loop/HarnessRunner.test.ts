@@ -197,6 +197,14 @@ describe("HarnessRunner", () => {
     expect(policyInputs[0]?.fullStateSummary).toContain("GAME STATE");
     expect(policyInputs[0]?.fullStateSummary).toContain("Reds House 2f");
     expect(policyInputs[0]?.fullStateError).toBeUndefined();
+    expect(policyInputs[0]?.supervisorPlan).toMatchObject({
+      version: 1,
+      activeGoal: expect.objectContaining({
+        kind: "advance-story",
+        title: "Obtain the first party Pokemon"
+      })
+    });
+    expect(policyInputs[0]?.supervisorPlan?.guidance.join("\n")).toContain("Current focus");
   });
 
   it("clears stale map context and reports map reader failures", async () => {
