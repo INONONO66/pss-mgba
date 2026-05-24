@@ -40,6 +40,25 @@ export interface ChatCompletionRequest {
   messages: ChatCompletionRequestMessage[];
 }
 
+export interface LLMConversationTrace {
+  readonly call: number;
+  readonly model: string;
+  readonly temperature: number;
+  readonly harnessMode: HarnessMode;
+  readonly messages: readonly SanitizedChatCompletionRequestMessage[];
+  readonly responseContent?: string;
+  readonly parsedDecision?: PolicyDecision;
+  readonly error?: { readonly code: string; readonly message: string };
+}
+
+type SanitizedChatCompletionRequestMessage =
+  | { readonly role: "system"; readonly content: string }
+  | { readonly role: "user"; readonly content: string | SanitizedChatCompletionContentPart[] };
+
+type SanitizedChatCompletionContentPart =
+  | { readonly type: "text"; readonly text: string }
+  | { readonly type: "image_url"; readonly image_url: { readonly url: string; readonly detail?: LlmVisionDetail } };
+
 export interface OpenAIClientOptions {
   apiKey: string;
   baseURL: string;
@@ -62,6 +81,7 @@ export interface LLMPolicyOptions {
   client?: ChatCompletionsClient;
   createClient?: (options: OpenAIClientOptions) => ChatCompletionsClient;
   onFallback?: (error: HarnessError) => void;
+  onConversation?: (conversation: LLMConversationTrace) => void | Promise<void>;
 }
 
 export class LLMPolicy implements Policy {
@@ -74,6 +94,7 @@ export class LLMPolicy implements Policy {
   private readonly visionRequired: boolean;
   private readonly fallbackPolicy: Policy;
   private readonly onFallback?: (error: HarnessError) => void;
+  private readonly onConversation?: (conversation: LLMConversationTrace) => void | Promise<void>;
   private calls = 0;
 
   constructor(options: LLMPolicyOptions) {
@@ -91,9 +112,10 @@ export class LLMPolicy implements Policy {
     this.visionRequired = options.visionRequired ?? false;
     this.fallbackPolicy = options.fallbackPolicy;
     this.onFallback = options.onFallback;
+    this.onConversation = options.onConversation;
   }
 
-  static fromConfig(config: HarnessConfig, fallbackPolicy: Policy, overrides: Partial<Pick<LLMPolicyOptions, "client" | "createClient" | "onFallback">> = {}): LLMPolicy {
+  static fromConfig(config: HarnessConfig, fallbackPolicy: Policy, overrides: Partial<Pick<LLMPolicyOptions, "client" | "createClient" | "onFallback" | "onConversation">> = {}): LLMPolicy {
     const providerOptions = getProviderOptions(config);
 
     return new LLMPolicy({
@@ -130,6 +152,7 @@ export class LLMPolicy implements Policy {
         return this.fallback(input, new HarnessError("LLM_UNAVAILABLE", "LLM vision input is required but no processed vision images were available"));
       }
 
+      const call = this.calls;
       const messages = await buildMessages(input, this.harnessMode, this.visionDetail);
       const completion = await this.client.chat.completions.create({
         model: this.model,
@@ -139,12 +162,26 @@ export class LLMPolicy implements Policy {
       const content = completion.choices[0]?.message?.content;
 
       if (typeof content !== "string" || content.trim().length === 0) {
+        await this.recordConversation({ call, messages, error: new HarnessError("LLM_INVALID_OUTPUT", "LLM response did not include message content") });
         return this.fallback(input, new HarnessError("LLM_INVALID_OUTPUT", "LLM response did not include message content"));
       }
 
-      return parseDecision(content);
+      let decision: PolicyDecision;
+      try {
+        decision = parseDecision(content);
+      } catch (error) {
+        const harnessError = error instanceof HarnessError
+          ? error
+          : new HarnessError("LLM_INVALID_OUTPUT", "LLM response could not be parsed", { cause: error });
+        await this.recordConversation({ call, messages, responseContent: content, error: harnessError });
+        return this.fallback(input, harnessError);
+      }
+      await this.recordConversation({ call, messages, responseContent: content, parsedDecision: decision });
+      return decision;
     } catch (error) {
       if (error instanceof HarnessError) {
+        // If this was thrown after receiving content (e.g. invalid JSON/schema),
+        // the fallback path still captures a concise error through the caller.
         return this.fallback(input, error);
       }
 
@@ -159,6 +196,27 @@ export class LLMPolicy implements Policy {
     this.onFallback?.(error);
     const decision = await this.fallbackPolicy.chooseAction(input);
     return markFallbackDecision(decision, error.code);
+  }
+
+  private async recordConversation(input: {
+    readonly call: number;
+    readonly messages: ChatCompletionRequestMessage[];
+    readonly responseContent?: string;
+    readonly parsedDecision?: PolicyDecision;
+    readonly error?: HarnessError;
+  }): Promise<void> {
+    if (this.onConversation === undefined) return;
+
+    await this.onConversation({
+      call: input.call,
+      model: this.model,
+      temperature: this.temperature,
+      harnessMode: this.harnessMode,
+      messages: sanitizeMessages(input.messages),
+      responseContent: input.responseContent,
+      parsedDecision: input.parsedDecision,
+      ...(input.error !== undefined ? { error: { code: input.error.code, message: input.error.message } } : {})
+    });
   }
 }
 
@@ -183,6 +241,33 @@ function markFallbackDecision(decision: PolicyDecision, code: string): PolicyDec
   };
 
   return PolicyDecisionSchema.parse(markedDecision);
+}
+
+function sanitizeMessages(messages: ChatCompletionRequestMessage[]): SanitizedChatCompletionRequestMessage[] {
+  return messages.map((message) => {
+    if (typeof message.content === "string") {
+      return { role: message.role, content: message.content } as SanitizedChatCompletionRequestMessage;
+    }
+
+    return {
+      role: "user",
+      content: message.content.map((part) => {
+        if (part.type === "text") {
+          return part;
+        }
+
+        const [metadata] = part.image_url.url.split(",", 1);
+        const prefix = metadata?.includes(";base64") === true ? metadata : `${metadata ?? "data:image"};base64`;
+        return {
+          type: "image_url",
+          image_url: {
+            url: `${prefix},[omitted]`,
+            detail: part.image_url.detail
+          }
+        };
+      })
+    };
+  });
 }
 
 function createOpenAIClient(options: OpenAIClientOptions): ChatCompletionsClient {
@@ -220,30 +305,24 @@ async function buildMessages(input: PolicyInput, harnessMode: HarnessMode, defau
 
 function buildStage1UserText(input: PolicyInput): string {
   return [
-    "Role: Pokemon Red/Blue controller for an mGBA harness.",
-    "Stage 1 objective: progress from the Pallet start through Oak/starter flow, starter acquisition, Rival battle entry, and Rival battle exit using only current observed state.",
-    `Current RAM-derived state JSON: ${stableJson(input.currentState ?? input.state)}`,
+    "Task: choose the next safe Game Boy controller action.",
+    "Goal: make forward game progress using only the current observed game state.",
+    ...buildStateContextSection(input),
     `Recent actions summary: ${stableJson(input.recentActions ?? input.recentStates ?? [])}`,
-    stage1RouteFacts(),
-    `Allowed action schema: ${stableJson(createPolicyDecisionJsonSchema())}`,
-    "Anti-hardcoding rule: base each decision on the current state and recent action results only; do not follow or emit a precomputed global input timeline.",
-    "Output only one JSON object matching the allowed policy decision schema. Do not include markdown, comments, or extra text."
+    ...buildMapSection(input),
+    outputContract()
   ].join("\n");
 }
 
 function buildFullGameUserText(input: PolicyInput): string {
   return [
-    "Role: Pokemon Red/Blue controller for an mGBA harness.",
-    "Full-game objective: progress through the game using only current observed state and safe controller inputs.",
-    "Final detector goal: completion can be claimed only when the current observed map is Hall of Fame (map id 0x76) or hallOfFameComplete is true.",
-    "Badges are read-only progress signals only; wObtainedBadges, badgeCount, and badgesObtained are not completion by themselves.",
-    "Do not request or imply memory writes, emulator RAM mutation APIs, ROM-derived assets, map graphics, walkthrough text, or precomputed global input timelines.",
-    "Do not claim route facts alone, Rival battle exit, or all badges as full-game completion without Hall of Fame observation.",
-    `Current RAM-derived state JSON: ${stableJson(input.currentState ?? input.state)}`,
+    "Task: choose the next safe Game Boy controller action.",
+    "Goal: progress through the game autonomously using only observed state and legal inputs.",
+    "Completion rule: only observed Hall of Fame map/state completes the run; badges alone do not.",
+    ...buildStateContextSection(input),
     `Recent actions summary: ${stableJson(input.recentActions ?? input.recentStates ?? [])}`,
-    `Allowed action schema: ${stableJson(createPolicyDecisionJsonSchema())}`,
-    "Anti-hardcoding rule: base each decision on the current state and recent action results only; do not follow or emit a precomputed global input timeline.",
-    "Output only one JSON object matching the allowed policy decision schema. Do not include markdown, comments, or extra text."
+    ...buildMapSection(input),
+    outputContract()
   ].join("\n");
 }
 
@@ -267,22 +346,99 @@ async function buildUserContent(text: string, visionImages: readonly VisionImage
   return parts;
 }
 
-function stage1RouteFacts(): string {
+function buildStateContextSection(input: PolicyInput): string[] {
+  const lines: string[] = [];
+
+  if (input.objective !== undefined) {
+    lines.push(`Objective: ${input.objective}`);
+  }
+
+  if (input.detectorStatus !== undefined) {
+    lines.push(`Progress: ${formatDetectorStatus(input.detectorStatus)}`);
+  }
+
+  if (input.fullStateSummary !== undefined) {
+    lines.push(
+      "Game state:",
+      input.fullStateSummary
+    );
+  } else if (input.fullStateError !== undefined) {
+    lines.push(`Full game state unavailable this step: ${input.fullStateError}`);
+  } else {
+    lines.push(`Fallback RAM state: ${stableJson(input.currentState ?? input.state)}`);
+  }
+
+  return lines;
+}
+
+function formatDetectorStatus(status: unknown): string {
+  if (status === undefined || status === null || typeof status !== "object") {
+    return stableJson(status);
+  }
+
+  const record = status as Record<string, unknown>;
+  return stableJson({
+    status: record.status,
+    checkpoints: record.checkpoints,
+    lastObserved: record.lastObserved
+  });
+}
+
+function buildMapSection(input: PolicyInput): string[] {
+  const lines: string[] = [];
+
+  if (input.mapStateError !== undefined) {
+    lines.push(`Map context unavailable this step: ${input.mapStateError}`);
+  }
+
+  if (input.mapStateWarning !== undefined) {
+    lines.push(`Map context warning: ${input.mapStateWarning}`);
+  }
+
+  if (input.mapAscii) {
+    lines.push(
+      "Current map (ASCII grid — .=walkable #=wall \"=grass ?=unseen @=you N=NPC W=warp):",
+      input.mapAscii,
+    );
+  }
+
+  if (input.mapTileCount !== undefined && input.mapTotalTiles !== undefined && input.mapTotalTiles > 0) {
+    lines.push(`Map coverage: ${input.mapTileCount}/${input.mapTotalTiles} tiles explored.`);
+  }
+
+  if (input.visitedMaps !== undefined && input.visitedMaps.length > 0) {
+    lines.push(`Visited map IDs this session: [${input.visitedMaps.join(", ")}]`);
+  }
+
+  if (input.walkGrid) {
+    const { grid, width, height } = input.walkGrid;
+    const state = input.state ?? input.currentState as Record<string, unknown> | undefined;
+    const py = (state as Record<string, unknown> | undefined)?.wYCoord as number | undefined;
+    const px = (state as Record<string, unknown> | undefined)?.wXCoord as number | undefined;
+
+    if (py !== undefined && px !== undefined) {
+      const nearby: string[] = [];
+      for (const [dy, dx, dir] of [[- 1, 0, "Up"], [1, 0, "Down"], [0, -1, "Left"], [0, 1, "Right"]] as const) {
+        const ny = py + dy;
+        const nx = px + dx;
+        const passable = ny >= 0 && ny < height && nx >= 0 && nx < width && grid[ny][nx];
+        nearby.push(`${dir}:${passable ? "open" : "blocked"}`);
+      }
+      lines.push(`Adjacent tiles: ${nearby.join(", ")}`);
+    }
+  }
+
+  return lines;
+}
+
+function outputContract(): string {
   return [
-    "Stage 1 route facts:",
-    "Use these as compact map geometry facts for the current wCurMap/wYCoord/wXCoord/screenTextKind/wPartyCount/wIsInBattle/playerFacingDirection/recentActions state, not as a step-numbered global timeline.",
-    "If boot/title state has all-zero RAM or title/menu-like text, choose current-state menu/title actions such as Start or A until gameplay state appears.",
-    "Oak/name flow is text/menu driven: when screenTextKind or recentActions show naming, dialog, or menu prompts, choose the current prompt action rather than walking randomly.",
-    "Red House 2F is wCurMap=38: from the bedroom, route toward the stair by getting to x=5 and moving Up onto the stair tile when aligned.",
-    "Red House 1F is wCurMap=37: route to the front door exit by moving from the stairs/living room toward the south doorway using current coordinates.",
-    "Pallet Town is wCurMap=0: before Oak stops you, target the north grass trigger at wYCoord=1,wXCoord=10 using current coordinates.",
-    "Oak Lab is wCurMap=40: starter ball is at wYCoord=3,wXCoord=5; stand on that tile, face right with playerFacingDirection, then press A to select it.",
-    "After receiving the starter, if wCurMap=40 and wPartyCount>0, move toward wYCoord=6 to trigger Rival when current coordinates are not already there.",
-    "If wIsInBattle is nonzero and screenText shows the main battle menu FIGHT ITEM RUN, selecting FIGHT with A is appropriate.",
-    "If wIsInBattle is nonzero and move-list screenText shows SCRATCH GROWL and TYPE NORMAL, prefer pressing A directly to confirm SCRATCH; do not send Up/Down before A unless current observed screen text clearly shows SCRATCH is not selected, because live evidence shows cursor movement can choose GROWL. SCRATCH is the damaging move to prefer for ending the Rival battle.",
-    "Avoid choosing GROWL when the goal is ending battle because GROWL does not reduce enemy HP.",
-    "Battle text such as used SCRATCH, enemy move text, level/XP text, or defeated text should be advanced with A.",
-    "If screenTextKind or recentActions show stale/repeated text, press A or B to clear the current text before pathing; do not keep walking against uncleared dialog."
+    "Rules:",
+    "- Use only controller actions; no memory writes, emulator APIs, shell commands, or hardcoded global input timelines.",
+    "- Base the action on the current observed state, current map/position, recent actions, and screenshot if present.",
+    "- Do not rely on guidebook walkthrough steps or route scripts; infer from the live state.",
+    `Output schema: ${stableJson(createPolicyDecisionJsonSchema())}`,
+    "Output only one JSON object. No markdown or extra text."
   ].join("\n");
 }
 
@@ -295,7 +451,8 @@ function parseDecision(content: string): PolicyDecision {
     throw new HarnessError("LLM_INVALID_OUTPUT", "LLM response was not valid JSON", { cause: error });
   }
 
-  const result = PolicyDecisionSchema.safeParse(parsed);
+  const normalized = normalizePolicyDecisionCandidate(parsed);
+  const result = PolicyDecisionSchema.safeParse(normalized);
   if (!result.success) {
     throw new HarnessError("LLM_INVALID_OUTPUT", "LLM response failed policy decision schema validation", {
       context: { issues: result.error.issues.map((issue) => issue.message) }
@@ -303,6 +460,67 @@ function parseDecision(content: string): PolicyDecision {
   }
 
   return result.data;
+}
+
+function normalizePolicyDecisionCandidate(value: unknown): unknown {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return {
+    action: normalizeHarnessActionCandidate(candidate.action),
+    rationale: typeof candidate.rationale === "string" ? candidate.rationale.slice(0, 500) : candidate.rationale,
+    confidence: normalizeConfidenceCandidate(candidate.confidence),
+    observedStateCitations: Array.isArray(candidate.observedStateCitations)
+      ? candidate.observedStateCitations.filter((citation): citation is string => typeof citation === "string").slice(0, 5)
+      : candidate.observedStateCitations
+  };
+}
+
+function normalizeHarnessActionCandidate(value: unknown): unknown {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+
+  const action = value as Record<string, unknown>;
+  switch (action.type) {
+    case "press":
+    case "hold":
+      return {
+        type: action.type,
+        button: action.button,
+        frames: normalizeFrameCandidate(action.frames)
+      };
+    case "wait":
+      return {
+        type: action.type,
+        frames: normalizeFrameCandidate(action.frames)
+      };
+    case "sequence":
+      return {
+        type: action.type,
+        actions: Array.isArray(action.actions) ? action.actions.slice(0, 8).map(normalizeHarnessActionCandidate) : action.actions
+      };
+    default:
+      return value;
+  }
+}
+
+function normalizeConfidenceCandidate(value: unknown): unknown {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return value;
+  }
+
+  return Math.max(0, Math.min(1, value));
+}
+
+function normalizeFrameCandidate(value: unknown): unknown {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return value;
+  }
+
+  return Math.max(1, Math.min(60, Math.trunc(value)));
 }
 
 function stableJson(value: unknown): string {

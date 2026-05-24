@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../../src/config.js";
 import type { PolicyDecision } from "../../src/control/ActionTypes.js";
-import { LLMPolicy, type ChatCompletionRequest, type ChatCompletionsClient, type OpenAIClientOptions } from "../../src/ai/LLMPolicy.js";
+import { LLMPolicy, type ChatCompletionRequest, type ChatCompletionsClient, type LLMConversationTrace, type OpenAIClientOptions } from "../../src/ai/LLMPolicy.js";
 import type { Policy, PolicyInput } from "../../src/ai/Policy.js";
 import { HarnessError } from "../../src/errors.js";
 
@@ -34,6 +34,47 @@ const policyInput: PolicyInput = {
   step: 7
 };
 
+const enrichedPolicyInput: PolicyInput = {
+  ...policyInput,
+  objective: "Stage 1: acquire starter and exit rival battle.",
+  detectorStatus: { status: "running", checkpoints: { initialObserved: true, completed: false } },
+  fullStateSummary: "GAME STATE\nLocation  : Reds House 2f (map 38)\nMoney     : $3000",
+  fullState: {
+    player: {
+      name: "AAAAAAA",
+      rivalName: "AAAAAAA",
+      money: 3000,
+      position: { mapId: 38, y: 3, x: 3, yBlock: 1, xBlock: 1 },
+      facing: { raw: 8, direction: "left" },
+      badges: { raw: 0, count: 0, obtained: [false, false, false, false, false, false, false, false], names: [] },
+      playTime: "1:38:18.22"
+    },
+    map: { mapId: 38, mapName: "Reds House 2f", tilesetId: 4, width: 4, height: 4 },
+    party: { count: 0, members: [] },
+    bag: [],
+    battle: { inBattle: false, type: "none" },
+    dialog: { active: false, textBoxId: 13, letterPrintingDelayFlags: 1, joyIgnore: 0 },
+    flags: {
+      hasPokedex: false,
+      hasOaksParcel: false,
+      deliveredOaksParcel: false,
+      pokedexOwned: 0,
+      pokedexSeen: 0,
+      badges: { raw: 0, count: 0, obtained: [false, false, false, false, false, false, false, false], names: [] }
+    },
+    menuText: {
+      currentMenuItem: 2,
+      textBoxId: 13,
+      letterPrintingDelayFlags: 1,
+      screenText: "",
+      screenTextKind: "none",
+      namingScreenNameLength: 7,
+      namingScreenSubmitName: 1,
+      namingScreenType: 1
+    }
+  }
+};
+
 describe("LLMPolicy", () => {
   it("accepts valid model JSON and sends the configured model in a Chat Completions request", async () => {
     const requests: ChatCompletionRequest[] = [];
@@ -50,12 +91,13 @@ describe("LLMPolicy", () => {
     expect(requests[0]).toMatchObject({ model: "unit-test-model", temperature: 0.1 });
     expect(requests[0]?.messages[0]?.role).toBe("system");
     const prompt = getUserText(requests[0]);
-    expect(prompt).toContain("Current RAM-derived state JSON");
-    expect(prompt).toContain("Stage 1 objective");
-    expect(prompt).toContain("Stage 1 route facts");
-    expect(prompt).toContain("Anti-hardcoding rule");
+    expect(prompt).toContain("Fallback RAM state");
+    expect(prompt).toContain("Goal: make forward game progress using only the current observed game state.");
+    expect(prompt).toContain("Do not rely on guidebook walkthrough steps or route scripts");
     expect(prompt).toContain("Output only one JSON object");
-    expect(prompt).toContain("Allowed action schema");
+    expect(prompt).toContain("Output schema");
+    expect(prompt).not.toContain("Stage 1 route facts");
+    expect(prompt).not.toContain("Red House 2F map 38");
   });
 
   it("keeps text-only requests as string content when no vision images are provided", async () => {
@@ -133,7 +175,7 @@ describe("LLMPolicy", () => {
       throw new Error("expected multimodal content parts");
     }
     expect(content).toHaveLength(2);
-    expect(content[0]).toMatchObject({ type: "text", text: expect.stringContaining("Current RAM-derived state JSON") });
+    expect(content[0]).toMatchObject({ type: "text", text: expect.stringContaining("Fallback RAM state") });
     const imagePart = content[1];
     expect(imagePart).toMatchObject({
       type: "image_url",
@@ -143,6 +185,70 @@ describe("LLMPolicy", () => {
       throw new Error("expected image content part");
     }
     expect(decodeDataUrl(imagePart.image_url.url)).toEqual({ mediaType: "image/jpeg", bytes: Buffer.from([1, 2, 3, 4]) });
+  });
+
+  it("records sanitized LLM conversations without persisted image base64", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "llm-policy-conversation-"));
+    const imagePath = path.join(root, "frame.jpg");
+    await writeFile(imagePath, Buffer.from([9, 10, 11, 12]));
+    const conversations: LLMConversationTrace[] = [];
+    const policy = createPolicy({
+      client: fakeClient(async () => JSON.stringify(validDecision)),
+      onConversation: (conversation) => {
+        conversations.push(conversation);
+      }
+    });
+
+    await expect(policy.chooseAction({
+      ...policyInput,
+      visionImages: [{
+        path: imagePath,
+        sourcePath: "/tmp/source.png",
+        mediaType: "image/jpeg",
+        width: 2,
+        height: 2,
+        step: 7,
+        frame: 12,
+        crop: { left: 0, top: 0, width: 2, height: 2 },
+        bytes: 4,
+        detail: "low"
+      }]
+    })).resolves.toEqual(validDecision);
+
+    expect(conversations).toHaveLength(1);
+    expect(conversations[0]).toMatchObject({
+      call: 1,
+      model: "unit-test-model",
+      responseContent: JSON.stringify(validDecision),
+      parsedDecision: validDecision
+    });
+    const serialized = JSON.stringify(conversations[0]);
+    expect(serialized).toContain("data:image/jpeg;base64,[omitted]");
+    expect(serialized).not.toContain("data:image/jpeg;base64;base64");
+    expect(serialized).not.toContain(Buffer.from([9, 10, 11, 12]).toString("base64"));
+  });
+
+  it("records invalid raw LLM responses for dashboard debugging", async () => {
+    const conversations: LLMConversationTrace[] = [];
+    const fallbackErrors: HarnessError[] = [];
+    const policy = createPolicy({
+      client: fakeClient(async () => "not json"),
+      onConversation: (conversation) => {
+        conversations.push(conversation);
+      },
+      onFallback: (error) => fallbackErrors.push(error)
+    });
+
+    await expect(policy.chooseAction(policyInput)).resolves.toMatchObject({
+      rationale: expect.stringContaining("LLM fallback after LLM_INVALID_OUTPUT")
+    });
+
+    expect(fallbackErrors.map((error) => error.code)).toEqual(["LLM_INVALID_OUTPUT"]);
+    expect(conversations).toHaveLength(1);
+    expect(conversations[0]).toMatchObject({
+      responseContent: "not json",
+      error: { code: "LLM_INVALID_OUTPUT" }
+    });
   });
 
   it("sends multimodal content when config requires vision and processed images are present", async () => {
@@ -191,7 +297,7 @@ describe("LLMPolicy", () => {
     expect(decodeDataUrl(imagePart.image_url.url)).toEqual({ mediaType: "image/jpeg", bytes: Buffer.from([5, 6, 7, 8]) });
   });
 
-  it("includes compact state-conditioned Stage 1 route facts without a global input timeline", async () => {
+  it("keeps the base prompt state-driven without guidebook route facts or a global input timeline", async () => {
     const requests: ChatCompletionRequest[] = [];
     const client = fakeClient(async (request) => {
       requests.push(request);
@@ -202,30 +308,40 @@ describe("LLMPolicy", () => {
     await expect(policy.chooseAction(policyInput)).resolves.toEqual(validDecision);
 
     const prompt = getUserText(requests[0]);
-    expect(prompt).toContain("Stage 1 route facts");
-    expect(prompt).toContain("wCurMap/wYCoord/wXCoord/screenTextKind/wPartyCount/wIsInBattle/playerFacingDirection/recentActions");
-    expect(prompt).toContain("not as a step-numbered global timeline");
-    expect(prompt).toContain("wCurMap=38");
-    expect(prompt).toContain("wCurMap=37");
-    expect(prompt).toContain("wCurMap=40");
-    expect(prompt).toContain("wYCoord=1,wXCoord=10");
-    expect(prompt).toContain("wYCoord=3,wXCoord=5");
-    expect(prompt).toContain("wYCoord=6");
-    expect(prompt).toContain("wIsInBattle is nonzero and screenText shows the main battle menu FIGHT ITEM RUN");
-    expect(prompt).toContain("SCRATCH GROWL");
-    expect(prompt).toContain("TYPE NORMAL");
-    expect(prompt).toContain("pressing A directly");
-    expect(prompt).toContain("do not send Up/Down before A");
-    expect(prompt).toContain("cursor movement can choose GROWL");
-    expect(prompt).toContain("SCRATCH is the damaging move to prefer");
-    expect(prompt).toContain("GROWL does not reduce enemy HP");
-    expect(prompt).toContain("Battle text such as used SCRATCH");
-    expect(prompt).toContain("stale/repeated text");
-    expect(prompt).toContain("do not follow or emit a precomputed global input timeline");
+    expect(prompt).toContain("Base the action on the current observed state, current map/position, recent actions, and screenshot if present.");
+    expect(prompt).toContain("Do not rely on guidebook walkthrough steps or route scripts");
+    expect(prompt).toContain("Fallback RAM state");
+    expect(prompt).toContain("Recent actions summary");
+    expect(prompt).toContain("hardcoded global input timelines");
+    expect(prompt).not.toContain("Stage 1 route facts");
+    expect(prompt).not.toContain("Red House 2F");
+    expect(prompt).not.toContain("Pallet map 0");
+    expect(prompt).not.toContain("Oak Lab map 40");
+    expect(prompt).not.toContain("SCRATCH is the damaging move to prefer");
     expect(prompt).not.toContain("step 1");
     expect(prompt).not.toContain("step 2");
     expect(prompt).not.toContain("step 3");
-    expect(prompt.indexOf("Stage 1 route facts")).toBeLessThan(prompt.indexOf("Allowed action schema"));
+    expect(prompt.indexOf("Fallback RAM state")).toBeLessThan(prompt.indexOf("Recent actions summary"));
+  });
+
+  it("injects concise full game state summary, objective, and detector progress into the prompt", async () => {
+    const requests: ChatCompletionRequest[] = [];
+    const client = fakeClient(async (request) => {
+      requests.push(request);
+      return JSON.stringify(validDecision);
+    });
+    const policy = createPolicy({ client });
+
+    await expect(policy.chooseAction(enrichedPolicyInput)).resolves.toEqual(validDecision);
+
+    const prompt = getUserText(requests[0]);
+    expect(prompt).toContain("Objective: Stage 1: acquire starter and exit rival battle.");
+    expect(prompt).toContain("Progress:");
+    expect(prompt).toContain("Game state:");
+    expect(prompt).toContain("Location  : Reds House 2f");
+    expect(prompt).not.toContain("Full game state JSON");
+    expect(prompt).not.toContain("\"mapName\":\"Reds House 2f\"");
+    expect(prompt.indexOf("Game state:")).toBeLessThan(prompt.indexOf("Recent actions summary"));
   });
 
   it("uses a full-game prompt with Hall of Fame-only completion when configured", async () => {
@@ -239,12 +355,11 @@ describe("LLMPolicy", () => {
     await expect(policy.chooseAction(policyInput)).resolves.toEqual(validDecision);
 
     const prompt = getUserText(requests[0]);
-    expect(prompt).toContain("Full-game objective");
-    expect(prompt).toContain("Hall of Fame (map id 0x76)");
-    expect(prompt).toContain("Badges are read-only progress signals only");
-    expect(prompt).toContain("Do not request or imply memory writes");
-    expect(prompt).toContain("precomputed global input timelines");
-    expect(prompt).toContain("Do not claim route facts alone, Rival battle exit, or all badges as full-game completion");
+    expect(prompt).toContain("Goal: progress through the game autonomously using only observed state and legal inputs.");
+    expect(prompt).toContain("Completion rule: only observed Hall of Fame map/state completes the run; badges alone do not.");
+    expect(prompt).toContain("no memory writes");
+    expect(prompt).toContain("hardcoded global input timelines");
+    expect(prompt).toContain("Do not rely on guidebook walkthrough steps or route scripts");
     expect(prompt).not.toContain("Stage 1 route facts");
   });
 
@@ -309,6 +424,31 @@ describe("LLMPolicy", () => {
       maxRetries: 1
     }]);
     expect(requests[0]).toMatchObject({ model: "codex-compatible-model" });
+  });
+
+  it("normalizes harmless model schema drift without accepting unsafe actions", async () => {
+    const requests: ChatCompletionRequest[] = [];
+    const overlongRationale = "Advance dialog. ".repeat(80);
+    const client = fakeClient(async (request) => {
+      requests.push(request);
+      return JSON.stringify({
+        ...validDecision,
+        action: { type: "press", button: "A", frames: 90.7, comment: "extra model field" },
+        rationale: overlongRationale,
+        confidence: 1.4,
+        observedStateCitations: ["wTextBoxID=1", 12, "wIsInBattle=0", "screenTextKind=dialog", "coords=38:3:3", "recentAction=A", "extra=trimmed"],
+        commentary: "extra top-level model field"
+      });
+    });
+    const policy = createPolicy({ client });
+
+    await expect(policy.chooseAction(policyInput)).resolves.toEqual({
+      action: { type: "press", button: "A", frames: 60 },
+      rationale: overlongRationale.slice(0, 500),
+      confidence: 1,
+      observedStateCitations: ["wTextBoxID=1", "wIsInBattle=0", "screenTextKind=dialog", "coords=38:3:3", "recentAction=A"]
+    });
+    expect(requests).toHaveLength(1);
   });
 
   it("falls back on malformed JSON and invalid model-invented buttons", async () => {
@@ -402,6 +542,7 @@ function createPolicy(overrides: {
   harnessMode?: "stage1" | "full-game";
   visionDetail?: "low" | "high" | "auto";
   onFallback?: (error: HarnessError) => void;
+  onConversation?: (conversation: LLMConversationTrace) => void | Promise<void>;
 }): LLMPolicy {
   return new LLMPolicy({
     apiKey: "unit-test-key",
@@ -415,7 +556,8 @@ function createPolicy(overrides: {
     visionDetail: overrides.visionDetail,
     fallbackPolicy: createFallbackPolicy(),
     client: overrides.client,
-    onFallback: overrides.onFallback
+    onFallback: overrides.onFallback,
+    onConversation: overrides.onConversation
   });
 }
 

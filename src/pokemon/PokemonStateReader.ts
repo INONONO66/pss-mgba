@@ -1,5 +1,3 @@
-import { HarnessError } from "../errors.js";
-import type { MgbaHttpClient } from "../mgba/MgbaHttpClient.js";
 import {
   decodeBattleFlag,
   decodeBigEndianWord,
@@ -8,16 +6,27 @@ import {
   decodePlayerFacing,
   decodeUnsignedByte
 } from "./decoders.js";
+import { HarnessError } from "../errors.js";
 import { HALL_OF_FAME_MAP_ID, RED_BLUE_MEMORY_MAP } from "./memoryMap.js";
-import type { BadgeProgress, BattleFlag, HitPoints, MenuTextState, PartySummary, PlayerFacing, PokemonCoordinates, PokemonGameState } from "./PokemonTypes.js";
-
-type RamClient = Pick<MgbaHttpClient, "read8" | "read16" | "readRange">;
+import type { BadgeProgress, BattleFlag, FullGameState, HitPoints, MenuTextState, PartySummary, PlayerFacing, PokemonCoordinates, PokemonGameState } from "./PokemonTypes.js";
+import type { RamClient } from "./RamClient.js";
+import { readRangeExact } from "./RamClient.js";
+import { decodeGen1Text } from "./TextCodec.js";
+import { readFullGameState } from "./readers/FullGameStateReader.js";
 
 export type PokemonGameVersion = "red" | "blue";
 
 export interface PokemonStateReaderOptions {
   readonly client: RamClient;
   readonly version: PokemonGameVersion;
+}
+
+export interface ReadFullStateOptions {
+  readonly menuText?: MenuTextState;
+}
+
+export interface ReadMenuTextStateOptions {
+  readonly tileMapBytes?: Uint8Array;
 }
 
 export interface PokemonBattleState {
@@ -71,6 +80,7 @@ const map = RED_BLUE_MEMORY_MAP;
 export class PokemonStateReader {
   private readonly client: RamClient;
   readonly version: PokemonGameVersion;
+  private lastTileMapBytes: Uint8Array | undefined;
 
   constructor(options: PokemonStateReaderOptions) {
     this.client = options.client;
@@ -88,6 +98,23 @@ export class PokemonStateReader {
     ]);
 
     return createSnapshot({ battleState, coordinates, playerFacing, party, badges, menuText });
+  }
+
+  async readFullState(options: ReadFullStateOptions = {}): Promise<FullGameState> {
+    const [coordinates, playerFacing, badges, menuText] = await Promise.all([
+      this.readOverworldState(),
+      this.readPlayerFacingState(),
+      this.readBadgeState(),
+      options.menuText !== undefined ? Promise.resolve(options.menuText) : this.readMenuTextState()
+    ]);
+
+    return readFullGameState({
+      client: this.client,
+      coordinates,
+      playerFacing,
+      badges,
+      menuText,
+    });
   }
 
   async readOverworldState(): Promise<PokemonCoordinates> {
@@ -170,17 +197,25 @@ export class PokemonStateReader {
     return decodeBadgeProgress(await this.client.read8(map.wObtainedBadges));
   }
 
-  async readMenuTextState(): Promise<MenuTextState> {
+  getLastTileMapBytes(): Uint8Array | undefined {
+    return this.lastTileMapBytes === undefined ? undefined : new Uint8Array(this.lastTileMapBytes);
+  }
+
+  async readMenuTextState(options: ReadMenuTextStateOptions = {}): Promise<MenuTextState> {
+    const tileMapPromise = options.tileMapBytes !== undefined
+      ? Promise.resolve(options.tileMapBytes)
+      : this.readRangeExact(map.wTileMap, map.wTileMapLength, "wTileMap");
     const [currentMenuItem, textBoxId, letterPrintingDelayFlags, tileMap, namingScreenNameLength, namingScreenSubmitName, namingScreenType] = await Promise.all([
       this.client.read8(map.wCurrentMenuItem),
       this.client.read8(map.wTextBoxID),
       this.client.read8(map.wLetterPrintingDelayFlags),
-      this.readRangeExact(map.wTileMap, map.wTileMapLength, "wTileMap"),
+      tileMapPromise,
       this.client.read8(map.wNamingScreenNameLength),
       this.client.read8(map.wNamingScreenSubmitName),
       this.client.read8(map.wNamingScreenType)
     ]);
 
+    this.lastTileMapBytes = new Uint8Array(tileMap);
     const screenText = decodeTileMapText(tileMap);
 
     return {
@@ -196,14 +231,7 @@ export class PokemonStateReader {
   }
 
   private async readRangeExact(address: number, length: number, fieldName: string): Promise<Uint8Array> {
-    const bytes = await this.client.readRange(address, length);
-    if (bytes.length !== length) {
-      throw new HarnessError("INVALID_RAM_STATE", `${fieldName} read returned an unexpected byte count`, {
-        context: { fieldName, expectedLength: length, actualLength: bytes.length }
-      });
-    }
-
-    return bytes;
+    return readRangeExact(this.client, address, length, fieldName);
   }
 }
 
@@ -262,58 +290,21 @@ function createSnapshot(input: {
   };
 }
 
+const BADGE_NAMES = ["Boulder", "Cascade", "Thunder", "Rainbow", "Soul", "Marsh", "Volcano", "Earth"] as const;
+
 function decodeBadgeProgress(rawValue: number): BadgeProgress {
   const raw = decodeUnsignedByte(rawValue, "wObtainedBadges");
   const obtained = Array.from({ length: 8 }, (_value, index) => (raw & (1 << index)) !== 0);
   return {
     raw,
     count: obtained.filter(Boolean).length,
-    obtained
+    obtained,
+    names: obtained.map((has, i) => has ? BADGE_NAMES[i] : "").filter(Boolean),
   };
 }
 
 function decodeTileMapText(bytes: Uint8Array): string {
-  return Array.from(bytes, decodeTile).join("").replace(/[ \n]+/g, " ").trim();
-}
-
-function decodeTile(byte: number): string {
-  if (byte === 0x7f || byte === 0x00) {
-    return " ";
-  }
-
-  if (byte >= 0x80 && byte <= 0x99) {
-    return String.fromCharCode("A".charCodeAt(0) + byte - 0x80);
-  }
-
-  if (byte >= 0xa0 && byte <= 0xb9) {
-    return String.fromCharCode("a".charCodeAt(0) + byte - 0xa0);
-  }
-
-  if (byte >= 0xf6 && byte <= 0xff) {
-    return String.fromCharCode("0".charCodeAt(0) + byte - 0xf6);
-  }
-
-  switch (byte) {
-    case 0x4f:
-    case 0x50:
-      return " ";
-    case 0xe0:
-      return "'";
-    case 0xe3:
-      return "-";
-    case 0xe6:
-      return "?";
-    case 0xe7:
-      return "!";
-    case 0xe8:
-      return ".";
-    case 0xef:
-      return "♂";
-    case 0xf5:
-      return "♀";
-    default:
-      return " ";
-  }
+  return decodeGen1Text(bytes);
 }
 
 function classifyScreenText(screenText: string): MenuTextState["screenTextKind"] {

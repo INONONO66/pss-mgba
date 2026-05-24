@@ -6,6 +6,9 @@ import { HarnessError } from "../../src/errors.js";
 import { Stage1Detector } from "../../src/pokemon/Stage1Detector.js";
 import { FullGameDetector } from "../../src/pokemon/FullGameDetector.js";
 import type { HarnessConfig } from "../../src/config.js";
+import type { FullGameState } from "../../src/pokemon/PokemonTypes.js";
+import type { GameWorldSnapshot } from "../../src/pokemon/GameWorld.js";
+import { MapMemory } from "../../src/pokemon/MapMemory.js";
 
 const baseConfig: Pick<HarnessConfig, "harnessRunId" | "harnessMode" | "loopMaxSteps" | "loopStepDelayMs" | "maxLlmCalls" | "aiProvider" | "llmVisionEnabled" | "llmVisionMaxImages"> = {
   harnessRunId: "runner-test",
@@ -161,6 +164,109 @@ describe("HarnessRunner", () => {
     })]);
   });
 
+  it("injects full game state, summary, objective, and detector status into each policy input when available", async () => {
+    const policyInputs: PolicyInput[] = [];
+    const runner = createRunner({
+      policy: {
+        async chooseAction(input) {
+          policyInputs.push(input);
+          return waitDecision;
+        }
+      },
+      states: [state({ wCurMap: 38, wYCoord: 3, wXCoord: 3 })],
+      fullStates: [fullState()],
+      budgets: { maxSteps: 1, repeatedStateThreshold: 10 },
+      detector: new Stage1Detector({ stuckStepThreshold: 50 })
+    });
+
+    const result = await runner.run();
+
+    expect(result.status).toBe("failed_timeout");
+    expect(policyInputs).toHaveLength(1);
+    expect(policyInputs[0]).toMatchObject({
+      objective: expect.stringContaining("Stage 1"),
+      fullState: expect.objectContaining({
+        player: expect.objectContaining({ name: "AAAAAAA", money: 3000 }),
+        map: expect.objectContaining({ mapName: "Reds House 2f" })
+      }),
+      detectorStatus: expect.objectContaining({
+        status: "running",
+        checkpoints: expect.objectContaining({ completed: false })
+      })
+    });
+    expect(policyInputs[0]?.fullStateSummary).toContain("GAME STATE");
+    expect(policyInputs[0]?.fullStateSummary).toContain("Reds House 2f");
+    expect(policyInputs[0]?.fullStateError).toBeUndefined();
+  });
+
+  it("clears stale map context and reports map reader failures", async () => {
+    const policyInputs: PolicyInput[] = [];
+    const world = worldSnapshot();
+    let worldReads = 0;
+    const runner = createRunner({
+      policy: {
+        async chooseAction(input) {
+          policyInputs.push(input);
+          return waitDecision;
+        }
+      },
+      states: [state({ wCurMap: 1, wYCoord: 4, wXCoord: 4 }), state({ wCurMap: 1, wYCoord: 5, wXCoord: 4 })],
+      budgets: { maxSteps: 2, repeatedStateThreshold: 10 },
+      mapMemory: new MapMemory(),
+      worldReader: async () => {
+        worldReads += 1;
+        if (worldReads === 1) {
+          return { world, tileMapBytes: world.tileMapBytes };
+        }
+        throw new Error("world reader unavailable");
+      }
+    });
+
+    const result = await runner.run();
+
+    expect(result.status).toBe("failed_timeout");
+    expect(policyInputs).toHaveLength(2);
+    expect(policyInputs[0]?.mapAscii).toContain("@");
+    expect(policyInputs[0]?.mapFresh).toBe(true);
+    expect(policyInputs[0]?.mapStateError).toBeUndefined();
+    expect(policyInputs[1]?.mapAscii).toBeUndefined();
+    expect(policyInputs[1]?.walkGrid).toBeUndefined();
+    expect(policyInputs[1]?.mapFresh).toBeUndefined();
+    expect(policyInputs[1]?.mapStateError).toBe("world reader unavailable");
+  });
+
+  it("passes cached tile map bytes from the state read into the world reader", async () => {
+    const policyInputs: PolicyInput[] = [];
+    const cachedTileMap = Uint8Array.from(Array.from({ length: 360 }, () => 2));
+    let observedTileMap: Uint8Array | undefined;
+    const world = worldSnapshot({ tileMapBytes: cachedTileMap });
+    const runner = createRunner({
+      policy: {
+        async chooseAction(input) {
+          policyInputs.push(input);
+          return waitDecision;
+        }
+      },
+      states: [{
+        ...state({ wCurMap: 1, wYCoord: 4, wXCoord: 4 }),
+        menuText: fullState().menuText
+      }],
+      budgets: { maxSteps: 1, repeatedStateThreshold: 10 },
+      mapMemory: new MapMemory(),
+      lastTileMapBytes: cachedTileMap,
+      worldReader: async (context) => {
+        observedTileMap = context?.tileMapBytes;
+        return { world, tileMapBytes: context?.tileMapBytes ?? world.tileMapBytes };
+      }
+    });
+
+    const result = await runner.run();
+
+    expect(result.status).toBe("failed_timeout");
+    expect(observedTileMap).toEqual(cachedTileMap);
+    expect(policyInputs[0]?.mapFresh).toBe(true);
+  });
+
   it("fails before policy selection when vision is enabled without a processor", async () => {
     const policyInputs: PolicyInput[] = [];
     const runner = createRunner({
@@ -310,6 +416,8 @@ function createRunner(overrides: {
   policy?: Policy;
   detector?: Stage1Detector | FullGameDetector;
   states?: PokemonStateSnapshot[];
+  fullStates?: FullGameState[];
+  fullStateError?: HarnessError;
   frames?: number[];
   screenshots?: string[];
   budgets?: { maxSteps?: number; repeatedStateThreshold?: number; maxLlmCalls?: number };
@@ -318,6 +426,9 @@ function createRunner(overrides: {
   stateError?: HarnessError;
   policyError?: HarnessError;
   controllerError?: HarnessError;
+  mapMemory?: MapMemory;
+  worldReader?: (context?: { readonly tileMapBytes?: Uint8Array }) => Promise<{ world: GameWorldSnapshot; tileMapBytes: Uint8Array }>;
+  lastTileMapBytes?: Uint8Array;
 }): HarnessRunner<PokemonStateSnapshot> {
   const states = overrides.states ?? [state()];
   const frames = overrides.frames ?? states.map((_value, index) => index + 1);
@@ -326,6 +437,7 @@ function createRunner(overrides: {
   const controller = overrides.controller ?? new FakeController(overrides.controllerError);
   const policy = overrides.policy ?? new FakePolicy(overrides.policyError);
   let stateIndex = 0;
+  let fullStateIndex = 0;
   let frameIndex = 0;
   let screenshotIndex = 0;
 
@@ -356,6 +468,16 @@ function createRunner(overrides: {
         }
 
         return states[Math.min(stateIndex++, states.length - 1)] ?? state();
+      },
+      async readFullState() {
+        if (overrides.fullStateError !== undefined) {
+          throw overrides.fullStateError;
+        }
+
+        return overrides.fullStates?.[Math.min(fullStateIndex++, (overrides.fullStates?.length ?? 1) - 1)] ?? fullState();
+      },
+      getLastTileMapBytes() {
+        return overrides.lastTileMapBytes;
       }
     },
     policy,
@@ -363,10 +485,95 @@ function createRunner(overrides: {
     evidence,
     detector: overrides.detector ?? new Stage1Detector({ stuckStepThreshold: 50 }),
     visionProcessor: overrides.visionProcessor,
+    mapMemory: overrides.mapMemory,
+    worldReader: overrides.worldReader,
     budgets: { stepDelayMs: 0, ...overrides.budgets },
     sleep: async () => {},
     now: fixedNow
   });
+}
+
+function worldSnapshot(overrides: { readonly tileMapBytes?: Uint8Array } = {}): GameWorldSnapshot {
+  return {
+    mode: "overworld",
+    modeFlags: {
+      battle: 0,
+      textBoxId: 0,
+      letterDelay: 0,
+      curMap: 1,
+      yCoord: 4,
+      xCoord: 4,
+      partyCount: 1,
+      walkCounter: 0,
+      joyIgnore: 0,
+      namingScreenType: 0,
+      screenText: ""
+    },
+    tileMapBytes: overrides.tileMapBytes ?? Uint8Array.from(Array.from({ length: 360 }, () => 1)),
+    mapLayout: { mapId: 1, tilesetId: 0, height: 10, width: 10, grid: [] },
+    sprites: {
+      player: {
+        slot: 0,
+        isPlayer: true,
+        pictureId: 1,
+        movementStatus: 0,
+        yScreen: 64,
+        xScreen: 64,
+        facing: "down",
+        mapY: 4,
+        mapX: 4,
+        inGrass: false,
+        onScreen: true,
+        movementType: "stationary"
+      },
+      npcs: [],
+      spriteCount: 1
+    },
+    warps: { warps: [], connections: { north: undefined, south: undefined, west: undefined, east: undefined } },
+    tileCollision: { tilesetId: 0, walkableTiles: new Set([1]), grassTile: undefined },
+    playerCoords: { y: 4, x: 4 },
+    tileInFront: 1,
+    tileStandingOn: 1,
+    grassRate: 0
+  };
+}
+
+function fullState(overrides: Partial<FullGameState> = {}): FullGameState {
+  return {
+    player: {
+      name: "AAAAAAA",
+      rivalName: "AAAAAAA",
+      money: 3000,
+      position: { mapId: 38, y: 3, x: 3, yBlock: 1, xBlock: 1 },
+      facing: { raw: 8, direction: "left" },
+      badges: { raw: 0, count: 0, obtained: [false, false, false, false, false, false, false, false], names: [] },
+      playTime: "1:38:18.22"
+    },
+    map: { mapId: 38, mapName: "Reds House 2f", tilesetId: 4, width: 4, height: 4 },
+    party: { count: 0, members: [] },
+    bag: [],
+    battle: { inBattle: false, type: "none" },
+    dialog: { active: false, textBoxId: 13, letterPrintingDelayFlags: 1, joyIgnore: 0 },
+    flags: {
+      hasPokedex: false,
+      hasOaksParcel: false,
+      deliveredOaksParcel: false,
+      pokedexOwned: 0,
+      pokedexSeen: 0,
+      badges: { raw: 0, count: 0, obtained: [false, false, false, false, false, false, false, false], names: [] }
+    },
+    menuText: {
+      currentMenuItem: 2,
+      textBoxId: 13,
+      letterPrintingDelayFlags: 1,
+      screenText: "",
+      screenTextKind: "none",
+      namingScreenNameLength: 7,
+      namingScreenSubmitName: 1,
+      namingScreenType: 1
+    },
+    ...overrides
+  };
 }
 
 function state(overrides: Partial<PokemonStateSnapshot> = {}): PokemonStateSnapshot {

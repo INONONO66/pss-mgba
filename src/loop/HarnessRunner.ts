@@ -7,6 +7,10 @@ import type { ScreenshotMetadata } from "../evidence/EvidenceRecorder.js";
 import { HarnessError, type SerializedHarnessError } from "../errors.js";
 import type { DetectorStatus, ProgressDetector } from "../pokemon/Detector.js";
 import type { FrameNumber, HarnessErrorCode, HarnessStatus, RunId } from "../types.js";
+import type { MapMemory } from "../pokemon/MapMemory.js";
+import type { GameWorldSnapshot } from "../pokemon/GameWorld.js";
+import type { FullGameState, MenuTextState } from "../pokemon/PokemonTypes.js";
+import { buildStateSummary } from "../pokemon/StateSummary.js";
 
 export interface RunnerClient {
   currentFrame(): Promise<FrameNumber>;
@@ -15,6 +19,8 @@ export interface RunnerClient {
 
 export interface RunnerStateReader<TState = PokemonStateSnapshot> {
   readState(): Promise<TState>;
+  readFullState?(context?: { readonly menuText?: MenuTextState }): Promise<FullGameState>;
+  getLastTileMapBytes?(): Uint8Array | undefined;
 }
 
 export interface RunnerController {
@@ -51,6 +57,8 @@ export interface HarnessRunnerOptions<TState = PokemonStateSnapshot> {
   readonly sleep?: (ms: number) => Promise<void>;
   readonly now?: () => Date;
   readonly visionProcessor?: RunnerVisionProcessor;
+  readonly mapMemory?: MapMemory;
+  readonly worldReader?: (context?: { readonly tileMapBytes?: Uint8Array }) => Promise<{ world: GameWorldSnapshot; tileMapBytes: Uint8Array }>;
 }
 
 export interface RunnerVisionProcessor {
@@ -113,6 +121,8 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly now: () => Date;
   private readonly visionProcessor?: RunnerVisionProcessor;
+  private readonly mapMemory?: MapMemory;
+  private readonly worldReader?: (context?: { readonly tileMapBytes?: Uint8Array }) => Promise<{ world: GameWorldSnapshot; tileMapBytes: Uint8Array }>;
   private readonly recentStates: RecentStateSnapshot[] = [];
   private readonly recentVisionImages: VisionImageInput[] = [];
   private readonly recentStateHashes: string[] = [];
@@ -121,6 +131,12 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
   private step = 0;
   private llmCalls = 0;
   private finalFrame: FrameNumber | undefined;
+  private lastWorld: GameWorldSnapshot | undefined;
+  private lastMapStateError: string | undefined;
+  private lastMapStateWarning: string | undefined;
+  private lastMapFresh: boolean | undefined;
+  private lastFullState: FullGameState | undefined;
+  private lastFullStateError: string | undefined;
 
   constructor(options: HarnessRunnerOptions<TState>) {
     this.config = options.config;
@@ -137,6 +153,8 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.now = options.now ?? (() => new Date());
     this.visionProcessor = options.visionProcessor;
+    this.mapMemory = options.mapMemory;
+    this.worldReader = options.worldReader;
   }
 
   async snapshot(step = this.step): Promise<HarnessSnapshot<TState>> {
@@ -173,6 +191,8 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
       try {
         const snapshot = await this.snapshot(this.step);
         this.recordRecentState(snapshot);
+        await this.updateMapMemory();
+        await this.updateFullState(snapshot.state);
 
         const policyInput = this.createPolicyInput(snapshot);
         const decision = await this.chooseDecision(policyInput);
@@ -231,14 +251,82 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
   }
 
   private createPolicyInput(snapshot: HarnessSnapshot<TState>): PolicyInput {
-    return {
+    const base: PolicyInput = {
       state: toPolicyState(snapshot.state),
       currentState: snapshot.state,
       recentStates: [...this.recentStates],
       recentActions: [...this.last20Actions],
       ...(this.config.llmVisionEnabled && this.recentVisionImages.length > 0 ? { visionImages: [...this.recentVisionImages] } : {}),
-      step: this.step
+      step: this.step,
+      objective: this.objectiveText(),
+      detectorStatus: this.detector.getStatus()
     };
+
+    if (this.mapMemory !== undefined && this.lastWorld !== undefined) {
+      const mapId = this.lastWorld.mapLayout.mapId;
+      const view = this.mapMemory.view(mapId);
+      base.mapAscii = this.mapMemory.renderAscii(mapId, this.lastWorld.playerCoords.y, this.lastWorld.playerCoords.x);
+      base.walkGrid = this.mapMemory.walkabilityGrid(mapId) ?? undefined;
+      base.mapTileCount = view?.tileCount ?? 0;
+      base.mapTotalTiles = view ? view.width * view.height : 0;
+      base.visitedMaps = this.mapMemory.visitedMaps();
+      base.mapFresh = this.lastMapFresh;
+      if (this.lastMapStateWarning !== undefined) {
+        base.mapStateWarning = this.lastMapStateWarning;
+      }
+    } else if (this.lastMapStateError !== undefined) {
+      base.mapStateError = this.lastMapStateError;
+    }
+
+    if (this.lastFullState !== undefined) {
+      base.fullState = this.lastFullState;
+      base.fullStateSummary = buildStateSummary(this.lastFullState, base.mapAscii, base.visitedMaps);
+    } else if (this.lastFullStateError !== undefined) {
+      base.fullStateError = this.lastFullStateError;
+    }
+
+    return base;
+  }
+
+  private async updateFullState(state: TState): Promise<void> {
+    if (this.stateReader.readFullState === undefined) return;
+
+    try {
+      this.lastFullState = await this.stateReader.readFullState({ menuText: extractMenuTextState(state) });
+      this.lastFullStateError = undefined;
+    } catch (error) {
+      this.lastFullState = undefined;
+      this.lastFullStateError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  private async updateMapMemory(): Promise<void> {
+    if (this.mapMemory === undefined || this.worldReader === undefined) return;
+
+    try {
+      const { world, tileMapBytes } = await this.worldReader({ tileMapBytes: this.stateReader.getLastTileMapBytes?.() });
+      this.lastWorld = world;
+      this.lastMapStateError = undefined;
+      const updateResult = this.mapMemory.update(world, tileMapBytes);
+      this.lastMapFresh = updateResult.status === "updated";
+      this.lastMapStateWarning = updateResult.status === "skipped"
+        ? `Map context reused; latest map update skipped: ${updateResult.reason}`
+        : undefined;
+    } catch (error) {
+      this.lastWorld = undefined;
+      this.lastMapStateError = error instanceof Error ? error.message : String(error);
+      this.lastMapStateWarning = undefined;
+      this.lastMapFresh = false;
+      // MapMemory update is best-effort; don't break the run loop.
+    }
+  }
+
+  private objectiveText(): string {
+    if (this.config.harnessMode === "full-game") {
+      return "Progress through Pokemon Red/Blue to Hall of Fame using safe controller inputs only; completion requires observed Hall of Fame map/state.";
+    }
+
+    return "Stage 1: progress from the initial Pallet/Red House start through Oak/starter acquisition, Rival battle entry, and Rival battle exit.";
   }
 
   private async recordVisionImage(sourcePath: string, step: number, frame: FrameNumber): Promise<void> {
@@ -261,7 +349,10 @@ export class HarnessRunner<TState = PokemonStateSnapshot> {
     }
 
     await mkdir(rawScreenshotsDir, { recursive: true });
-    return path.join(rawScreenshotsDir, `${formatSequence(step)}.png`);
+    // mGBA-http writes screenshots from the emulator/server process. Use an
+    // absolute path so the file lands in this repo's evidence directory even
+    // if mGBA-http has a different working directory.
+    return path.resolve(rawScreenshotsDir, `${formatSequence(step)}.png`);
   }
 
   private recordRecentState(snapshot: HarnessSnapshot<TState>): void {
@@ -401,6 +492,28 @@ function toPolicyState(value: unknown): PokemonStateSnapshot {
 
 function toDetectorState(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
+}
+
+function extractMenuTextState(value: unknown): MenuTextState | undefined {
+  if (value === null || typeof value !== "object") return undefined;
+  const menuText = (value as { readonly menuText?: unknown }).menuText;
+  if (menuText === null || typeof menuText !== "object") return undefined;
+
+  const candidate = menuText as Partial<MenuTextState>;
+  if (
+    typeof candidate.currentMenuItem === "number" &&
+    typeof candidate.textBoxId === "number" &&
+    typeof candidate.letterPrintingDelayFlags === "number" &&
+    typeof candidate.screenText === "string" &&
+    typeof candidate.screenTextKind === "string" &&
+    typeof candidate.namingScreenNameLength === "number" &&
+    typeof candidate.namingScreenSubmitName === "number" &&
+    typeof candidate.namingScreenType === "number"
+  ) {
+    return candidate as MenuTextState;
+  }
+
+  return undefined;
 }
 
 function stableHash(value: unknown): string {

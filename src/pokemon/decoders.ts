@@ -1,5 +1,5 @@
 import { HarnessError } from "../errors.js";
-import type { BattleFlag, PlayerFacing, PokemonCoordinates } from "./PokemonTypes.js";
+import type { BattleFlag, PlayerFacing, PokemonCoordinates, StatusCondition } from "./PokemonTypes.js";
 
 export function decodeUnsignedByte(value: number, fieldName = "byte"): number {
   if (!Number.isInteger(value) || value < 0 || value > 0xff) {
@@ -27,6 +27,53 @@ export function decodeBigEndianWord(highByte: number, lowByte: number, fieldName
 
 export function decodeHitPoints(lowByte: number, highByte: number): number {
   return decodeLittleEndianWord(lowByte, highByte, "hitPoints");
+}
+
+export function decodeBigEndian24(highByte: number, middleByte: number, lowByte: number, fieldName = "u24"): number {
+  const high = decodeUnsignedByte(highByte, `${fieldName}.highByte`);
+  const middle = decodeUnsignedByte(middleByte, `${fieldName}.middleByte`);
+  const low = decodeUnsignedByte(lowByte, `${fieldName}.lowByte`);
+
+  return (high << 16) | (middle << 8) | low;
+}
+
+export function decodeBcd(bytes: Uint8Array, fieldName = "bcd"): number {
+  let value = 0;
+  for (const byte of bytes) {
+    const checked = decodeUnsignedByte(byte, fieldName);
+    const high = checked >> 4;
+    const low = checked & 0x0f;
+    if (high > 9 || low > 9) {
+      throw new HarnessError("INVALID_RAM_STATE", `${fieldName} contains an invalid BCD digit`, {
+        context: { fieldName, byte: checked }
+      });
+    }
+    value = value * 100 + high * 10 + low;
+  }
+  return value;
+}
+
+export function countSetBits(bytes: Uint8Array, maxBits = bytes.length * 8): number {
+  let count = 0;
+  for (let i = 0; i < maxBits; i++) {
+    if ((bytes[Math.floor(i / 8)] & (1 << (i % 8))) !== 0) count++;
+  }
+  return count;
+}
+
+export function decodeStatusCondition(rawValue: number): StatusCondition {
+  const raw = decodeUnsignedByte(rawValue, "status");
+  if (raw === 0) return "OK";
+
+  const statuses: string[] = [];
+  const sleepTurns = raw & 0x07;
+  if (sleepTurns !== 0) statuses.push(`SLP(${sleepTurns})`);
+  if ((raw & 0x08) !== 0) statuses.push("PSN");
+  if ((raw & 0x10) !== 0) statuses.push("BRN");
+  if ((raw & 0x20) !== 0) statuses.push("FRZ");
+  if ((raw & 0x40) !== 0) statuses.push("PAR");
+
+  return statuses.length > 0 ? statuses.join("|") : `UNKNOWN(${raw})`;
 }
 
 export function decodeBattleFlag(value: number): BattleFlag {
