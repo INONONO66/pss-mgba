@@ -40,17 +40,12 @@ export function buildDevHarnessArgs(args: readonly string[], runId: string): str
   const normalizedArgs = stripSeparator(args);
   const forwarded = normalizedArgs[0] === "run" ? normalizedArgs.slice(1) : [...normalizedArgs];
   const result = ["run", ...forwarded];
-  ensureOption(result, "--policy", "openai");
-  ensureOption(result, "--max-steps", "1000");
   ensureOption(result, "--run-id", runId);
   return result;
 }
 
-export function formatDevRunBanner(config: Pick<HarnessConfig, "aiProvider" | "loopMaxSteps">): string {
-  return [
-    `Policy: ${config.aiProvider}`,
-    `Max steps: ${config.loopMaxSteps}`,
-  ].join("\n");
+export function formatDevRunBanner(config: Pick<HarnessConfig, "aiProvider">): string {
+  return `Policy: ${config.aiProvider}`;
 }
 
 async function startViewer(config: HarnessConfig): Promise<StartedDevViewerServer> {
