@@ -92,6 +92,7 @@ export class CommandHarnessRunner {
       this.updateExecutionContext(state);
 
       if (state.mode === "dialog" && !(await this.isDialogDecisionNeeded())) {
+        console.log(`[auto-advance] dialog detected, pressing A...`);
         await this.autoAdvanceDialog();
         continue;
       }

@@ -326,7 +326,10 @@ function createRunner(config: HarnessConfig): CliRunner {
     updateMapMemory,
     updateMapGraph,
     onStep: async (step, command, result) => {
-      console.log(`[step ${step}] ${command.type}: ${result.status} — ${result.reason}${result.details ? ` (${result.details})` : ""}`);
+      const gs = lastGameState;
+      const loc = gs ? `${mapName(gs.mapId)}(${gs.mapId}) (${gs.playerX},${gs.playerY}) ${gs.facing}` : "?";
+      const mode = gs?.mode ?? "?";
+      console.log(`[step ${step}] [${mode}] ${loc} | ${JSON.stringify(command)} → ${result.status}: ${result.reason}${result.details ? ` (${result.details})` : ""}`);
 
       const frame = lastWorld ? await client.currentFrame() : 0;
 

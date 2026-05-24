@@ -326,6 +326,8 @@ export class LLMCommandPolicy implements CommandPolicy {
         return this.fallback(input, new HarnessError("LLM_INVALID_OUTPUT", "LLM response did not include message content"));
       }
 
+      console.log(`[LLM call ${call}] mode=${mode} response=${content.slice(0, 300)}`);
+
       let decision: CommandPolicyDecision;
       try {
         decision = parseCommandDecision(content);
