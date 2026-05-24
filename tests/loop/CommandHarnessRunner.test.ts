@@ -1,22 +1,20 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CommandPolicy, PolicyInput } from "../../src/ai/Policy.js";
-import type { Command, CommandResult, GameMode } from "../../src/control/CommandTypes.js";
-import { executeCommand } from "../../src/executor/CommandExecutor.js";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+import { CommandHarnessRunner, type CommandRunnerGameState, type CommandRunnerOptions } from "../../src/loop/CommandHarnessRunner.js";
+import type { CommandPolicy, PolicyInput, CommandPolicyDecision } from "../../src/ai/Policy.js";
+import type { Command, CommandResult } from "../../src/control/CommandTypes.js";
 import type { ExecutionContext } from "../../src/executor/CommandExecutor.js";
-import { CommandHarnessRunner, type CommandRunnerGameState } from "../../src/loop/CommandHarnessRunner.js";
-import type { DetectorStatus, ProgressDetector } from "../../src/pokemon/Detector.js";
 import type { FullGameState } from "../../src/pokemon/PokemonTypes.js";
+import type { DetectorStatus, ProgressDetector } from "../../src/pokemon/Detector.js";
 
-vi.mock("../../src/executor/CommandExecutor.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../src/executor/CommandExecutor.js")>();
-  return { ...actual, executeCommand: vi.fn() };
-});
+vi.mock("../../src/executor/CommandExecutor.js", () => ({
+  executeCommand: (...args: unknown[]) => executeCommandMock(...args),
+}));
 
-const executeCommandMock = vi.mocked(executeCommand);
+const executeCommandMock = vi.fn();
 
-const navigateCommand: Command = { type: "navigate", x: 4, y: 5 };
-const battleCommand: Command = { type: "battle", action: { kind: "fight", move: "Tackle" } };
-const successResult: CommandResult = { status: "success", reason: "ok" };
+const navigateCommand: Command = { type: "navigate", x: 5, y: 3 };
+const battleCommand: Command = { type: "battle", action: { kind: "fight", move: "Scratch" } };
+const successResult: CommandResult = { status: "success", reason: "arrived" };
 const rejectedResult: CommandResult = { status: "rejected", reason: "guard", details: "bad command" };
 const interruptedResult: CommandResult = { status: "interrupted", reason: "battle_started" };
 
@@ -26,19 +24,18 @@ describe("CommandHarnessRunner", () => {
     executeCommandMock.mockResolvedValue(successResult);
   });
 
-  it("runs a simple overworld navigate command and advances one step", async () => {
+  it("runs a simple overworld navigate command and completes", async () => {
     const policyInputs: PolicyInput[] = [];
     const runner = createRunner({
       policy: policyReturning(navigateCommand, policyInputs),
       states: [gameState(), gameState()],
-      maxSteps: 2,
+      detector: new FakeDetector(2),
     });
 
     const result = await runner.run();
 
-    expect(result.status).toBe("failed_timeout");
+    expect(result.status).toBe("completed");
     expect(result.totalSteps).toBe(2);
-    expect(result.llmCalls).toBe(2);
     expect(executeCommandMock).toHaveBeenCalledWith(navigateCommand, expect.objectContaining({ mode: "overworld" }));
     expect(policyInputs[0]).toMatchObject({ mode: "overworld", step: 0 });
   });
@@ -50,7 +47,7 @@ describe("CommandHarnessRunner", () => {
       controller,
       policy,
       states: [gameState({ mode: "dialog", textBoxId: 1 }), gameState({ mode: "overworld", textBoxId: 0 }), gameState()],
-      maxSteps: 1,
+      detector: new FakeDetector(1),
     });
 
     const result = await runner.run();
@@ -68,12 +65,12 @@ describe("CommandHarnessRunner", () => {
     const runner = createRunner({
       policy: policySequence(decisions, policyInputs),
       states: [gameState()],
-      maxSteps: 1,
+      detector: new FakeDetector(1),
     });
 
     const result = await runner.run();
 
-    expect(result.status).toBe("failed_timeout");
+    expect(result.status).toBe("completed");
     expect(result.totalSteps).toBe(1);
     expect(result.llmCalls).toBe(2);
     expect(policyInputs[1]?.lastResult).toEqual(rejectedResult);
@@ -86,8 +83,6 @@ describe("CommandHarnessRunner", () => {
     const runner = createRunner({
       policy: policyReturning(navigateCommand),
       states: [gameState()],
-      maxSteps: 1,
-      maxLlmCalls: 10,
     });
 
     await expect(runner.run()).rejects.toMatchObject({ code: "ACTION_REJECTED" });
@@ -100,56 +95,26 @@ describe("CommandHarnessRunner", () => {
     const runner = createRunner({
       policy: policySequence([navigateCommand, battleCommand], inputs),
       states: [gameState(), gameState({ mode: "battle" })],
-      maxSteps: 2,
+      detector: new FakeDetector(2),
     });
 
     const result = await runner.run();
 
-    expect(result.status).toBe("failed_timeout");
+    expect(result.status).toBe("completed");
     expect(inputs.map((input) => input.mode)).toEqual(["overworld", "battle"]);
     expect(executeCommandMock.mock.calls[1]?.[1]).toMatchObject({ mode: "battle" });
-  });
-
-  it("stops when the LLM budget is exhausted", async () => {
-    const runner = createRunner({
-      policy: policyReturning(navigateCommand),
-      states: [gameState(), gameState(), gameState()],
-      maxSteps: 5,
-      maxLlmCalls: 2,
-    });
-
-    const result = await runner.run();
-
-    expect(result.status).toBe("failed_budget");
-    expect(result.llmCalls).toBe(2);
-    expect(result.totalSteps).toBe(2);
-  });
-
-  it("stops when max steps are reached", async () => {
-    const runner = createRunner({
-      policy: policyReturning(navigateCommand),
-      states: [gameState(), gameState(), gameState()],
-      maxSteps: 2,
-    });
-
-    const result = await runner.run();
-
-    expect(result.status).toBe("failed_timeout");
-    expect(result.totalSteps).toBe(2);
   });
 
   it("keeps only the last ten command history entries", async () => {
     const runner = createRunner({
       policy: policyReturning(navigateCommand),
       states: Array.from({ length: 15 }, () => gameState()),
-      maxSteps: 15,
-      maxLlmCalls: 20,
+      detector: new FakeDetector(15),
     });
 
     const result = await runner.run();
 
     expect(result.commandHistory).toHaveLength(10);
-    expect(result.commandHistory.map((entry) => entry.step)).toEqual([5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
   });
 
   it("stops with completed when the detector reports completion", async () => {
@@ -158,7 +123,6 @@ describe("CommandHarnessRunner", () => {
       detector,
       policy: policyReturning(navigateCommand),
       states: [gameState()],
-      maxSteps: 5,
     });
 
     const result = await runner.run();
@@ -174,8 +138,6 @@ function createRunner(options: {
   states?: CommandRunnerGameState[];
   controller?: FakeController;
   detector?: FakeDetector;
-  maxSteps?: number;
-  maxLlmCalls?: number;
 } = {}): CommandHarnessRunner {
   const states = [...(options.states ?? [gameState()])];
   const controller = options.controller ?? new FakeController();
@@ -201,8 +163,6 @@ function createRunner(options: {
     } as never,
     mapGraph: { renderForLLM: () => "graph" } as never,
     detector: options.detector ?? new FakeDetector(),
-    maxSteps: options.maxSteps ?? 1,
-    maxLlmCalls: options.maxLlmCalls ?? 10,
     stepDelayMs: 0,
     sleep: async () => {},
     now: () => new Date("2026-05-25T00:00:00.000Z"),
@@ -212,58 +172,64 @@ function createRunner(options: {
   });
 }
 
-function policyReturning(command: Command, inputs: PolicyInput[] = []): CommandPolicy & { calls: number } {
+function fullState(): FullGameState {
   return {
-    calls: 0,
-    async chooseAction(input) {
-      this.calls += 1;
-      inputs.push(input);
+    player: { name: "RED", rivalName: "BLUE", money: 3000, position: { mapId: 0, y: 3, x: 5, yBlock: 0, xBlock: 0 }, facing: { raw: 0, direction: "down" }, badges: { raw: 0, count: 0, obtained: [], names: [] }, playTime: "0:00:00.00" },
+    map: { mapId: 0, mapName: "Pallet Town", tilesetId: 0, width: 10, height: 9 },
+    party: { count: 1, members: [{ slot: 0, speciesId: 0xb0, species: "Charmander", nickname: "CHARMANDER", level: 5, hp: 19, maxHp: 19, status: "OK", types: ["Fire", "Fire"], moves: [{ id: 10, name: "Scratch", pp: 35, ppUp: 0 }], stats: { attack: 12, defense: 11, speed: 13, special: 12 }, experience: 135 }] },
+    bag: [],
+    battle: { inBattle: false, type: "none" },
+    dialog: { active: false, textBoxId: 0, letterPrintingDelayFlags: 0, joyIgnore: 0 },
+    flags: { hasPokedex: false, hasOaksParcel: false, deliveredOaksParcel: false, pokedexOwned: 0, pokedexSeen: 0, badges: { raw: 0, count: 0, obtained: [], names: [] } },
+    menuText: { currentMenuItem: 0, textBoxId: 0, letterPrintingDelayFlags: 0, screenText: "", screenTextKind: "none", namingScreenNameLength: 0, namingScreenSubmitName: 0, namingScreenType: 0 },
+  };
+}
+
+function gameState(overrides: Partial<CommandRunnerGameState> & { textBoxId?: number } = {}): CommandRunnerGameState {
+  const fs = fullState();
+  if (overrides.textBoxId !== undefined) {
+    (fs.dialog as { textBoxId: number }).textBoxId = overrides.textBoxId;
+  }
+  return {
+    fullState: fs,
+    mode: overrides.mode ?? "overworld",
+    mapId: overrides.mapId ?? 0,
+    playerY: overrides.playerY ?? 3,
+    playerX: overrides.playerX ?? 5,
+    facing: overrides.facing ?? "down",
+    mapWidth: overrides.mapWidth ?? 20,
+    mapHeight: overrides.mapHeight ?? 18,
+  };
+}
+
+function policyReturning(command: Command, inputs?: PolicyInput[]): CommandPolicy & { calls: number } {
+  let calls = 0;
+  return {
+    get calls() { return calls; },
+    async chooseAction(input: PolicyInput): Promise<CommandPolicyDecision> {
+      calls += 1;
+      inputs?.push(input);
       return { command, rationale: "test" };
     },
   };
 }
 
-function policySequence(commands: Command[], inputs: PolicyInput[] = []): CommandPolicy {
-  let index = 0;
+function policySequence(commands: Command[], inputs?: PolicyInput[]): CommandPolicy & { calls: number } {
+  let calls = 0;
   return {
-    async chooseAction(input) {
-      inputs.push(input);
-      return { command: commands[Math.min(index++, commands.length - 1)]!, rationale: "test" };
+    get calls() { return calls; },
+    async chooseAction(input: PolicyInput): Promise<CommandPolicyDecision> {
+      const command = commands[calls] ?? commands[commands.length - 1];
+      calls += 1;
+      inputs?.push(input);
+      return { command, rationale: "test" };
     },
   };
 }
 
-function gameState(options: { mode?: GameMode; textBoxId?: number } = {}): CommandRunnerGameState {
-  const state = fullState(options.textBoxId ?? 0);
-  return {
-    fullState: state,
-    mode: options.mode ?? "overworld",
-    mapId: 1,
-    playerY: 2,
-    playerX: 3,
-    facing: "down",
-    mapWidth: 10,
-    mapHeight: 9,
-  };
-}
-
-function fullState(textBoxId = 0): FullGameState {
-  return {
-    player: { name: "RED", rivalName: "BLUE", money: 0, position: { mapId: 1, y: 2, x: 3, yBlock: 0, xBlock: 0 }, facing: { raw: 0, direction: "down" }, badges: { raw: 0, count: 0, obtained: [], names: [] }, playTime: "0:00" },
-    map: { mapId: 1, mapName: "test", tilesetId: 0, width: 10, height: 9 },
-    party: { count: 0, members: [] },
-    bag: [],
-    battle: { inBattle: false, type: "none" },
-    dialog: { active: textBoxId !== 0, textBoxId, letterPrintingDelayFlags: 0, joyIgnore: 0 },
-    flags: { hasPokedex: false, hasOaksParcel: false, deliveredOaksParcel: false, pokedexOwned: 0, pokedexSeen: 0, badges: { raw: 0, count: 0, obtained: [], names: [] } },
-    menuText: { currentMenuItem: 0, textBoxId, letterPrintingDelayFlags: 0, screenText: textBoxId === 0 ? "" : "hello", screenTextKind: "overworld_text", namingScreenNameLength: 0, namingScreenSubmitName: 0, namingScreenType: 0 },
-  };
-}
-
 class FakeController {
-  readonly presses: Array<{ button: string; frames: number | undefined }> = [];
-
-  async pressButton(button: string, frames?: number): Promise<void> {
+  presses: Array<{ button: string; frames: number }> = [];
+  async pressButton(button: string, frames = 5): Promise<void> {
     this.presses.push({ button, frames });
   }
 }

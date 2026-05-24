@@ -21,8 +21,6 @@ export interface CommandRunnerOptions {
   mapMemory: MapMemory;
   mapGraph: MapGraph;
   detector: ProgressDetector<Record<string, unknown>, DetectorStatus>;
-  maxSteps: number;
-  maxLlmCalls: number;
   stepDelayMs: number;
   readGameState: () => Promise<CommandRunnerGameState>;
   updateMapMemory: () => Promise<void>;
@@ -70,12 +68,6 @@ export class CommandHarnessRunner {
       if (status.status === "completed" || status.checkpoints.completed === true) {
         return this.result("completed", startedAt);
       }
-      if (this.step >= this.options.maxSteps) {
-        return this.result("failed_timeout", startedAt);
-      }
-      if (this.llmCalls >= this.options.maxLlmCalls) {
-        return this.result("failed_budget", startedAt);
-      }
 
       const state = await this.options.readGameState();
       this.updateExecutionContext(state);
@@ -106,10 +98,6 @@ export class CommandHarnessRunner {
 
   private async chooseAndExecute(state: CommandRunnerGameState): Promise<HarnessStatus> {
     for (let retry = 0; retry <= MAX_GUARD_RETRIES; retry += 1) {
-      if (this.llmCalls >= this.options.maxLlmCalls) {
-        return "failed_budget";
-      }
-
       const decision = await this.options.policy.chooseAction(this.buildPolicyInput(state));
       this.llmCalls += 1;
       const result = await executeCommand(decision.command, this.options.executionContext);

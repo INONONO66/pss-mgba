@@ -286,8 +286,6 @@ function createRunner(config: HarnessConfig): CliRunner {
     mapMemory,
     mapGraph,
     detector,
-    maxSteps: Number.MAX_SAFE_INTEGER,
-    maxLlmCalls: config.maxLlmCalls,
     stepDelayMs: config.loopStepDelayMs,
     readGameState,
     updateMapMemory,
