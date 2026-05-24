@@ -17,7 +17,7 @@ describe("MapMemory", () => {
     memory.update(createWorld({ yScreen: 69, xScreen: 73 }), tileMap(0x01));
 
     const view = memory.view(3);
-    expect(view).toMatchObject({ mapId: 3, width: 20, height: 20 });
+    expect(view).toMatchObject({ mapId: 3, width: 40, height: 40 });
     expect(view?.tileCount).toBeGreaterThan(0);
     expect(memory.tileAt(3, 5, 7)).toBe("walkable");
   });

@@ -1,4 +1,5 @@
 import type { PolicyDecision } from "../control/ActionTypes.js";
+import type { PolicyDecision as CommandPolicyDecision, GameMode, CommandResult, CommandHistoryEntry } from "../control/CommandTypes.js";
 import type { LlmVisionDetail } from "../config.js";
 import type { FullGameState } from "../pokemon/PokemonTypes.js";
 
@@ -73,8 +74,25 @@ export interface PolicyInput {
   mapTileCount?: number;
   mapTotalTiles?: number;
   visitedMaps?: number[];
+
+  mode?: GameMode;
+  lastResult?: CommandResult;
+  commandHistory?: CommandHistoryEntry[];
+  mapGraph?: string;
+  currentMapFull?: string;
+  microContext?: {
+    position: { y: number; x: number };
+    facing: string;
+    adjacent: Record<string, string>;
+  };
 }
 
 export interface Policy {
   chooseAction(input: PolicyInput): Promise<PolicyDecision>;
 }
+
+export interface CommandPolicy {
+  chooseAction(input: PolicyInput): Promise<CommandPolicyDecision>;
+}
+
+export type { CommandPolicyDecision };

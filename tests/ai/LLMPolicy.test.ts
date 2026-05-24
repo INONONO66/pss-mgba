@@ -4,8 +4,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../../src/config.js";
 import type { PolicyDecision } from "../../src/control/ActionTypes.js";
-import { LLMPolicy, type ChatCompletionRequest, type ChatCompletionsClient, type LLMConversationTrace, type OpenAIClientOptions } from "../../src/ai/LLMPolicy.js";
-import type { Policy, PolicyInput } from "../../src/ai/Policy.js";
+import { LLMCommandPolicy, LLMPolicy, type ChatCompletionRequest, type ChatCompletionsClient, type LLMCommandConversationTrace, type LLMConversationTrace, type OpenAIClientOptions } from "../../src/ai/LLMPolicy.js";
+import type { CommandPolicy, CommandPolicyDecision, Policy, PolicyInput } from "../../src/ai/Policy.js";
 import { HarnessError } from "../../src/errors.js";
 
 const validDecision: PolicyDecision = {
@@ -20,6 +20,16 @@ const fallbackDecision: PolicyDecision = {
   rationale: "Fallback waits safely after invalid LLM output.",
   confidence: 0.2,
   observedStateCitations: ["fallback=true"]
+};
+
+const validCommandDecision: CommandPolicyDecision = {
+  command: { type: "navigate", x: 3, y: 6 },
+  rationale: "Navigate to the visible target coordinate on the current map."
+};
+
+const fallbackCommandDecision: CommandPolicyDecision = {
+  command: { type: "wait", frames: 5 },
+  rationale: "Fallback waits safely after invalid LLM command output."
 };
 
 const policyInput: PolicyInput = {
@@ -671,6 +681,166 @@ describe("LLMPolicy", () => {
   });
 });
 
+describe("LLMCommandPolicy", () => {
+  it("sends the overworld system prompt for overworld mode", async () => {
+    const requests: ChatCompletionRequest[] = [];
+    const policy = createCommandPolicy({
+      client: fakeClient(async (request) => {
+        requests.push(request);
+        return JSON.stringify(validCommandDecision);
+      })
+    });
+
+    await expect(policy.chooseAction({ ...policyInput, mode: "overworld" })).resolves.toEqual(validCommandDecision);
+
+    expect(requests[0]?.messages[0]?.content).toContain("navigate(x, y)");
+    expect(requests[0]?.messages[0]?.content).toContain("interact(direction?)");
+    expect(getUserText(requests[0])).toContain("[STATE: OVERWORLD]");
+  });
+
+  it("sends the battle system prompt for battle mode", async () => {
+    const requests: ChatCompletionRequest[] = [];
+    const battleDecision: CommandPolicyDecision = {
+      command: { type: "battle", action: { kind: "run" } },
+      rationale: "Wild battle is active and running is the safest command."
+    };
+    const policy = createCommandPolicy({
+      client: fakeClient(async (request) => {
+        requests.push(request);
+        return JSON.stringify(battleDecision);
+      })
+    });
+
+    await expect(policy.chooseAction({ ...policyInput, mode: "battle", state: { wIsInBattle: 1 } })).resolves.toEqual(battleDecision);
+
+    expect(requests[0]?.messages[0]?.content).toContain("battle(action)");
+    expect(requests[0]?.messages[0]?.content).toContain("fight(move)");
+    expect(getUserText(requests[0])).toContain("[STATE: BATTLE]");
+  });
+
+  it("parses a valid command response", async () => {
+    const policy = createCommandPolicy({ client: fakeClient(async () => JSON.stringify(validCommandDecision)) });
+
+    await expect(policy.chooseAction({ ...policyInput, mode: "overworld" })).resolves.toEqual(validCommandDecision);
+    expect(policy.getCallCount()).toBe(1);
+  });
+
+  it("falls back on invalid JSON", async () => {
+    const fallbackErrors: HarnessError[] = [];
+    const policy = createCommandPolicy({
+      client: fakeClient(async () => "not json"),
+      onFallback: (error) => fallbackErrors.push(error)
+    });
+
+    await expect(policy.chooseAction({ ...policyInput, mode: "overworld" })).resolves.toMatchObject({
+      command: fallbackCommandDecision.command,
+      rationale: expect.stringContaining("LLM fallback after LLM_INVALID_OUTPUT")
+    });
+    expect(fallbackErrors.map((error) => error.code)).toEqual(["LLM_INVALID_OUTPUT"]);
+  });
+
+  it("falls back on schema validation failure", async () => {
+    const fallbackErrors: HarnessError[] = [];
+    const policy = createCommandPolicy({
+      client: fakeClient(async () => JSON.stringify({ command: { type: "navigate", x: -1, y: 2 }, rationale: "Invalid target." })),
+      onFallback: (error) => fallbackErrors.push(error)
+    });
+
+    await expect(policy.chooseAction({ ...policyInput, mode: "overworld" })).resolves.toMatchObject({
+      command: fallbackCommandDecision.command,
+      rationale: expect.stringContaining("LLM fallback after LLM_INVALID_OUTPUT")
+    });
+    expect(fallbackErrors.map((error) => error.code)).toEqual(["LLM_INVALID_OUTPUT"]);
+  });
+
+  it("respects call budget", async () => {
+    const requests: ChatCompletionRequest[] = [];
+    const fallbackErrors: HarnessError[] = [];
+    const policy = createCommandPolicy({
+      maxLlmCalls: 1,
+      client: fakeClient(async (request) => {
+        requests.push(request);
+        return JSON.stringify(validCommandDecision);
+      }),
+      onFallback: (error) => fallbackErrors.push(error)
+    });
+
+    await expect(policy.chooseAction({ ...policyInput, mode: "overworld" })).resolves.toEqual(validCommandDecision);
+    await expect(policy.chooseAction({ ...policyInput, mode: "overworld" })).resolves.toMatchObject({
+      command: fallbackCommandDecision.command,
+      rationale: expect.stringContaining("LLM fallback after BUDGET_EXCEEDED")
+    });
+    expect(requests).toHaveLength(1);
+    expect(policy.getCallCount()).toBe(1);
+    expect(fallbackErrors.map((error) => error.code)).toEqual(["BUDGET_EXCEEDED"]);
+  });
+
+  it("includes vision images when present", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "llm-command-policy-vision-"));
+    const imagePath = path.join(root, "frame.jpg");
+    await writeFile(imagePath, Buffer.from([13, 14, 15, 16]));
+    const requests: ChatCompletionRequest[] = [];
+    const policy = createCommandPolicy({
+      client: fakeClient(async (request) => {
+        requests.push(request);
+        return JSON.stringify(validCommandDecision);
+      })
+    });
+
+    await expect(policy.chooseAction({
+      ...policyInput,
+      mode: "overworld",
+      visionImages: [{
+        path: imagePath,
+        sourcePath: "/tmp/source.png",
+        mediaType: "image/jpeg",
+        width: 2,
+        height: 2,
+        step: 7,
+        frame: 12,
+        crop: { left: 0, top: 0, width: 2, height: 2 },
+        bytes: 4,
+        detail: "low"
+      }]
+    })).resolves.toEqual(validCommandDecision);
+
+    const content = requests[0]?.messages[1]?.content;
+    expect(Array.isArray(content)).toBe(true);
+    if (!Array.isArray(content)) {
+      throw new Error("expected multimodal content parts");
+    }
+    expect(content[0]).toMatchObject({ type: "text", text: expect.stringContaining("[STATE: OVERWORLD]") });
+    const imagePart = content[1];
+    expect(imagePart).toMatchObject({ type: "image_url", image_url: { detail: "low" } });
+    if (imagePart?.type !== "image_url") {
+      throw new Error("expected image content part");
+    }
+    expect(decodeDataUrl(imagePart.image_url.url)).toEqual({ mediaType: "image/jpeg", bytes: Buffer.from([13, 14, 15, 16]) });
+  });
+
+  it("records mode in conversation trace", async () => {
+    const conversations: LLMCommandConversationTrace[] = [];
+    const policy = createCommandPolicy({
+      client: fakeClient(async () => JSON.stringify(validCommandDecision)),
+      onConversation: (conversation) => {
+        conversations.push(conversation);
+      }
+    });
+
+    await expect(policy.chooseAction({ ...policyInput, mode: "dialog", state: { textActive: true, screenText: "Hello" } })).resolves.toEqual(validCommandDecision);
+
+    expect(conversations).toHaveLength(1);
+    expect(conversations[0]).toMatchObject({
+      call: 1,
+      mode: "dialog",
+      model: "unit-test-model",
+      responseContent: JSON.stringify(validCommandDecision),
+      parsedDecision: validCommandDecision
+    });
+    expect(conversations[0]?.messages[0]?.content).toContain("dialog(action)");
+  });
+});
+
 function createPolicy(overrides: {
   client: ChatCompletionsClient;
   maxLlmCalls?: number;
@@ -690,6 +860,29 @@ function createPolicy(overrides: {
     harnessMode: overrides.harnessMode,
     visionDetail: overrides.visionDetail,
     fallbackPolicy: createFallbackPolicy(),
+    client: overrides.client,
+    onFallback: overrides.onFallback,
+    onConversation: overrides.onConversation
+  });
+}
+
+function createCommandPolicy(overrides: {
+  client: ChatCompletionsClient;
+  maxLlmCalls?: number;
+  visionDetail?: "low" | "high" | "auto";
+  onFallback?: (error: HarnessError) => void;
+  onConversation?: (conversation: LLMCommandConversationTrace) => void | Promise<void>;
+}): LLMCommandPolicy {
+  return new LLMCommandPolicy({
+    apiKey: "unit-test-key",
+    baseURL: "https://example.invalid/v1",
+    model: "unit-test-model",
+    timeoutMs: 1000,
+    maxRetries: 0,
+    temperature: 0.1,
+    maxLlmCalls: overrides.maxLlmCalls ?? 10,
+    visionDetail: overrides.visionDetail,
+    fallbackPolicy: createFallbackCommandPolicy(),
     client: overrides.client,
     onFallback: overrides.onFallback,
     onConversation: overrides.onConversation
@@ -718,6 +911,14 @@ function createFallbackPolicy(): Policy {
   return {
     async chooseAction() {
       return fallbackDecision;
+    }
+  };
+}
+
+function createFallbackCommandPolicy(): CommandPolicy {
+  return {
+    async chooseAction() {
+      return fallbackCommandDecision;
     }
   };
 }

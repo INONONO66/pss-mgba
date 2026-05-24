@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { HeuristicPolicy } from "../../src/ai/HeuristicPolicy.js";
+import { HeuristicCommandPolicy, HeuristicPolicy } from "../../src/ai/HeuristicPolicy.js";
 import type { PolicyInput, PokemonStateSnapshot } from "../../src/ai/Policy.js";
+import { CommandPolicyDecisionSchema } from "../../src/control/CommandSchema.js";
 import { PolicyDecisionSchema } from "../../src/control/ActionSchema.js";
+import type { FullGameState } from "../../src/pokemon/PokemonTypes.js";
 
 const baseState: PokemonStateSnapshot = {
   wIsInBattle: 0,
@@ -539,3 +541,124 @@ describe("HeuristicPolicy", () => {
     }
   });
 });
+
+describe("HeuristicCommandPolicy", () => {
+  it("returns a battle command with a fight action when a usable move exists", async () => {
+    const policy = new HeuristicCommandPolicy();
+    const decision = await policy.chooseAction({
+      state: { wIsInBattle: 1 },
+      fullState: fullState({
+        battle: { inBattle: true, type: "trainer" },
+        party: {
+          count: 1,
+          members: [
+            {
+              slot: 1,
+              speciesId: 1,
+              species: "Bulbasaur",
+              nickname: "BULBA",
+              level: 5,
+              hp: 20,
+              maxHp: 20,
+              status: "OK",
+              types: ["Grass", "Poison"],
+              moves: [
+                { id: 33, name: "Tackle", pp: 35, ppUp: 0 },
+                { id: 45, name: "Growl", pp: 0, ppUp: 0 }
+              ],
+              stats: { attack: 10, defense: 10, speed: 10, special: 10 },
+              experience: 0
+            }
+          ]
+        }
+      })
+    });
+
+    expect(CommandPolicyDecisionSchema.safeParse(decision).success).toBe(true);
+    expect(decision.command).toEqual({ type: "battle", action: { kind: "fight", move: "Tackle" } });
+    expect(decision.rationale).toContain("Battle is active");
+    expect(decision).not.toHaveProperty("confidence");
+    expect(decision).not.toHaveProperty("observedStateCitations");
+  });
+
+  it("returns a dialog advance command when dialog is active", async () => {
+    const policy = new HeuristicCommandPolicy();
+    const decision = await policy.chooseAction({
+      state: { wTextBoxID: 1, screenText: "Hello there!" },
+      fullState: fullState({ dialog: { active: true, textBoxId: 1, letterPrintingDelayFlags: 1, joyIgnore: 0 } })
+    });
+
+    expect(CommandPolicyDecisionSchema.safeParse(decision).success).toBe(true);
+    expect(decision.command).toEqual({ type: "dialog", action: { kind: "advance" } });
+    expect(decision.rationale).toContain("Dialog or text is active");
+  });
+
+  it("returns a raw command in default overworld fallback", async () => {
+    const policy = new HeuristicCommandPolicy();
+    const decision = await policy.chooseAction({ state: baseState });
+
+    expect(CommandPolicyDecisionSchema.safeParse(decision).success).toBe(true);
+    expect(decision.command).toEqual({
+      type: "raw",
+      inputs: [{ button: "A", frames: 5 }],
+      reason: "heuristic fallback"
+    });
+    expect(decision.rationale.length).toBeGreaterThan(0);
+  });
+});
+
+function fullState(overrides: Partial<FullGameState> = {}): FullGameState {
+  return {
+    player: {
+      name: "RED",
+      rivalName: "BLUE",
+      money: 0,
+      position: { mapId: 1, y: 0, x: 0, yBlock: 0, xBlock: 0 },
+      facing: { raw: 0, direction: "down" },
+      badges: { raw: 0, count: 0, obtained: [], names: [] },
+      playTime: "00:00"
+    },
+    map: { mapId: 1, mapName: "Pallet Town", tilesetId: 0, width: 10, height: 10 },
+    party: {
+      count: 1,
+      members: [
+        {
+          slot: 1,
+          speciesId: 1,
+          species: "Bulbasaur",
+          nickname: "BULBA",
+          level: 5,
+          hp: 20,
+          maxHp: 20,
+          status: "OK",
+          types: ["Grass", "Poison"],
+          moves: [],
+          stats: { attack: 10, defense: 10, speed: 10, special: 10 },
+          experience: 0
+        }
+      ]
+    },
+    bag: [],
+    battle: { inBattle: false, type: "none" },
+    dialog: { active: false, textBoxId: 0, letterPrintingDelayFlags: 0, joyIgnore: 0 },
+    flags: {
+      hasPokedex: false,
+      hasOaksParcel: false,
+      deliveredOaksParcel: false,
+      pokedexOwned: 0,
+      pokedexSeen: 0,
+      badges: { raw: 0, count: 0, obtained: [], names: [] }
+    },
+    menuText: {
+      currentMenuItem: 0,
+      textBoxId: 0,
+      letterPrintingDelayFlags: 0,
+      screenText: "",
+      screenTextKind: "none",
+      namingScreenNameLength: 0,
+      namingScreenSubmitName: 0,
+      namingScreenType: 0
+    },
+    ...overrides
+  };
+}

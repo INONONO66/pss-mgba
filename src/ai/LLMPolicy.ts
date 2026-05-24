@@ -3,8 +3,12 @@ import OpenAI from "openai";
 import type { HarnessConfig, HarnessMode, LlmVisionDetail } from "../config.js";
 import type { PolicyDecision } from "../control/ActionTypes.js";
 import { PolicyDecisionSchema, createPolicyDecisionJsonSchema } from "../control/ActionSchema.js";
+import { CommandPolicyDecisionSchema } from "../control/CommandSchema.js";
+import type { GameMode } from "../control/CommandTypes.js";
 import { HarnessError } from "../errors.js";
-import type { Policy, PolicyInput, RecentStateSnapshot, VisionImageInput } from "./Policy.js";
+import { HeuristicCommandPolicy } from "./HeuristicPolicy.js";
+import type { CommandPolicy, CommandPolicyDecision, Policy, PolicyInput, RecentStateSnapshot, VisionImageInput } from "./Policy.js";
+import { buildSystemPrompt, buildUserMessage } from "./PromptBuilder.js";
 
 interface ChatMessage {
   content: string | null;
@@ -51,6 +55,17 @@ export interface LLMConversationTrace {
   readonly error?: { readonly code: string; readonly message: string };
 }
 
+export interface LLMCommandConversationTrace {
+  readonly call: number;
+  readonly model: string;
+  readonly temperature: number;
+  readonly mode: GameMode;
+  readonly messages: readonly SanitizedChatCompletionRequestMessage[];
+  readonly responseContent?: string;
+  readonly parsedDecision?: CommandPolicyDecision;
+  readonly error?: { readonly code: string; readonly message: string };
+}
+
 type SanitizedChatCompletionRequestMessage =
   | { readonly role: "system"; readonly content: string }
   | { readonly role: "user"; readonly content: string | SanitizedChatCompletionContentPart[] };
@@ -82,6 +97,23 @@ export interface LLMPolicyOptions {
   createClient?: (options: OpenAIClientOptions) => ChatCompletionsClient;
   onFallback?: (error: HarnessError) => void;
   onConversation?: (conversation: LLMConversationTrace) => void | Promise<void>;
+}
+
+export interface LLMCommandPolicyOptions {
+  apiKey: string;
+  baseURL: string;
+  model: string;
+  timeoutMs: number;
+  maxRetries: number;
+  temperature: number;
+  maxLlmCalls: number;
+  visionDetail?: LlmVisionDetail;
+  visionRequired?: boolean;
+  fallbackPolicy?: CommandPolicy;
+  client?: ChatCompletionsClient;
+  createClient?: (options: OpenAIClientOptions) => ChatCompletionsClient;
+  onFallback?: (error: HarnessError) => void;
+  onConversation?: (conversation: LLMCommandConversationTrace) => void | Promise<void>;
 }
 
 export class LLMPolicy implements Policy {
@@ -220,6 +252,142 @@ export class LLMPolicy implements Policy {
   }
 }
 
+export class LLMCommandPolicy implements CommandPolicy {
+  private readonly client: ChatCompletionsClient;
+  private readonly model: string;
+  private readonly temperature: number;
+  private readonly maxLlmCalls: number;
+  private readonly visionDetail: LlmVisionDetail;
+  private readonly visionRequired: boolean;
+  private readonly fallbackPolicy: CommandPolicy;
+  private readonly onFallback?: (error: HarnessError) => void;
+  private readonly onConversation?: (conversation: LLMCommandConversationTrace) => void | Promise<void>;
+  private calls = 0;
+
+  constructor(options: LLMCommandPolicyOptions) {
+    this.client = options.client ?? (options.createClient ?? createOpenAIClient)({
+      apiKey: options.apiKey,
+      baseURL: options.baseURL,
+      timeout: options.timeoutMs,
+      maxRetries: options.maxRetries
+    });
+    this.model = options.model;
+    this.temperature = options.temperature;
+    this.maxLlmCalls = options.maxLlmCalls;
+    this.visionDetail = options.visionDetail ?? "low";
+    this.visionRequired = options.visionRequired ?? false;
+    this.fallbackPolicy = options.fallbackPolicy ?? new HeuristicCommandPolicy();
+    this.onFallback = options.onFallback;
+    this.onConversation = options.onConversation;
+  }
+
+  static fromConfig(config: HarnessConfig, fallbackPolicy: CommandPolicy = new HeuristicCommandPolicy(), overrides: Partial<Pick<LLMCommandPolicyOptions, "client" | "createClient" | "onFallback" | "onConversation">> = {}): LLMCommandPolicy {
+    const providerOptions = getProviderOptions(config);
+
+    return new LLMCommandPolicy({
+      apiKey: providerOptions.apiKey,
+      baseURL: providerOptions.baseURL,
+      model: providerOptions.model,
+      timeoutMs: config.llmTimeoutMs,
+      maxRetries: config.llmMaxRetries,
+      temperature: config.openaiTemperature,
+      maxLlmCalls: config.maxLlmCalls,
+      visionDetail: config.llmVisionDetail,
+      visionRequired: config.llmVisionEnabled,
+      fallbackPolicy,
+      ...overrides
+    });
+  }
+
+  getCallCount(): number {
+    return this.calls;
+  }
+
+  async chooseAction(input: PolicyInput): Promise<CommandPolicyDecision> {
+    if (this.calls >= this.maxLlmCalls) {
+      return this.fallback(input, new HarnessError("BUDGET_EXCEEDED", "Maximum LLM call budget reached", {
+        context: { maxLlmCalls: this.maxLlmCalls }
+      }));
+    }
+
+    this.calls += 1;
+
+    try {
+      if (this.visionRequired && (input.visionImages === undefined || input.visionImages.length === 0)) {
+        return this.fallback(input, new HarnessError("LLM_UNAVAILABLE", "LLM vision input is required but no processed vision images were available"));
+      }
+
+      const call = this.calls;
+      const mode = input.mode ?? "overworld";
+      const messages = await buildCommandMessages(input, this.visionDetail);
+      const completion = await this.client.chat.completions.create({
+        model: this.model,
+        temperature: this.temperature,
+        messages
+      });
+      const content = completion.choices[0]?.message?.content;
+
+      if (typeof content !== "string" || content.trim().length === 0) {
+        await this.recordConversation({ call, mode, messages, error: new HarnessError("LLM_INVALID_OUTPUT", "LLM response did not include message content") });
+        return this.fallback(input, new HarnessError("LLM_INVALID_OUTPUT", "LLM response did not include message content"));
+      }
+
+      let decision: CommandPolicyDecision;
+      try {
+        decision = parseCommandDecision(content);
+      } catch (error) {
+        const harnessError = error instanceof HarnessError
+          ? error
+          : new HarnessError("LLM_INVALID_OUTPUT", "LLM response could not be parsed", { cause: error });
+        await this.recordConversation({ call, mode, messages, responseContent: content, error: harnessError });
+        return this.fallback(input, harnessError);
+      }
+      await this.recordConversation({ call, mode, messages, responseContent: content, parsedDecision: decision });
+      return decision;
+    } catch (error) {
+      if (error instanceof HarnessError) {
+        return this.fallback(input, error);
+      }
+
+      return this.fallback(input, new HarnessError("LLM_UNAVAILABLE", "OpenAI-compatible chat completion failed", {
+        cause: error,
+        context: { provider: "openai-chat-completions" }
+      }));
+    }
+  }
+
+  private async fallback(input: PolicyInput, error: HarnessError): Promise<CommandPolicyDecision> {
+    this.onFallback?.(error);
+    const decision = await this.fallbackPolicy.chooseAction(input);
+    return CommandPolicyDecisionSchema.parse({
+      command: decision.command,
+      rationale: `LLM fallback after ${error.code}: ${decision.rationale}`.slice(0, 200)
+    });
+  }
+
+  private async recordConversation(input: {
+    readonly call: number;
+    readonly mode: GameMode;
+    readonly messages: ChatCompletionRequestMessage[];
+    readonly responseContent?: string;
+    readonly parsedDecision?: CommandPolicyDecision;
+    readonly error?: HarnessError;
+  }): Promise<void> {
+    if (this.onConversation === undefined) return;
+
+    await this.onConversation({
+      call: input.call,
+      model: this.model,
+      temperature: this.temperature,
+      mode: input.mode,
+      messages: sanitizeMessages(input.messages),
+      responseContent: input.responseContent,
+      parsedDecision: input.parsedDecision,
+      ...(input.error !== undefined ? { error: { code: input.error.code, message: input.error.message } } : {})
+    });
+  }
+}
+
 function getProviderOptions(config: HarnessConfig): Pick<LLMPolicyOptions, "apiKey" | "baseURL" | "model"> {
   if (config.openaiApiKey === undefined) {
     throw new HarnessError("LLM_UNAVAILABLE", "OPENAI_API_KEY is required when AI_PROVIDER=openai");
@@ -300,6 +468,18 @@ async function buildMessages(input: PolicyInput, harnessMode: HarnessMode, defau
       role: "user",
       content: userContent
     }
+  ];
+}
+
+async function buildCommandMessages(input: PolicyInput, defaultVisionDetail: LlmVisionDetail): Promise<ChatCompletionRequest["messages"]> {
+  const mode = input.mode ?? "overworld";
+  const systemPrompt = buildSystemPrompt(mode);
+  const userText = buildUserMessage(input);
+  const userContent = await buildUserContent(userText, input.visionImages, defaultVisionDetail);
+
+  return [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userContent }
   ];
 }
 
@@ -677,6 +857,37 @@ function parseDecision(content: string): PolicyDecision {
   }
 
   return result.data;
+}
+
+function parseCommandDecision(content: string): CommandPolicyDecision {
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(content);
+  } catch (error) {
+    throw new HarnessError("LLM_INVALID_OUTPUT", "LLM response was not valid JSON", { cause: error });
+  }
+
+  const result = CommandPolicyDecisionSchema.safeParse(normalizeCommandPolicyDecisionCandidate(parsed));
+  if (!result.success) {
+    throw new HarnessError("LLM_INVALID_OUTPUT", "LLM response failed command policy decision schema validation", {
+      context: { issues: result.error.issues.map((issue) => issue.message) }
+    });
+  }
+
+  return result.data;
+}
+
+function normalizeCommandPolicyDecisionCandidate(value: unknown): unknown {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return {
+    command: candidate.command,
+    rationale: typeof candidate.rationale === "string" ? candidate.rationale.slice(0, 200) : candidate.rationale
+  };
 }
 
 function normalizePolicyDecisionCandidate(value: unknown): unknown {

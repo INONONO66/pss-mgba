@@ -1,7 +1,8 @@
 import { PolicyDecisionSchema } from "../control/ActionSchema.js";
+import { CommandPolicyDecisionSchema } from "../control/CommandSchema.js";
 import type { HoldAction, PolicyDecision, PressAction } from "../control/ActionTypes.js";
 import type { MgbaButton } from "../mgba/MgbaTypes.js";
-import type { Policy, PolicyInput, PokemonStateSnapshot, RecentStateSnapshot } from "./Policy.js";
+import type { CommandPolicy, CommandPolicyDecision, Policy, PolicyInput, PokemonStateSnapshot, RecentStateSnapshot } from "./Policy.js";
 
 const DEFAULT_PRESS_FRAMES = 5;
 const DEFAULT_WAIT_FRAMES = 5;
@@ -118,6 +119,114 @@ export class HeuristicPolicy implements Policy {
       observedStateCitations: citations
     });
   }
+}
+
+export class HeuristicCommandPolicy implements CommandPolicy {
+  async chooseAction(input: PolicyInput): Promise<CommandPolicyDecision> {
+    const state = toStateSnapshot(input);
+
+    if (isBattleState(state, input)) {
+      return validateCommandDecision(chooseBattleCommand(input));
+    }
+
+    if (isDialogState(state, input)) {
+      return validateCommandDecision({
+        command: { type: "dialog", action: { kind: "advance" } },
+        rationale: "Dialog or text is active, so advance it with the safest command fallback."
+      });
+    }
+
+    const legacyDecision = await new HeuristicPolicy().chooseAction(input);
+    return validateCommandDecision({
+      command: legacyActionToRawCommand(legacyDecision.action),
+      rationale: legacyDecision.rationale
+    });
+  }
+}
+
+function chooseBattleCommand(input: PolicyInput): CommandPolicyDecision {
+  const battle = input.fullState?.battle;
+  const partyMoves = input.fullState?.party.members[0]?.moves ?? [];
+  const usableMove = partyMoves.find((move) => move.pp > 0);
+  const firstMove = partyMoves[0];
+
+  if (usableMove !== undefined) {
+    return {
+      command: { type: "battle", action: { kind: "fight", move: usableMove.name } },
+      rationale: `Battle is active, so use the first move with PP remaining: ${usableMove.name}.`
+    };
+  }
+
+  if (battle?.type === "wild") {
+    return {
+      command: { type: "battle", action: { kind: "run" } },
+      rationale: "Wild battle is active and no usable move was found, so run as the safest fallback."
+    };
+  }
+
+  if (firstMove !== undefined) {
+    return {
+      command: { type: "battle", action: { kind: "fight", move: firstMove.name } },
+      rationale: `Battle is active, so fall back to the first known move: ${firstMove.name}.`
+    };
+  }
+
+  return {
+    command: { type: "battle", action: { kind: "run" } },
+    rationale: "Battle is active but no moves were available, so run as a safe emergency fallback."
+  };
+}
+
+function isBattleState(state: PokemonStateSnapshot, input: PolicyInput): boolean {
+  return isInBattle(state) || input.fullState?.battle.inBattle === true;
+}
+
+function isDialogState(state: PokemonStateSnapshot, input: PolicyInput): boolean {
+  return (
+    input.fullState?.dialog.active === true ||
+    state.menuActive === true ||
+    state.textActive === true ||
+    (state.wTextBoxID ?? state.textBoxId ?? 0) !== 0 ||
+    typeof state.screenText === "string" && state.screenText.trim().length > 0
+  );
+}
+
+function legacyActionToRawCommand(action: PolicyDecision["action"]): CommandPolicyDecision["command"] {
+  switch (action.type) {
+    case "press":
+    case "hold":
+      return {
+        type: "raw",
+        inputs: [{ button: action.button, frames: action.frames }],
+        reason: "heuristic fallback"
+      };
+    case "wait":
+      return {
+        type: "raw",
+        inputs: [{ button: "A", frames: action.frames }],
+        reason: "heuristic fallback"
+      };
+    case "sequence":
+      {
+        const inputs = action.actions
+          .flatMap((nestedAction) =>
+            nestedAction.type === "press" || nestedAction.type === "hold"
+              ? [{ button: nestedAction.button, frames: nestedAction.frames }]
+              : []
+          )
+          .slice(0, 8);
+
+        return {
+          type: "raw",
+          inputs: inputs.length > 0 ? inputs : [{ button: "A", frames: DEFAULT_PRESS_FRAMES }],
+          reason: "heuristic fallback"
+        };
+      }
+  }
+}
+
+function validateCommandDecision(decision: CommandPolicyDecision): CommandPolicyDecision {
+  return CommandPolicyDecisionSchema.parse(decision);
 }
 
 function choosePostStarterOakLabAction(state: PokemonStateSnapshot): Pick<PolicyDecision, "action" | "rationale"> | undefined {
