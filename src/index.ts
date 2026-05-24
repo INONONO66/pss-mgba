@@ -1,503 +1,182 @@
-import "dotenv/config";
-import { pathToFileURL } from "node:url";
-import { inspect } from "node:util";
-import { HeuristicPolicy } from "./ai/HeuristicPolicy.js";
-import { LLMPolicy } from "./ai/LLMPolicy.js";
-import { Controller } from "./control/Controller.js";
-import type { MgbaButton } from "./mgba/MgbaTypes.js";
-import { MGBA_BUTTONS } from "./mgba/MgbaTypes.js";
-import { HarnessActionSchema } from "./control/ActionSchema.js";
-import { loadConfig, type AiProvider, type HarnessConfig, type HarnessMode } from "./config.js";
-import { EvidenceRecorder } from "./evidence/EvidenceRecorder.js";
-import { redactSecrets } from "./evidence/redaction.js";
-import { HarnessError } from "./errors.js";
-import { HarnessRunner } from "./loop/HarnessRunner.js";
-import { runMgbaSmokeWorkflow, type MgbaSmokeWorkflowDependencies } from "./loop/MgbaSmokeWorkflow.js";
-import { MgbaHttpClient } from "./mgba/MgbaHttpClient.js";
-import { runMgbaPreflight, type MgbaPreflightReport } from "./mgba/preflight.js";
-import { PokemonStateReader } from "./pokemon/PokemonStateReader.js";
-import { FullGameDetector } from "./pokemon/FullGameDetector.js";
-import { Stage1Detector } from "./pokemon/Stage1Detector.js";
-import { ScreenshotProcessor } from "./vision/ScreenshotProcessor.js";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { Agent } from "@minpeter/pss-runtime";
+import { createReasoningLlm } from "./agent-llm";
+import { env } from "./env";
+import { startMetricsServer } from "./metrics-server";
+import { MgbaHttpClient } from "./mgba-http";
+import type { MgbaObservation } from "./observation";
+import { PokemonMilestoneTracker } from "./pokemon-milestones";
+import { createPrettyLogger } from "./pretty-log";
+import { RunMetricsTracker } from "./run-metrics";
+import {
+  createOptimizedFreshRunTrace,
+  updateRunTraceMetadata,
+} from "./run-trace";
+import { createObservedTurnInput, streamSupervisedRun } from "./runner";
+import { StuckMemory } from "./stuck-memory";
+import { createTrackedModel, TokenUsageTracker } from "./token-usage";
+import { createMgbaControlPlane, describeMgbaControlPlane } from "./tools";
 
-type HarnessCommand = "snapshot" | "preflight" | "run" | "press" | "smoke";
+const provider = createOpenAICompatible({
+  apiKey: env.AI_API_KEY,
+  baseURL: env.AI_BASE_URL,
+  name: "pokemon",
+});
 
-export interface CliOptions {
-  readonly command?: HarnessCommand;
-  readonly dryRun: boolean;
-  readonly help: boolean;
-  readonly policy?: AiProvider;
-  readonly mode?: HarnessMode;
-  readonly vision: boolean;
-  readonly maxSteps?: number;
-  readonly runId?: string;
-  readonly pressButton?: string;
-  readonly pressFrames?: number;
-}
+const instructions = [
+  "You are a concise Pokemon-playing control agent.",
+  describeMgbaControlPlane(),
+  "When playing autonomously, use a loop of injected observation -> decide -> one action -> brief summary.",
+  "Use red movement guide lines to distinguish blocked cells, open walkable cells, and interactable-looking objects. Prefer exploring open unseen space or facing likely objects and pressing A.",
+  "Movement duration calibration: 10=1 red cell, 20=2 cells, 45=3 cells, 60=4 cells, 75=5 cells, 90=6 cells. Longer movement is possible with larger duration on clearly open straight paths; near obstacles, move one cell and re-observe.",
+  "Track recent action context and avoid repeating actions that did not visibly change progress.",
+  "Before any tool call, output exactly one <action_plan>...</action_plan> block containing the medium-term goal, visible blocked/open/object assessment, intended target, next action, and recent repetition to avoid.",
+  "Keep final user-facing answers under 3 lines, but use tools whenever game control is requested.",
+].join("\n\n");
+const mgbaClient = new MgbaHttpClient({ baseUrl: env.MGBA_HTTP_BASE_URL });
+const tools = createMgbaControlPlane({
+  client: mgbaClient,
+  onSupervisorIntervention: (intervention) => {
+    runMetricsTracker.recordSupervisorIntervention(intervention.reason);
+    prettyLogger.event({
+      intervention,
+      type: "supervisor-intervention",
+    } as never);
+  },
+});
+let runTrace = await createOptimizedFreshRunTrace();
+const prettyLogger = createPrettyLogger();
+prettyLogger.runTrace(runTrace);
+const runMetricsTracker = new RunMetricsTracker({
+  experimentId: runTrace.experimentId,
+  iteration: runTrace.iteration,
+  mode: runTrace.mode,
+  runId: runTrace.runId,
+});
+const tokenUsageTracker = new TokenUsageTracker({
+  iteration: runTrace.iteration,
+  metricsDir: runTrace.metricsDir,
+  runId: runTrace.runId,
+  onMetric: prettyLogger.tokenUsage,
+});
 
-export interface CliIo {
-  readonly stdout: (message: string) => void;
-  readonly stderr: (message: string) => void;
-}
+startMetricsServer(tokenUsageTracker, runMetricsTracker, {
+  host: env.METRICS_HTTP_HOST,
+  port: env.METRICS_HTTP_PORT,
+});
 
-export interface CliFactories {
-  readonly loadConfig?: (env: NodeJS.ProcessEnv) => HarnessConfig;
-  readonly createRunner?: (config: HarnessConfig, options: RunnerCommandOptions) => CliRunner;
-  readonly runPreflight?: (config: HarnessConfig) => Promise<MgbaPreflightReport>;
-  readonly executePress?: (config: HarnessConfig, action: unknown) => Promise<void>;
-}
-
-export interface CliRunner {
-  snapshot(): Promise<unknown>;
-  run(): Promise<{ readonly status: string }>;
-}
-
-interface RunnerCommandOptions {
-  readonly maxSteps?: number;
-}
-
-interface ParsedOptionResult {
-  readonly options: CliOptions;
-  readonly errors: string[];
-}
-
-const DEFAULT_IO: CliIo = {
-  stdout: (message) => console.log(message),
-  stderr: (message) => console.error(message)
-};
-
-export function getHarnessHelp(): string {
-  return [
-    "Pokemon Red/Blue AI harness CLI",
-    "",
-    "Usage:",
-    "  pnpm run harness --help",
-    "  pnpm run harness snapshot [--dry-run] [--policy heuristic|openai] [--mode stage1|full-game] [--vision] [--max-steps N] [--run-id ID]",
-    "  pnpm run harness preflight [--policy heuristic|openai] [--mode stage1|full-game] [--vision] [--run-id ID]",
-    "  pnpm run harness run [--policy heuristic|openai] [--mode stage1|full-game] [--vision] [--max-steps N] [--run-id ID]",
-    "  pnpm run harness press BUTTON [--frames N] [--run-id ID]",
-    "  pnpm run smoke:mgba",
-    "",
-    "Commands:",
-    "  snapshot   Record one runner snapshot, or print config only with --dry-run.",
-    "  preflight  Run mGBA preflight against the manually started service and loaded ROM state.",
-    "  run        Start the selected harness loop. Defaults to Stage 1.",
-    "  press      Send one safe Game Boy button press for smoke checks.",
-    "  smoke      Opt-in mGBA smoke: preflight, snapshot, press B, snapshot.",
-    "",
-    "Options:",
-    "  --vision   Enable LLM image input for this command when the selected provider/model supports it.",
-    "",
-    "Safe buttons: A, B, Start, Select, Up, Down, Left, Right"
-  ].join("\n");
-}
-
-export function parseCliArgs(args: readonly string[]): ParsedOptionResult {
-  const errors: string[] = [];
-  const options: MutableCliOptions = { dryRun: false, help: false, vision: false };
-  const rest: string[] = [];
-
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    switch (arg) {
-      case "--help":
-      case "-h":
-        options.help = true;
-        break;
-      case "--dry-run":
-        options.dryRun = true;
-        break;
-      case "--policy":
-        options.policy = parsePolicy(args[++index], errors);
-        break;
-      case "--mode":
-        options.mode = parseMode(args[++index], errors);
-        break;
-      case "--vision":
-        options.vision = true;
-        break;
-      case "--max-steps":
-        options.maxSteps = parsePositiveInteger(args[++index], "--max-steps", errors);
-        break;
-      case "--run-id":
-        options.runId = parseNonEmpty(args[++index], "--run-id", errors);
-        break;
-      case "--frames":
-        options.pressFrames = parsePositiveInteger(args[++index], "--frames", errors);
-        break;
-      default:
-        if (arg?.startsWith("--") === true) {
-          errors.push(`Unknown option: ${arg}`);
-        } else if (arg !== undefined) {
-          rest.push(arg);
-        }
-    }
-  }
-
-  const command = rest[0];
-  if (command !== undefined) {
-    if (isHarnessCommand(command)) {
-      options.command = command;
-      if (command === "press") {
-        options.pressButton = rest[1];
-        if (rest.length > 2) {
-          errors.push(`Unexpected argument for press: ${rest.slice(2).join(" ")}`);
-        }
-      } else if (rest.length > 1) {
-        errors.push(`Unexpected argument for ${command}: ${rest.slice(1).join(" ")}`);
-      }
-    } else {
-      errors.push(`Unknown command: ${command}`);
-    }
-  }
-
-  return { options, errors };
-}
-
-export async function runCli(
-  args: readonly string[] = process.argv.slice(2),
-  io: CliIo = DEFAULT_IO,
-  factories: CliFactories = {}
-): Promise<number> {
-  const parsed = parseCliArgs(args);
-  if (parsed.options.help || args.length === 0) {
-    io.stdout(getHarnessHelp());
-    return parsed.errors.length === 0 ? 0 : 1;
-  }
-
-  if (parsed.errors.length > 0) {
-    io.stderr(parsed.errors.join("\n"));
-    io.stderr("\n" + getHarnessHelp());
-    return 1;
-  }
-
-  try {
-    switch (parsed.options.command) {
-      case "snapshot":
-        return await handleSnapshot(parsed.options, io, factories);
-      case "preflight":
-        return await handlePreflight(parsed.options, io, factories);
-      case "run":
-        return await handleRun(parsed.options, io, factories);
-      case "press":
-        return await handlePress(parsed.options, io, factories);
-      case "smoke":
-        return await handleSmoke(parsed.options, io);
-      default:
-        io.stderr("Missing command.\n" + getHarnessHelp());
-        return 1;
-    }
-  } catch (error) {
-    io.stderr(formatSafeError(error));
-    return 1;
-  }
-}
-
-export async function main(args: readonly string[] = process.argv.slice(2)): Promise<void> {
-  process.exitCode = await runCli(args);
-}
-
-function loadCommandConfig(options: CliOptions, factories: CliFactories, dryRun = false): HarnessConfig {
-  const env: NodeJS.ProcessEnv = { ...process.env };
-  if (options.policy !== undefined) {
-    env.AI_PROVIDER = options.policy;
-  }
-  if (options.mode !== undefined) {
-    env.HARNESS_MODE = options.mode;
-  }
-  if (options.maxSteps !== undefined) {
-    env.LOOP_MAX_STEPS = String(options.maxSteps);
-  }
-  if (options.runId !== undefined) {
-    env.HARNESS_RUN_ID = options.runId;
-  }
-  if (options.vision) {
-    env.LLM_VISION_ENABLED = "true";
-  }
-  if (dryRun && !hasProviderApiKey(env)) {
-    env.AI_PROVIDER = "heuristic";
-  }
-
-  return (factories.loadConfig ?? loadConfig)(env);
-}
-
-async function handleSnapshot(options: CliOptions, io: CliIo, factories: CliFactories): Promise<number> {
-  const config = loadCommandConfig(options, factories, options.dryRun);
-  if (options.dryRun) {
-    io.stdout("Snapshot dry run succeeded. No mGBA or OpenAI client was constructed.");
-    io.stdout(formatConfigSummary(config));
-    return 0;
-  }
-
-  const runner = (factories.createRunner ?? createRunner)(config, { maxSteps: options.maxSteps });
-  const snapshot = await runner.snapshot();
-  io.stdout(redactSecrets({ command: "snapshot", snapshot }));
-  return 0;
-}
-
-async function handlePreflight(options: CliOptions, io: CliIo, factories: CliFactories): Promise<number> {
-  const config = loadCommandConfig(options, factories);
-  const report = await (factories.runPreflight ?? ((loadedConfig) => runMgbaPreflight({ config: loadedConfig })))(config);
-  io.stdout(formatPreflightReport(report));
-  return report.ok ? 0 : 1;
-}
-
-async function handleRun(options: CliOptions, io: CliIo, factories: CliFactories): Promise<number> {
-  const config = loadCommandConfig(options, factories);
-  const runner = (factories.createRunner ?? createRunner)(config, { maxSteps: options.maxSteps });
-  const result = await runner.run();
-  io.stdout(redactSecrets({ command: "run", result }));
-  return result.status === "completed" ? 0 : 1;
-}
-
-async function handlePress(options: CliOptions, io: CliIo, factories: CliFactories): Promise<number> {
-  const config = loadCommandConfig(options, factories);
-  const frames = options.pressFrames ?? config.defaultTapFrames;
-  const action = { type: "press", button: options.pressButton, frames };
-  const parsed = HarnessActionSchema.safeParse(action);
-  if (!parsed.success || parsed.data.type !== "press") {
-    throw new HarnessError("ACTION_REJECTED", "press requires a safe Game Boy button and frame count", {
-      context: { allowedButtons: MGBA_BUTTONS, frames }
-    });
-  }
-
-  await (factories.executePress ?? executePress)(config, parsed.data);
-  io.stdout(redactSecrets({ command: "press", action: parsed.data, status: "executed" }));
-  return 0;
-}
-
-async function handleSmoke(options: CliOptions, io: CliIo): Promise<number> {
-  if (process.env.RUN_MGBA_INTEGRATION !== "1" || process.env.MGBA_HTTP_BASE_URL === undefined || process.env.MGBA_HTTP_BASE_URL.trim().length === 0) {
-    io.stdout("mGBA smoke skipped. Set RUN_MGBA_INTEGRATION=1 and MGBA_HTTP_BASE_URL to contact an already running mGBA-http service.");
-    return 0;
-  }
-
-  const config = loadCommandConfig({ ...options, runId: options.runId ?? `smoke-mgba-${Date.now()}` }, {});
-  const dependencies = createSmokeDependencies(config);
-  const result = await runMgbaSmokeWorkflow({ config, dependencies });
-  io.stdout(redactSecrets({ command: "smoke:mgba", result, evidenceDir: `${config.evidenceDir}/${config.harnessRunId}` }));
-  return result.status === "completed" ? 0 : 1;
-}
-
-function createSmokeDependencies(config: HarnessConfig): MgbaSmokeWorkflowDependencies {
-  const evidence = new EvidenceRecorder({ evidenceDir: config.evidenceDir, runId: config.harnessRunId });
-  const client = new MgbaHttpClient({ baseUrl: config.mgbaHttpBaseUrl, screenshotDir: evidence.paths.rawScreenshotsDir });
-  const visionProcessor = config.llmVisionEnabled ? createVisionProcessor(config, evidence.paths.visionDir) : undefined;
-  const controller = new Controller({
-    client,
-    defaultTapFrames: config.defaultTapFrames,
-    defaultHoldFrames: config.defaultHoldFrames
-  });
-  const runner = new HarnessRunner({
-    config,
-    client,
-    stateReader: new PokemonStateReader({ client, version: config.pokemonVersion }),
-    policy: new HeuristicPolicy(),
-    controller,
-    evidence,
-    detector: createDetector(config),
-    visionProcessor,
-    budgets: { maxSteps: 1 }
-  });
-
-  return {
-    startEvidence: (startConfig) => evidence.startRun(startConfig),
-    runPreflight: () => runMgbaPreflight({ config, client }),
-    snapshot: () => runner.snapshot(),
-    press: (action) => controller.execute(action),
-    recordAction: (action) => evidence.recordAction(action),
-    recordError: (error) => evidence.recordError(error),
-    finishEvidence: (status, result) => evidence.finishRun(status, result)
-  };
-}
-
-function createRunner(config: HarnessConfig, options: RunnerCommandOptions): CliRunner {
-  const evidence = new EvidenceRecorder({ evidenceDir: config.evidenceDir, runId: config.harnessRunId });
-  const client = new MgbaHttpClient({ baseUrl: config.mgbaHttpBaseUrl, screenshotDir: evidence.paths.rawScreenshotsDir });
-  const heuristicPolicy = new HeuristicPolicy();
-  const policy = isLlmProvider(config.aiProvider)
-    ? LLMPolicy.fromConfig(config, heuristicPolicy)
-    : heuristicPolicy;
-  const visionProcessor = config.llmVisionEnabled ? createVisionProcessor(config, evidence.paths.visionDir) : undefined;
-
-  return new HarnessRunner({
-    config,
-    client,
-    stateReader: new PokemonStateReader({ client, version: config.pokemonVersion }),
-    policy,
-    controller: new Controller({
-      client,
-      defaultTapFrames: config.defaultTapFrames,
-      defaultHoldFrames: config.defaultHoldFrames
+const agent = await Agent.create({
+  llm: createReasoningLlm({
+    instructions,
+    model: createTrackedModel({
+      model: provider(env.AI_MODEL),
+      tracker: tokenUsageTracker,
     }),
-    evidence,
-    detector: createDetector(config),
-    visionProcessor,
-    budgets: { maxSteps: options.maxSteps }
-  });
-}
+    reasoning: env.AI_REASONING,
+    tools,
+  }),
+});
 
-function createVisionProcessor(config: HarnessConfig, outputDir: string): ScreenshotProcessor {
-  return new ScreenshotProcessor({
-    outputDir,
-    cropLeft: config.llmVisionCropLeft,
-    cropTop: config.llmVisionCropTop,
-    cropWidth: config.llmVisionCropWidth,
-    cropHeight: config.llmVisionCropHeight,
-    maxWidth: config.llmVisionMaxWidth,
-    maxHeight: config.llmVisionMaxHeight,
-    format: config.llmVisionFormat,
-    quality: config.llmVisionQuality,
-    detail: config.llmVisionDetail
-  });
-}
+const session = agent.session("pokemon-run");
+const recentActions: string[] = [];
+const milestoneTracker = new PokemonMilestoneTracker();
+const stuckMemory = new StuckMemory();
+let turnsRun = 0;
 
-async function executePress(config: HarnessConfig, action: { type: "press"; button: MgbaButton; frames: number }): Promise<void> {
-  const client = new MgbaHttpClient({ baseUrl: config.mgbaHttpBaseUrl });
-  const controller = new Controller({
-    client,
-    defaultTapFrames: config.defaultTapFrames,
-    defaultHoldFrames: config.defaultHoldFrames
-  });
-  await controller.execute(action);
-}
+while (true) {
+  turnsRun += 1;
+  tokenUsageTracker.startTurn(turnsRun);
 
-function formatConfigSummary(config: HarnessConfig): string {
-  return redactSecrets({
-    mgbaHttpBaseUrl: config.mgbaHttpBaseUrl,
-    pokemonVersion: config.pokemonVersion,
-    harnessMode: config.harnessMode,
-    hasPokemonRomPath: config.pokemonRomPath !== undefined,
-    evidenceDir: config.evidenceDir,
-    harnessRunId: config.harnessRunId,
-    logLevel: config.logLevel,
-    loopMaxSteps: config.loopMaxSteps,
-    loopStepDelayMs: config.loopStepDelayMs,
-    maxLlmCalls: config.maxLlmCalls,
-    defaultTapFrames: config.defaultTapFrames,
-    defaultHoldFrames: config.defaultHoldFrames,
-    aiProvider: config.aiProvider,
-    llmVisionEnabled: config.llmVisionEnabled,
-    ...(config.llmVisionEnabled ? {
-      llmVisionMaxImages: config.llmVisionMaxImages,
-      llmVisionCropLeft: config.llmVisionCropLeft,
-      llmVisionCropTop: config.llmVisionCropTop,
-      llmVisionCropWidth: config.llmVisionCropWidth,
-      llmVisionCropHeight: config.llmVisionCropHeight,
-      llmVisionMaxWidth: config.llmVisionMaxWidth,
-      llmVisionMaxHeight: config.llmVisionMaxHeight,
-      llmVisionFormat: config.llmVisionFormat,
-      llmVisionQuality: config.llmVisionQuality,
-      llmVisionDetail: config.llmVisionDetail
-    } : {}),
-    ...(config.aiProvider === "openai" ? {
-      openaiBaseUrl: config.openaiBaseUrl,
-      hasOpenaiApiKey: config.openaiApiKey !== undefined,
-      openaiModel: config.openaiModel,
-      openaiTemperature: config.openaiTemperature
-    } : {})
+  let currentObservation: MgbaObservation | undefined;
+  const observedInput = await createObservedTurnInput({
+    client: mgbaClient,
+    onObservation: (observation) => {
+      currentObservation = observation;
+      stuckMemory.observe(observation, turnsRun);
+      runMetricsTracker.recordStuckEvents(stuckMemory.snapshot().stuckEvents);
+      prettyLogger.observationInjection({
+        nextTurn: turnsRun,
+        observation,
+      });
+    },
+    recentActions,
+    stuckMemory: stuckMemory.snapshot(),
+    turn: turnsRun,
   });
-}
-
-function formatPreflightReport(report: MgbaPreflightReport): string {
-  const lines = [
-    `mGBA preflight ${report.ok ? "passed" : "failed"}`,
-    "",
-    ...report.checks.map((check) => {
-      const parts = [`[${check.status}] ${check.name}: ${check.message}`];
-      if (check.guidance !== undefined) {
-        parts.push(`  Guidance: ${check.guidance}`);
+  if (currentObservation) {
+    const milestone = milestoneTracker.observe(currentObservation);
+    if (
+      milestone.furthest &&
+      milestone.furthest !== runTrace.milestoneFurthest
+    ) {
+      runTrace = await updateRunTraceMetadata(runTrace, {
+        milestone: milestone.furthest,
+        milestoneCurrent: milestone.current ?? undefined,
+        milestoneFurthest: milestone.furthest,
+      });
+    }
+  }
+  const run = await session.send(observedInput);
+  await streamSupervisedRun({
+    client: mgbaClient,
+    onEvent: (event) => {
+      runMetricsTracker.recordEvent(event);
+      if (currentObservation && event.type === "tool-call") {
+        stuckMemory.recordEvent(event, currentObservation, turnsRun);
       }
-      if (check.errorCode !== undefined) {
-        parts.push(`  Code: ${check.errorCode}`);
-      }
-      return parts.join("\n");
-    })
-  ];
+      recordRecentAction(event, recentActions);
+      prettyLogger.event(event as never);
+    },
+    run,
+  });
+  await tokenUsageTracker.endTurn();
+  await persistRunMetricsMetadata();
+}
 
-  if (!report.ok) {
-    lines.push("", "Setup: start mGBA manually with mGBA-http enabled, load a Pokemon Red or Blue ROM that you provide, and check MGBA_HTTP_BASE_URL.");
+function recordRecentAction(event: unknown, recentActions: string[]): void {
+  if (!isControlToolCall(event)) {
+    return;
   }
 
-  return redactSecrets(lines.join("\n"));
+  recentActions.push(formatAction(event.toolName, event.input));
+  recentActions.splice(0, Math.max(0, recentActions.length - 10));
 }
 
-function formatSafeError(error: unknown): string {
-  if (error instanceof HarnessError) {
-    return redactSecrets(`${error.code}: ${error.message}`);
+function isControlToolCall(
+  event: unknown
+): event is { input: unknown; toolName: string; type: "tool-call" } {
+  return (
+    typeof event === "object" &&
+    event !== null &&
+    "type" in event &&
+    event.type === "tool-call" &&
+    "toolName" in event &&
+    typeof event.toolName === "string" &&
+    [
+      "mgba_tap",
+      "mgba_tap_many",
+      "mgba_hold",
+      "mgba_hold_many",
+      "mgba_release",
+    ].includes(event.toolName)
+  );
+}
+
+function formatAction(toolName: string, input: unknown): string {
+  return `${toolName.replace("mgba_", "")}: ${JSON.stringify(input)}`;
+}
+
+async function persistRunMetricsMetadata(): Promise<void> {
+  const snapshot = runMetricsTracker.snapshot();
+  if (
+    snapshot.stuckEvents === runTrace.stuckEvents &&
+    snapshot.supervisorInterventions === runTrace.supervisorInterventions
+  ) {
+    return;
   }
-  if (error instanceof Error) {
-    return redactSecrets(error.message);
-  }
 
-  return redactSecrets(inspect(error));
-}
-
-function parsePolicy(value: string | undefined, errors: string[]): AiProvider | undefined {
-  if (value === "heuristic" || value === "openai") {
-    return value;
-  }
-  errors.push("--policy must be heuristic or openai");
-  return undefined;
-}
-
-function parseMode(value: string | undefined, errors: string[]): HarnessMode | undefined {
-  if (value === "stage1" || value === "full-game") {
-    return value;
-  }
-  errors.push("--mode must be stage1 or full-game");
-  return undefined;
-}
-
-function createDetector(config: Pick<HarnessConfig, "harnessMode">): Stage1Detector | FullGameDetector {
-  return config.harnessMode === "full-game" ? new FullGameDetector() : new Stage1Detector();
-}
-
-function isLlmProvider(value: string | undefined): value is Extract<AiProvider, "openai"> {
-  return value === "openai";
-}
-
-function hasProviderApiKey(env: NodeJS.ProcessEnv): boolean {
-  if (env.AI_PROVIDER === "openai") {
-    return env.OPENAI_API_KEY !== undefined;
-  }
-  return true;
-}
-
-function parsePositiveInteger(value: string | undefined, name: string, errors: string[]): number | undefined {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 1) {
-    errors.push(`${name} must be a positive integer`);
-    return undefined;
-  }
-  return parsed;
-}
-
-function parseNonEmpty(value: string | undefined, name: string, errors: string[]): string | undefined {
-  if (value === undefined || value.trim().length === 0) {
-    errors.push(`${name} must not be empty`);
-    return undefined;
-  }
-  return value;
-}
-
-function isHarnessCommand(value: string): value is HarnessCommand {
-  return value === "snapshot" || value === "preflight" || value === "run" || value === "press" || value === "smoke";
-}
-
-interface MutableCliOptions {
-  command?: HarnessCommand;
-  dryRun: boolean;
-  help: boolean;
-  policy?: AiProvider;
-  mode?: HarnessMode;
-  vision: boolean;
-  maxSteps?: number;
-  runId?: string;
-  pressButton?: string;
-  pressFrames?: number;
-}
-
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  void main();
+  runTrace = await updateRunTraceMetadata(runTrace, {
+    stuckEvents: snapshot.stuckEvents,
+    supervisorInterventions: snapshot.supervisorInterventions,
+  });
 }

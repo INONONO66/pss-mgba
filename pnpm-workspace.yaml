@@ -1,3 +1,4 @@
 allowBuilds:
   esbuild: true
-  sharp: true
+minimumReleaseAgeExclude:
+  - '@minpeter/pss-runtime@0.0.6'

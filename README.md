@@ -1,257 +1,210 @@
 # TypeScript Pokemon Harness
 
-Stage 1 is the default bounded Pokemon Red and Blue harness mode for mGBA-http. It reads RAM state, records evidence, chooses safe controller actions, and stops at the Stage 1 contract described below. An opt-in full-game mode exists, but it only treats Hall of Fame map observation as completion.
+Autonomous Pokemon gameplay harness for an already-running mGBA instance. The
+agent controls the emulator through `mGBA-http`, receives a fresh observed state
+at the start of every turn, and records enough trace/metric data to compare
+experiments without changing `@minpeter/pss-runtime`.
 
-This project does not bundle a ROM. You must provide your own legal Pokemon Red or Pokemon Blue ROM and load it in mGBA yourself.
+This branch is intentionally local-harness focused: Pokemon RAM reads, movement
+supervision, stuck memory, milestone scoring, screenshot processing, and run
+metrics all live here unless separate evidence proves a generic runtime need.
 
-## Safety First
+## Requirements
 
-If an API key was ever pasted into chat, rotate it now. Treat it as exposed. Put new keys only in `.env`, never in source, tests, shell history, README edits, or evidence files.
+- Node.js 20 or newer
+- pnpm 11.2.2
+- mGBA with the `mGBASocketServer.lua` script
+- `mGBA-http`
+- A legally obtained Game Boy ROM already loaded in mGBA
 
-Run `pnpm run check:secrets` before sharing changes. The scanner checks project text files for OpenAI-style `sk-` values while skipping generated, dependency, run, and orchestration evidence directories such as `node_modules`, `.git`, `runs`, `coverage`, `dist`, and `.omo`.
-
-The harness never writes emulator memory. It uses safe Game Boy inputs only: `A`, `B`, `Start`, `Select`, `Up`, `Down`, `Left`, and `Right`.
-
-## Setup
-
-1. Install Node.js 20 or newer.
-2. Install dependencies.
+Install dependencies:
 
 ```bash
 pnpm install
 ```
 
-3. Copy the example env file.
+Copy `.env.example` to `.env` and configure the local emulator and model:
 
 ```bash
-cp .env.example .env
+MGBA_HTTP_BASE_URL=http://127.0.0.1:5000
+MGBA_ROM_PATH=/absolute/path/to/legal/rom.gb
+AI_BASE_URL=https://codex.nekos.me/v1
+AI_API_KEY=
+AI_MODEL=gpt-5.5
+AI_REASONING=medium
+AI_TEMPERATURE=0.2
+METRICS_HTTP_HOST=0.0.0.0
+METRICS_HTTP_PORT=9464
 ```
 
-4. Edit `.env` for your local machine. Keep `.env` private.
-
-5. Start mGBA-http, then start mGBA with `mGBASocketServer.lua` loaded and your legal ROM loaded. The harness CLI will not download ROMs.
-
-On macOS, port `5000` may already be owned by Control Center/AirTunes. If so, run mGBA-http on `5001` and set `MGBA_HTTP_BASE_URL=http://127.0.0.1:5001`.
-
-The mGBA 0.10.5 app can load scripts through Tools > Scripting. Newer mGBA HEAD builds also support non-interactive script loading:
+Start mGBA and `mGBA-http` separately, then run the harness:
 
 ```bash
-brew install mgba --HEAD
 mgba --script .local-tools/mgba-http/mGBASocketServer.lua /absolute/path/to/legal/rom.gb
+.local-tools/mgba-http/mGBA-http
+pnpm dev
 ```
 
-Keep mGBA-http running separately. Download `mGBA-http` and `mGBASocketServer.lua` from the official mGBA-http release, or use the workspace-local `.local-tools/mgba-http/` install if it exists on your machine.
+The harness expects one live emulator server. Do not start a second mGBA or
+`mGBA-http` process for a live experiment; the current emulator state is the
+state being measured.
 
-## Environment
+## Runtime Loop
 
-Common settings:
+`src/index.ts` creates a persistent `pokemon-run` session and loops forever.
+Each turn:
 
-```text
-MGBA_HTTP_BASE_URL=http://127.0.0.1:5001
-POKEMON_VERSION=red
-POKEMON_ROM_PATH=/absolute/path/to/legal/rom.gb
-EVIDENCE_DIR=runs
-HARNESS_MODE=stage1
-AI_PROVIDER=heuristic
-```
+1. Captures mGBA status, screenshot, and Pokemon RAM state when available.
+2. Crops Game Boy screenshots to 160x144 and overlays red 16x16 movement guide
+   lines for navigation.
+3. Injects the observed state, screenshot, recent actions, and stuck-memory
+   hints into the model input.
+4. Asks the model to emit one `<action_plan>...</action_plan>` block and execute
+   exactly one useful game action.
+5. Streams runtime events into pretty logs, token traces, behavior metrics, and
+   Prometheus output.
 
-`HARNESS_MODE` defaults to `stage1`. Set `HARNESS_MODE=full-game` or pass `--mode full-game` to opt into full-game detection. Full-game mode reads badge progress as a signal, but badges alone do not complete the run.
+There is no CLI prompt, `--loop` flag, max-turn stop condition, or completion
+marker. Stop the process with `Ctrl-C` when the experiment window ends.
 
-Set `AI_PROVIDER=heuristic` for local deterministic actions, or `AI_PROVIDER=openai` to select actions through the OpenAI-compatible Chat Completions policy. For CodexLB, keep `AI_PROVIDER=openai` and point `OPENAI_BASE_URL` at the CodexLB-compatible endpoint.
+## Control Plane
 
-```text
-OPENAI_BASE_URL=https://codex.nekos.me/v1
-OPENAI_API_KEY=your-provider-key-in-dotenv-only
-OPENAI_MODEL=gpt-5.5
-OPENAI_TEMPERATURE=0.2
-```
+The model can use these tools:
 
-Heuristic mode does not need an API key. `AI_PROVIDER=openai` requires `OPENAI_API_KEY` and sends it only to `OPENAI_BASE_URL`. If `OPENAI_BASE_URL` points at a third-party OpenAI-compatible endpoint, put that provider's key in `OPENAI_API_KEY`; do not send a real OpenAI key to a third-party endpoint. `OPENAI_TEMPERATURE` is the non-secret sampling setting.
+- `mgba_status`
+- `mgba_screenshot`
+- `mgba_tap`
+- `mgba_tap_many`
+- `mgba_hold`
+- `mgba_hold_many`
+- `mgba_release`
 
-### Optional Vision Input
+ROM loading and reset tools are intentionally not exposed. The underlying client
+still has helpers for mGBA endpoints, but model-facing tools must not reset,
+reload, or restart game progress.
 
-The harness is text-only by default. Set `LLM_VISION_ENABLED=true` only when the selected OpenAI-compatible provider and model support Chat Completions image inputs.
+The local supervisor wraps control calls before they reach mGBA. It normalizes
+directional movement to one tile, normalizes non-directional taps, rejects unsafe
+directional multi-holds, waits for post-action settle frames, and polls through
+short black/loading frames before the next observation.
 
-When enabled, each runner step takes the raw screenshot already captured by `snapshot()`, creates a processed image under the run's `vision/` directory, and passes only the latest `LLM_VISION_MAX_IMAGES` processed images to the LLM. The default rolling window is 3 images to keep context and cost bounded.
+## Observation And Progress Signals
 
-Vision settings:
+The harness combines visual and state signals:
 
-```text
-LLM_VISION_ENABLED=false
-LLM_VISION_MAX_IMAGES=3
-LLM_VISION_CROP_LEFT=0
-LLM_VISION_CROP_TOP=0
-LLM_VISION_CROP_WIDTH=0
-LLM_VISION_CROP_HEIGHT=0
-LLM_VISION_MAX_WIDTH=512
-LLM_VISION_MAX_HEIGHT=384
-LLM_VISION_FORMAT=jpeg
-LLM_VISION_QUALITY=70
-LLM_VISION_DETAIL=low
-```
+- `src/screenshot-image.ts` decodes PNG screenshots, crops mGBA Game Boy frames,
+  draws the movement grid, and detects black/loading frames.
+- `src/pokemon-state.ts` reads compact Pokemon Red RAM fields such as map,
+  position, facing direction, and battle state. If RAM reads fail, the run falls
+  back to visual-only observation.
+- `src/stuck-memory.ts` records repeated failed movement edges and recent
+  recovery attempts so the prompt can avoid blind repetition.
+- `src/pokemon-milestones.ts` scores coarse progress milestones such as player
+  control reached, first map transition, and battle detected/completed.
 
-When crop width and height are `0`, the processor automatically trims black padding around the inner game image before resizing, falling back to the full screenshot only when the content area is ambiguous. Explicit crop settings override auto-crop and are applied before resizing. Processed images are resized to fit inside `LLM_VISION_MAX_WIDTH` by `LLM_VISION_MAX_HEIGHT` without enlargement, then encoded as `jpeg`, `webp`, or `png`. `LLM_VISION_QUALITY` applies to JPEG and WebP. Use explicit crop settings only when auto-crop cannot isolate the emulator core content cleanly.
+The current RAM map is Pokemon Red oriented. Do not interpret those state fields
+as authoritative for another ROM unless separate validation proves they match.
 
-Evidence and policy metadata store only file paths, dimensions, crop rectangles, byte counts, frame, step, media type, and detail. Base64 data URLs are created transiently in memory inside `LLMPolicy` for the outgoing Chat Completions request and are not written to events, decisions, summaries, errors, or tests snapshots.
+## Metrics And Traces
 
-## CLI Commands
+Each run creates a trace directory under `.pss-mgba/traces/runs/<run-id>/` and
+appends an iteration record to `.pss-mgba/traces/iterations.jsonl`.
 
-Show help:
+Important outputs:
+
+- `run.json`: run metadata, mode, experiment id, milestone, stuck count, and
+  supervisor count.
+- `token-usage.jsonl`: per-step and per-turn token usage.
+- Prometheus endpoint: `http://127.0.0.1:9464/metrics` by default.
+- `pnpm trace:report`: local comparison report across recorded iterations.
+
+Behavior metrics include action entropy, A-button ratio, same-action streaks,
+visual novelty, observe-before-act ratio, tool error rate, turn/step/tool
+durations, stuck events, and supervisor interventions. Token savings only count
+as improvement when progress, stuck behavior, action diversity, and tool
+reliability do not regress.
+
+## Grafana
+
+Start the local observability stack:
 
 ```bash
-pnpm run harness --help
+docker compose -f docker-compose.grafana.yml up -d
 ```
 
-Print a redacted config summary without constructing mGBA or OpenAI clients:
+Then run the harness normally:
 
 ```bash
-pnpm run harness snapshot --dry-run
+pnpm dev
 ```
 
-Run mGBA preflight against your already running mGBA-http service:
+Prometheus scrapes the harness through `host.docker.internal:9464`, and Grafana
+provisions the `pss-mgba Run Iterations` dashboard at
+`http://127.0.0.1:3000`. Keep the stack running during experiments so each new
+`run_id` and iteration remains visible as a separate time series.
+
+## Verification
+
+Run the full guardrail before accepting changes or experiment evidence:
 
 ```bash
-pnpm run harness preflight
+pnpm typecheck && pnpm test && pnpm build && pnpm check
 ```
 
-Start the Stage 1 harness loop with the local heuristic policy:
+Useful focused commands while iterating:
 
 ```bash
-pnpm run harness run --policy heuristic --mode stage1 --max-steps 100 --run-id local-stage1
+pnpm test -- tests/mgba-http.test.ts tests/runner.test.ts tests/observation.test.ts
+pnpm test -- tests/screenshot-image.test.ts tests/run-metrics.test.ts tests/metrics-server.test.ts
+pnpm trace:report
 ```
 
-Start a live Stage 1 LLM run through the configured OpenAI-compatible endpoint after setting `OPENAI_API_KEY` privately in `.env`:
+Connectivity probe before a live run:
 
 ```bash
-pnpm run harness run --policy openai --max-steps 100 --run-id local-stage1-openai
+python3 - <<'PY'
+import urllib.request
+for path in ['/core/currentframe','/core/getgamecode','/core/getgametitle','/mgba-http/button/getall']:
+    with urllib.request.urlopen('http://127.0.0.1:5000'+path, timeout=2) as response:
+        print(path, response.status, response.read(200).decode('utf-8','replace'))
+PY
 ```
 
-Add `--vision` to require processed screenshot images in each LLM request. With `--vision`, the runner writes the processed files under `runs/<runId>/vision/` and the LLM policy refuses to send a text-only request if no processed image is available for the current decision.
+Five-minute experiment window:
 
 ```bash
-pnpm run harness run --policy openai --vision --max-steps 100 --run-id local-stage1-openai-vision
+MGBA_HTTP_BASE_URL=http://127.0.0.1:5000 pnpm dev > .omo/evidence/<task>-pnpm-dev.log 2>&1 & PID=$!; sleep 300; kill -INT $PID; wait $PID || true
 ```
 
-Start an opt-in full-game run. Completion is recorded only after observing Hall of Fame map id `0x76` through RAM-derived map state:
+Valid run modes are `fresh`, `resumed`, `recovery`, `deterministic-replay`, and
+`exploratory`. Use `fresh` only for a normal run from the current live emulator
+state. Recovery and deterministic replay metrics must not be mixed with fresh
+progress metrics.
 
-```bash
-pnpm run harness run --mode full-game --policy openai --max-steps 1000 --run-id local-full-game
-```
+## Evidence Caveats
 
-Start the integrated dev viewer and full-game vision loop together:
+Keep evidence tied to run id and ROM identity.
 
-```bash
-pnpm run dev
-```
+- Baseline Task 1 run `00058-2026-05-24T06-19-02-489Z` used Pokemon Red identity
+  `DMG-AR` / `PKMN RED ST`, with 29 summarized turns, `1,189,899` total tokens,
+  and `41,031.0` average tokens per turn.
+- Combined Task 8 run `00064-2026-05-24T07-51-35-549Z` was metadata-valid with
+  `mode=fresh`, `experimentId=combined-optimized`, 20 summarized turns,
+  `607,453` total tokens, `30,372.7` average tokens per turn, `stuckEvents=0`,
+  `supervisorInterventions=24`, and milestone `player-control-reached`.
+- Do not claim this proves a clean Pokemon Red gameplay improvement: Task 8 used
+  Pokemon Gold identity `DMG-AAUE` / `POKEMON_GLD`, not the baseline Pokemon Red
+  identity.
 
-`pnpm run dev` starts a local viewer at `http://127.0.0.1:8787` and runs the harness as a shared `run --policy openai --mode full-game --vision --max-steps 1000` session. The page shows the live mGBA screenshot on the left and the latest 1-3 processed files from `runs/<runId>/vision/` on the right, which are the same images currently available to the LLM context. It does not reprocess viewer screenshots, write emulator memory, bundle ROM assets, or persist base64 image data.
+Reject or roll back an improvement when token usage improves but progress,
+stuck behavior, action entropy, tool reliability, or ROM identity gets worse.
 
-You can override run options after the script name, for example:
+## Runtime Boundary
 
-```bash
-pnpm run dev --policy heuristic --max-steps 3 --run-id local-dev-viewer
-```
+Task 9 recorded `NO_RUNTIME_CHANGE` in `.omo/evidence/task-9-runtime-gate.md`.
+No `pss-next` branch, PR, runtime release, dependency update, or unpublished
+local runtime dependency is needed for the current harness.
 
-To launch the same workflow in a tmux grid:
-
-```bash
-pnpm run dev:tmux
-```
-
-The tmux launcher still depends on mGBA-http. It creates panes for the mGBA-http process, mGBA with `mGBASocketServer.lua`, the harness/dev viewer, a live decision watcher, and a live processed-vision watcher. It reads `.env`, uses `POKEMON_ROM_PATH` for the mGBA pane, defaults to the workspace-local `.local-tools/mgba-http/` install, and passes one shared run id through every pane. Use `START_MGBA_HTTP=0` or `START_MGBA=0` when those processes are already running elsewhere. The launcher treats mGBA-http as ready only when `/core/currentframe` succeeds; if a stale server is listening but the emulator is not connected, panes stay open with that diagnostic. Add `--fresh` to stop an existing tmux session and restart local mGBA-http/mGBA processes before launching.
-
-Useful launcher examples:
-
-```bash
-pnpm run dev:tmux --print
-pnpm run dev:tmux --session pss-live --run-id local-live --policy heuristic
-pnpm run dev:tmux --fresh --run-id clean-local-live
-START_MGBA_HTTP=0 START_MGBA=0 pnpm run dev:tmux --run-id attach-existing
-```
-
-Send one safe button press for manual smoke checks:
-
-```bash
-pnpm run harness press A --frames 5
-```
-
-Run the opt-in real mGBA smoke workflow against an already running mGBA-http service:
-
-```bash
-RUN_MGBA_INTEGRATION=1 MGBA_HTTP_BASE_URL=http://127.0.0.1:5001 pnpm run smoke:mgba
-```
-
-`pnpm run smoke:mgba` refuses to contact mGBA unless both `RUN_MGBA_INTEGRATION=1` and `MGBA_HTTP_BASE_URL` are set. When enabled, it runs preflight, records a snapshot, presses safe `B` once, then records a second snapshot. It does not press `A`, start mGBA, open ROMs, load ROMs, or validate ROM files beyond the existing config summary showing whether `POKEMON_ROM_PATH` is present. Evidence is written under `runs/<runId>/` by default, or under `EVIDENCE_DIR/<runId>/` when configured.
-
-Supported common options:
-
-```text
---dry-run              Snapshot only. Prints config summary and exits.
---policy heuristic     Use the local heuristic policy.
---policy openai        Use the OpenAI-compatible policy. Requires OPENAI_API_KEY.
---mode stage1          Use the default Stage 1 detector.
---mode full-game       Use the opt-in full-game detector.
---vision               Enable and require processed LLM image input for snapshot, preflight, or run.
---max-steps N          Override LOOP_MAX_STEPS for snapshot or run.
---run-id ID            Override HARNESS_RUN_ID for evidence paths.
---fresh                In dev:tmux, stop an existing session and local emulator bridge processes first.
-DEV_VIEWER_PORT        Override the integrated dev viewer port; default is 8787.
-START_MGBA_HTTP=0      In dev:tmux, do not start the mGBA-http pane process.
-START_MGBA=0           In dev:tmux, do not start the mGBA emulator pane process.
-```
-
-`press` also accepts `--frames N`.
-
-## Preflight
-
-`preflight` checks the configured mGBA-http endpoint in this order:
-
-1. Config summary.
-2. Current frame endpoint.
-3. `wCurMap` RAM read.
-4. `wYCoord` RAM read.
-5. `wXCoord` RAM read.
-6. Screenshot endpoint.
-7. Safe `B` tap.
-
-If mGBA is absent, the command exits nonzero and prints setup guidance instead of a raw stack trace. Start mGBA manually, enable mGBA-http, load your own ROM, then confirm `MGBA_HTTP_BASE_URL` points to it.
-
-## Stage 1 Contract
-
-Stage 1 means the harness attempts to progress from the Pallet start through Oak and starter flow, starter acquisition, Rival battle entry, and Rival battle exit.
-
-The runner must base each action on current observed RAM state and recent actions. It must not use a global hardcoded input timeline. Evidence includes states, decisions, actions, screenshots, errors, and a final summary under `EVIDENCE_DIR`.
-
-When an LLM-backed provider falls back to the local heuristic policy, the recorded decision rationale and citations are marked with `LLM fallback after <CODE>` so fallback-driven progress is distinguishable from LLM-selected actions.
-
-## Full-Game Mode
-
-Full-game mode is opt in through `HARNESS_MODE=full-game` or `--mode full-game`. It preserves the same safe-input and read-only-RAM rules as Stage 1.
-
-The detector tracks early Stage 1 milestones, badge observation, all-badges observation, and Hall of Fame observation. It does not complete on Rival battle exit or all badges alone. Completion requires observing Hall of Fame map id `0x76` or the derived `hallOfFameComplete` state field.
-
-The LLM full-game prompt treats badges as progress only, forbids memory writes and hardcoded global input timelines, and forbids route-facts-alone completion claims. The local heuristic policy remains a Stage 1-oriented fallback and does not claim reliable full-game clears.
-
-## Tests
-
-Run the default checks:
-
-```bash
-pnpm run check:secrets
-pnpm run typecheck
-pnpm test
-```
-
-Integration tests are opt in so the default suite never contacts mGBA, OpenAI, ROMs, or the network:
-
-```bash
-RUN_MGBA_INTEGRATION=1 MGBA_HTTP_BASE_URL=http://127.0.0.1:5001 pnpm run test:integration
-```
-
-Only enable integration tests when mGBA-http is already running with your ROM loaded.
-
-The fake smoke workflow test runs in the default suite and uses dependency injection only; it does not contact mGBA.
-
-## Limitations
-
-This is an MVP harness for Pokemon Red and Blue. Stage 1 remains the default and best-supported mode. Full-game mode is an opt-in foundation with read-only progress signals and Hall of Fame-only completion detection; it does not include a full reliable game-clearing strategy. It does not bundle, download, or verify ROM files. It does not start emulator processes. It does not include OBS or Twitch integration. It does not write emulator memory.
+Only move work into `@minpeter/pss-runtime` after multiple runs prove the same
+need outside this Pokemon/mGBA harness and the evidence names the affected
+runtime loop, session, event, budget, metric, store, or replay contract.
