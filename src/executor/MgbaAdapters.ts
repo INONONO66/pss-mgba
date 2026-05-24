@@ -12,6 +12,16 @@ const map = RED_BLUE_MEMORY_MAP;
 
 const NAMING_SCREEN_MARKERS = ["lower case", "UPPER CASE", "ED Mr."];
 
+async function isDialogActiveFromRam(ram: RamReader): Promise<boolean> {
+  const [joyIgnore, textBoxId, tileMapBytes] = await Promise.all([
+    ram.read8(map.wJoyIgnore),
+    ram.read8(map.wTextBoxID),
+    ram.readRange(map.wTileMap, map.wTileMapLength),
+  ]);
+  const screenText = decodeGen1Text(tileMapBytes);
+  return joyIgnore !== 0 || (textBoxId !== 0 && screenText.length > 0);
+}
+
 const FACING_MAP: Record<number, string> = {
   0x00: "down",
   0x04: "up",
@@ -56,11 +66,7 @@ export function createNavigateWorldReader(ram: RamReader): NavigateWorldReader {
       return (await ram.read8(map.wIsInBattle)) !== 0;
     },
     async isDialogActive() {
-      const [joyIgnore, textBoxId] = await Promise.all([
-        ram.read8(map.wJoyIgnore),
-        ram.read8(map.wTextBoxID),
-      ]);
-      return joyIgnore !== 0 || textBoxId !== 0;
+      return isDialogActiveFromRam(ram);
     },
   };
 }
@@ -80,11 +86,7 @@ export function createInteractStateReader(ram: RamReader): InteractStateReader {
       return FACING_MAP[raw] ?? "down";
     },
     async isDialogActive() {
-      const [joyIgnore, textBoxId] = await Promise.all([
-        ram.read8(map.wJoyIgnore),
-        ram.read8(map.wTextBoxID),
-      ]);
-      return joyIgnore !== 0 || textBoxId !== 0;
+      return isDialogActiveFromRam(ram);
     },
   };
 }
@@ -102,11 +104,7 @@ export function createDialogStateReader(ram: RamReader): DialogStateReader {
       return decodeGen1Text(bytes);
     },
     async isDialogActive() {
-      const [joyIgnore, textBoxId] = await Promise.all([
-        ram.read8(map.wJoyIgnore),
-        ram.read8(map.wTextBoxID),
-      ]);
-      return joyIgnore !== 0 || textBoxId !== 0;
+      return isDialogActiveFromRam(ram);
     },
     async isChoiceActive() {
       const textBoxId = await ram.read8(map.wTextBoxID);
