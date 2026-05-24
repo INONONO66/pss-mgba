@@ -7,7 +7,7 @@ import { buttonSchema, buttonsSchema } from "./schemas";
 export function createTapTool({ client }: MgbaToolContext): AgentTool {
   return {
     description:
-      "버튼 하나를 짧게 눌렀다 뗍니다. Supervisor가 A/B/Start/Select 같은 비방향 입력은 duration 6으로, 방향 입력은 안전한 단일 이동 duration 12로 실행합니다.",
+      "버튼 하나를 짧게 눌렀다 뗍니다. 입력 가드가 A/B/Start/Select 같은 비방향 입력은 duration 6으로, 방향 입력은 안전한 단일 이동 duration 12로 실행합니다.",
     inputSchema: z.object({ button: buttonSchema }),
     execute: async ({ button }, { abortSignal }) => {
       await client.tap(button, abortSignal);

@@ -22,7 +22,21 @@ interface EventsResponse {
   readonly runId: string;
   readonly limit: number;
   readonly count: number;
-  readonly events: Array<{ readonly type: string; readonly payload?: { readonly supervisor?: { readonly state?: string; readonly activeGoal?: { readonly title?: string } } } }>;
+  readonly events: Array<{ readonly type: string; readonly payload?: Record<string, unknown> }>;
+}
+
+interface GameStateResponse {
+  readonly runId: string;
+  readonly limit: number;
+  readonly count: number;
+  readonly latest?: { readonly fileName: string; readonly state?: { readonly state?: Record<string, unknown> } };
+}
+
+interface ScreenshotsResponse {
+  readonly runId: string;
+  readonly limit: number;
+  readonly count: number;
+  readonly screenshots: Array<{ readonly fileName: string; readonly url: string; readonly step: number | null }>;
 }
 
 interface RunSummaryResponse {
@@ -32,7 +46,6 @@ interface RunSummaryResponse {
   readonly finalFrame?: number;
   readonly counts?: { readonly decisions?: number; readonly errors?: number };
   readonly detectorStatus?: { readonly status?: string };
-  readonly latestSupervisor?: { readonly state?: string; readonly activeGoal?: { readonly title?: string } };
   readonly lastAction?: { readonly confidence?: number };
 }
 
@@ -43,9 +56,14 @@ describe("DevViewerServer", () => {
     const paths = buildRunPaths(evidenceDir, "viewer-run");
     await mkdir(paths.visionDir, { recursive: true });
     await mkdir(paths.llmConversationsDir, { recursive: true });
+    await mkdir(paths.statesDir, { recursive: true });
+    await mkdir(paths.rawScreenshotsDir, { recursive: true });
     await writeFile(path.join(paths.visionDir, "000001-frame-11.jpeg"), Buffer.from([1, 2, 3]));
     await writeFile(path.join(paths.visionDir, "000002-frame-22.png"), Buffer.from([4, 5, 6]));
     await writeFile(path.join(paths.visionDir, "000003-frame-33.webp"), Buffer.from([7, 8, 9]));
+    await writeFile(path.join(paths.rawScreenshotsDir, "000001.png"), Buffer.from([9, 8, 7]));
+    await writeFile(path.join(paths.rawScreenshotsDir, "000002.png"), Buffer.from([6, 5, 4]));
+    await writeFile(path.join(paths.statesDir, "000001.json"), JSON.stringify({ step: 1, frame: 100, state: { wCurMap: 38, wYCoord: 3, wXCoord: 3 }, stateHash: "abc" }));
     await writeFile(paths.eventsFile, [
       JSON.stringify({ type: "run_started", timestamp: "2026-05-24T00:00:00.000Z", payload: { config: { mode: "test" } } }),
       JSON.stringify({
@@ -53,10 +71,12 @@ describe("DevViewerServer", () => {
         sequence: 1,
         timestamp: "2026-05-24T00:00:01.000Z",
         payload: {
-          supervisor: {
-            state: "progressing",
-            activeGoal: { title: "Obtain the first party Pokemon", kind: "advance-story" },
-            guidance: ["Current focus: Obtain the first party Pokemon."]
+          step: 1,
+          frame: 100,
+          decision: {
+            action: { type: "press", button: "A", frames: 5 },
+            confidence: 0.8,
+            rationale: "Advance current dialog."
           }
         }
       })
@@ -117,12 +137,14 @@ describe("DevViewerServer", () => {
       expect(html).toContain("Main game screen");
       expect(html).toContain("LLM context images");
       expect(html).toContain("LLM history");
-      expect(html).toContain("LLM context + decision");
+      expect(html).toContain("Injected LLM context + decision");
       expect(html).toContain("Loading latest 2 processed input(s)");
       expect(html).toContain("/api/live-frame");
       expect(html).toContain("/api/vision-images");
       expect(html).toContain("/api/llm-conversations");
       expect(html).toContain("/api/events");
+      expect(html).toContain("/api/game-state");
+      expect(html).toContain("/api/screenshots");
       expect(html).toContain("/api/run-summary");
       expect(html).toContain(paths.llmConversationsDir);
       expect(html).toContain("setInterval(tick, 1000)");
@@ -136,9 +158,11 @@ describe("DevViewerServer", () => {
       expect(html).toContain(".history-rail");
       expect(html).toContain(".history-button");
       expect(html).toContain(".event-panel");
+      expect(html).toContain(".state-panel");
+      expect(html).toContain(".screenshot-history");
       expect(html).toContain(".summary-strip");
       expect(html).toContain("id=\"summary-status\"");
-      expect(html).toContain("id=\"summary-supervisor\"");
+      expect(html).toContain("id=\"summary-player\"");
       expect(html).toContain("id=\"event-list\"");
       expect(html).toContain("sequence (");
       expect(html).toContain("childActions.join(' → ')");
@@ -174,12 +198,22 @@ describe("DevViewerServer", () => {
       expect(events.events[0]).toMatchObject({
         type: "decision",
         payload: {
-          supervisor: {
-            state: "progressing",
-            activeGoal: { title: "Obtain the first party Pokemon" }
+          decision: {
+            action: { type: "press", button: "A", frames: 5 }
           }
         }
       });
+
+      const gameState = await fetchGameStateJson(`${viewer.url}/api/game-state?limit=5`);
+      expect(gameState).toMatchObject({ runId: "viewer-run", limit: 5, count: 1 });
+      expect(gameState.latest).toMatchObject({
+        fileName: "000001.json",
+        state: { wCurMap: 38, wYCoord: 3, wXCoord: 3 }
+      });
+
+      const rawScreenshots = await fetchScreenshotsJson(`${viewer.url}/api/screenshots?limit=12`);
+      expect(rawScreenshots).toMatchObject({ runId: "viewer-run", limit: 12, count: 2 });
+      expect(rawScreenshots.screenshots.map((screenshot) => screenshot.fileName)).toEqual(["000002.png", "000001.png"]);
 
       const summary = await fetchRunSummaryJson(`${viewer.url}/api/run-summary`);
       expect(summary).toMatchObject({
@@ -189,10 +223,6 @@ describe("DevViewerServer", () => {
         finalFrame: 345,
         counts: { decisions: 1, errors: 0 },
         detectorStatus: { status: "running" },
-        latestSupervisor: {
-          state: "progressing",
-          activeGoal: { title: "Obtain the first party Pokemon" }
-        },
         lastAction: { confidence: 0.8 }
       });
       expect(JSON.stringify(summary)).not.toContain("last20Actions");
@@ -202,8 +232,13 @@ describe("DevViewerServer", () => {
       expect(imageResponse.headers.get("content-type")).toContain("image/jpeg");
       expect(Buffer.from(await imageResponse.arrayBuffer())).toEqual(Buffer.from([1, 2, 3]));
 
+      const rawImageResponse = await fetch(`${viewer.url}/raw-screenshots/000001.png`);
+      expect(rawImageResponse.headers.get("content-type")).toContain("image/png");
+      expect(Buffer.from(await rawImageResponse.arrayBuffer())).toEqual(Buffer.from([9, 8, 7]));
+
       expect((await fetch(`${viewer.url}/vision/000999-frame-99.jpeg`)).status).toBe(404);
       expect((await fetch(`${viewer.url}/vision/..%2Fconfig.json`)).status).toBe(404);
+      expect((await fetch(`${viewer.url}/raw-screenshots/..%2Fconfig.json`)).status).toBe(404);
     } finally {
       await viewer.close();
     }
@@ -273,4 +308,16 @@ async function fetchRunSummaryJson(url: string): Promise<RunSummaryResponse> {
   const response = await fetch(url);
   expect(response.ok).toBe(true);
   return await response.json() as RunSummaryResponse;
+}
+
+async function fetchGameStateJson(url: string): Promise<GameStateResponse> {
+  const response = await fetch(url);
+  expect(response.ok).toBe(true);
+  return await response.json() as GameStateResponse;
+}
+
+async function fetchScreenshotsJson(url: string): Promise<ScreenshotsResponse> {
+  const response = await fetch(url);
+  expect(response.ok).toBe(true);
+  return await response.json() as ScreenshotsResponse;
 }

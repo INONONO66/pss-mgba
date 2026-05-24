@@ -152,7 +152,9 @@ Start the integrated dev viewer and full-game vision loop together:
 pnpm run dev
 ```
 
-`pnpm run dev` starts a local viewer at `http://127.0.0.1:8787` and runs the harness as a shared `run --policy openai --mode full-game --vision --max-steps 1000` session. The page shows the live mGBA screenshot on the left and the latest 1-3 processed files from `runs/<runId>/vision/` on the right, which are the same images currently available to the LLM context. It does not reprocess viewer screenshots, write emulator memory, bundle ROM assets, or persist base64 image data.
+`pnpm run dev` starts a local viewer at `http://127.0.0.1:8787` and runs the harness as a shared `run --policy openai --mode full-game --vision --max-steps 1000` session. The page shows the live mGBA screenshot, raw game screenshot history, processed LLM context images, current RAM-derived game state, detailed run events, and the exact stored LLM prompt/response artifacts. It does not reprocess viewer screenshots, write emulator memory, bundle ROM assets, or persist base64 image data.
+
+The LLM policy prompt is player-only: it receives the live objective, detector progress, rich game state summary, map context, recent actions, and optional vision images. It does not inject a separate route supervisor plan into the player prompt.
 
 You can override run options after the script name, for example:
 

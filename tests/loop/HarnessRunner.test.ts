@@ -164,7 +164,7 @@ describe("HarnessRunner", () => {
     })]);
   });
 
-  it("injects full game state, summary, objective, and detector status into each policy input when available", async () => {
+  it("injects full game state, summary, objective, and detector status into each player policy input when available", async () => {
     const policyInputs: PolicyInput[] = [];
     const evidence = new FakeEvidenceRecorder();
     const runner = createRunner({
@@ -199,24 +199,13 @@ describe("HarnessRunner", () => {
     expect(policyInputs[0]?.fullStateSummary).toContain("GAME STATE");
     expect(policyInputs[0]?.fullStateSummary).toContain("Reds House 2f");
     expect(policyInputs[0]?.fullStateError).toBeUndefined();
-    expect(policyInputs[0]?.supervisorPlan).toMatchObject({
-      version: 1,
-      activeGoal: expect.objectContaining({
-        kind: "advance-story",
-        title: "Obtain the first party Pokemon"
-      })
-    });
-    expect(policyInputs[0]?.supervisorPlan?.guidance.join("\n")).toContain("Current focus");
+    expect(policyInputs[0]).not.toHaveProperty("supervisorPlan");
     expect(evidence.decisions[0]).toMatchObject({
-      supervisor: {
-        state: "progressing",
-        activeGoal: {
-          kind: "advance-story",
-          title: "Obtain the first party Pokemon"
-        },
-        guidance: expect.arrayContaining([expect.stringContaining("Current focus")])
-      }
+      step: 1,
+      frame: 1,
+      decision: waitDecision
     });
+    expect(JSON.stringify(evidence.decisions[0])).not.toContain("supervisor");
   });
 
   it("clears stale map context and reports map reader failures", async () => {
