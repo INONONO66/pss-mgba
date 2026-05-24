@@ -16,6 +16,7 @@ import { createObservedTurnInput, streamSupervisedRun } from "./runner";
 import { StuckMemory } from "./stuck-memory";
 import { createTrackedModel, TokenUsageTracker } from "./token-usage";
 import { createMgbaControlPlane, describeMgbaControlPlane } from "./tools";
+import { createViewerEventRecorder } from "./viewer-recorder";
 
 const provider = createOpenAICompatible({
   apiKey: env.AI_API_KEY,
@@ -38,13 +39,18 @@ const tools = createMgbaControlPlane({
   client: mgbaClient,
   onSupervisorIntervention: (intervention) => {
     runMetricsTracker.recordSupervisorIntervention(intervention.reason);
-    prettyLogger.event({
+    const event = {
       intervention,
       type: "supervisor-intervention",
-    } as never);
+    };
+    prettyLogger.event(event as never);
+    fireAndReportViewerWrite(
+      viewerEventRecorder.recordEvent(event, { turn: turnsRun })
+    );
   },
 });
 let runTrace = await createOptimizedFreshRunTrace();
+const viewerEventRecorder = createViewerEventRecorder({ trace: runTrace });
 const prettyLogger = createPrettyLogger();
 prettyLogger.runTrace(runTrace);
 const runMetricsTracker = new RunMetricsTracker({
@@ -90,7 +96,7 @@ while (true) {
   let currentObservation: MgbaObservation | undefined;
   const observedInput = await createObservedTurnInput({
     client: mgbaClient,
-    onObservation: (observation) => {
+    onObservation: async (observation) => {
       currentObservation = observation;
       stuckMemory.observe(observation, turnsRun);
       runMetricsTracker.recordStuckEvents(stuckMemory.snapshot().stuckEvents);
@@ -98,6 +104,7 @@ while (true) {
         nextTurn: turnsRun,
         observation,
       });
+      await viewerEventRecorder.recordObservation(turnsRun, observation);
     },
     recentActions,
     stuckMemory: stuckMemory.snapshot(),
@@ -126,6 +133,9 @@ while (true) {
       }
       recordRecentAction(event, recentActions);
       prettyLogger.event(event as never);
+      fireAndReportViewerWrite(
+        viewerEventRecorder.recordEvent(event, { turn: turnsRun })
+      );
     },
     run,
   });
@@ -178,5 +188,14 @@ async function persistRunMetricsMetadata(): Promise<void> {
   runTrace = await updateRunTraceMetadata(runTrace, {
     stuckEvents: snapshot.stuckEvents,
     supervisorInterventions: snapshot.supervisorInterventions,
+  });
+}
+
+function fireAndReportViewerWrite(write: Promise<void>): void {
+  write.catch((error: unknown) => {
+    console.dir({
+      message: error instanceof Error ? error.message : String(error),
+      type: "viewer-recorder-error",
+    });
   });
 }
