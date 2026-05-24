@@ -14,6 +14,8 @@ export const MGBA_BUTTONS = [
 export type MgbaButton = (typeof MGBA_BUTTONS)[number];
 export type MgbaHttpMethod = "GET" | "POST";
 
+const MGBA_TRANSIENT_RETRY_ATTEMPTS = 2;
+
 export interface MgbaRequestOptions {
   method?: MgbaHttpMethod;
   params?: Record<
@@ -42,7 +44,7 @@ export class MgbaHttpError extends Error {
 
   constructor(response: Response, body: string) {
     super(
-      `mGBA-http request failed: ${response.status} ${response.statusText}${
+      `Emulator request failed: ${response.status} ${response.statusText}${
         body ? ` - ${body}` : ""
       }`
     );
@@ -75,14 +77,40 @@ export class MgbaHttpClient {
       }
     }
 
-    const response = await this.#fetch(url, { method, signal });
-    const body = await response.text();
+    for (
+      let attempt = 1;
+      attempt <= MGBA_TRANSIENT_RETRY_ATTEMPTS;
+      attempt += 1
+    ) {
+      try {
+        const response = await this.#fetch(url, { method, signal });
+        const body = await response.text();
 
-    if (!response.ok) {
-      throw new MgbaHttpError(response, body);
+        if (!response.ok) {
+          const error = new MgbaHttpError(response, body);
+          if (
+            attempt < MGBA_TRANSIENT_RETRY_ATTEMPTS &&
+            isRetryableMgbaRequest(path, method) &&
+            isTransientMgbaError(error)
+          ) {
+            continue;
+          }
+          throw error;
+        }
+
+        return body.trim();
+      } catch (error) {
+        if (
+          attempt >= MGBA_TRANSIENT_RETRY_ATTEMPTS ||
+          !isRetryableMgbaRequest(path, method) ||
+          !isTransientMgbaError(error)
+        ) {
+          throw error;
+        }
+      }
     }
 
-    return body.trim();
+    throw new Error("mGBA retry loop exhausted unexpectedly");
   }
 
   tap(button: MgbaButton, signal?: AbortSignal): Promise<string> {
@@ -194,6 +222,21 @@ export class MgbaHttpClient {
     return this.request("/coreadapter/reset", { method: "POST", signal });
   }
 
+  read8(address: number, signal?: AbortSignal): Promise<number> {
+    return this.request("/core/read8", {
+      params: { address: `0x${address.toString(16).toUpperCase()}` },
+      signal,
+    }).then((body) => {
+      const value = Number.parseInt(body, 10);
+      if (!Number.isInteger(value) || value < 0 || value > 255) {
+        throw new Error(
+          `Invalid read8 response for address ${address}: ${body}`
+        );
+      }
+      return value;
+    });
+  }
+
   screenshot(path: string, signal?: AbortSignal): Promise<string> {
     return this.request("/core/screenshot", {
       method: "POST",
@@ -201,6 +244,37 @@ export class MgbaHttpClient {
       signal,
     });
   }
+}
+
+export function isTransientMgbaError(error: unknown): boolean {
+  if (error instanceof MgbaHttpError) {
+    return error.status === 408 || error.status === 429 || error.status >= 500;
+  }
+  if (error instanceof Error && error.name === "AbortError") {
+    return false;
+  }
+  const code = readStringProperty(error, "code");
+  return (
+    code === "ECONNRESET" ||
+    code === "ECONNREFUSED" ||
+    code === "ETIMEDOUT" ||
+    code === "EAI_AGAIN" ||
+    code === "UND_ERR_CONNECT_TIMEOUT" ||
+    code === "UND_ERR_HEADERS_TIMEOUT" ||
+    code === "UND_ERR_SOCKET"
+  );
+}
+
+function isRetryableMgbaRequest(path: string, method: MgbaHttpMethod): boolean {
+  return method === "GET" || path === "/core/screenshot";
+}
+
+function readStringProperty(error: unknown, key: string): string | undefined {
+  if (typeof error !== "object" || error === null || !(key in error)) {
+    return;
+  }
+  const value = error[key as keyof typeof error];
+  return typeof value === "string" ? value : undefined;
 }
 
 function isMgbaButton(value: string): value is MgbaButton {
