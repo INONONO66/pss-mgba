@@ -9,14 +9,15 @@
     "test": "vitest run --passWithNoTests",
     "test:integration": "vitest run tests/integration",
     "check:secrets": "tsx scripts/check-no-secrets.ts",
-    "check": "pnpm run check:secrets && pnpm run typecheck && pnpm test",
+    "check": "pnpm run check:secrets && pnpm run typecheck && pnpm test && pnpm run smoke:memory-map-build",
     "harness": "tsx src/index.ts",
     "harness:full-game": "tsx src/index.ts run --mode full-game --policy openai --vision --max-steps 1500",
     "dev": "tsx src/dev.ts",
     "dev:runtime": "tsx src/index.ts run --policy openai --mode full-game --vision",
     "smoke:mgba": "tsx src/index.ts smoke",
     "trace:report": "tsx src/trace-report.ts",
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json && tsx scripts/copy-data-assets.ts",
+    "smoke:memory-map-build": "pnpm run build && tsx scripts/verify-built-memory-map.ts"
   },
   "engines": {
     "node": ">=20"
