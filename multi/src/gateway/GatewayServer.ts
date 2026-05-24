@@ -6,6 +6,8 @@ import { logger } from 'hono/logger'
 import { WebSocketServer } from 'ws'
 
 import type { Config } from '../config.js'
+import { DashboardBroadcast } from '../streaming/DashboardBroadcast.js'
+import { FrameCapture } from '../streaming/FrameCapture.js'
 import { createAdminRouter, type IInstanceManager } from './AdminRouter.js'
 import { createApiRouter, type InstanceRegistry } from './ApiRouter.js'
 
@@ -36,38 +38,21 @@ export function createGatewayServer(
 
   const httpServer = createServer(getRequestListener(app.fetch))
   const wss = new WebSocketServer({ server: httpServer })
-
-  wss.on('connection', (ws, req) => {
-    const url = req.url ?? ''
-    if (url.startsWith('/ws/dashboard')) {
-      ws.send(JSON.stringify({ type: 'connected', message: 'Dashboard WS connected' }))
-      return
-    }
-
-    if (url.startsWith('/ws/instance/')) {
-      const token = url.replace('/ws/instance/', '')
-      const entry = registry.get(token)
-      if (!entry) {
-        ws.close(4001, 'Unknown token')
-        return
-      }
-
-      ws.send(JSON.stringify({ type: 'connected', instanceId: entry.info.id }))
-      return
-    }
-
-    ws.close(4000, 'Unknown endpoint')
-  })
+  const broadcast = new DashboardBroadcast(wss, registry, config.wsBackpressureLimit)
+  const frameCapture = new FrameCapture(registry, config.captureIntervalMs, config.jpegQuality)
+  frameCapture.onFrame((frame) => broadcast.broadcastFrame(frame))
 
   return {
     httpServer,
     wss,
     start() {
+      frameCapture.start()
       httpServer.listen(config.port, () => {
         console.log(`Gateway server running on http://localhost:${config.port}`)
       })
     },
     stop() {
+      frameCapture.stop()
       return new Promise<void>((resolve, reject) => {
         wss.close(() => {
           httpServer.close((error) => {
