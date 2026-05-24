@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentTool } from "@minpeter/pss-runtime";
 import { z } from "zod";
+import { readOptimizedGameBoyScreenshotBase64 } from "../screenshot-image";
 import type { MgbaToolContext } from "./context";
 
 interface ScreenshotOutput {
@@ -20,7 +21,7 @@ export function createScreenshotTool({ client }: MgbaToolContext): AgentTool {
     execute: async (_input, { abortSignal }): Promise<ScreenshotOutput> => {
       const screenshotPath = await createScreenshotPath();
       await client.screenshot(screenshotPath, abortSignal);
-      const data = await readFile(screenshotPath, "base64");
+      const data = await readOptimizedGameBoyScreenshotBase64(screenshotPath);
 
       return {
         data,
