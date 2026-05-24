@@ -154,6 +154,7 @@ export function renderDashboard(): string {
   <script>
     // State
     const tiles = new Map()
+    const instanceMap = new Map()
     let expandedToken = null
     const expCanvas = document.getElementById('exp-canvas')
     const expCtx = expCanvas.getContext('2d')
@@ -164,6 +165,21 @@ export function renderDashboard(): string {
     // WebSocket connection
     const wsUrl = 'ws://' + location.host + '/ws/dashboard'
     let ws = null
+
+    async function refreshInstances() {
+      try {
+        const resp = await fetch('/api/instances')
+        if (!resp.ok) return
+
+        const list = await resp.json()
+        instanceMap.clear()
+        list.forEach(function (inst) {
+          instanceMap.set(inst.index, inst)
+        })
+      } catch (error) {
+        console.error(error)
+      }
+    }
 
     function connect() {
       ws = new WebSocket(wsUrl)
@@ -185,9 +201,13 @@ export function renderDashboard(): string {
         const instanceIndex = data[0]
         const jpegBytes = data.slice(5)
 
+        const inst = instanceMap.get(instanceIndex)
+        const token = inst ? inst.token : null
+        if (!token) return
+
         // Ensure tile exists for this instance
         if (!tiles.has(instanceIndex)) {
-          ensureTile(instanceIndex, 'instance-' + instanceIndex, instanceIndex)
+          ensureTile(instanceIndex, token, inst.id)
         }
 
         const blob = new Blob([jpegBytes], { type: 'image/jpeg' })
@@ -282,6 +302,8 @@ export function renderDashboard(): string {
     })
 
     connect()
+    refreshInstances()
+    setInterval(refreshInstances, 5000)
   </script>
 </body>
 </html>`

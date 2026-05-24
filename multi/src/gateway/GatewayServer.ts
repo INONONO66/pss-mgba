@@ -29,6 +29,16 @@ export function createGatewayServer(
   app.use('*', logger())
   app.get('/health', (c) => c.json({ status: 'ok' }))
   app.get('/', (c) => c.html(renderDashboard()))
+  app.get('/api/instances', (c) => {
+    const instances = instanceManager.list().map((info, index) => ({
+      index,
+      id: info.id,
+      token: info.token,
+      status: info.status,
+    }))
+
+    return c.json(instances)
+  })
 
   app.route('/admin', createAdminRouter(config, registry, instanceManager))
   app.route('/api/v1/:token', createApiRouter(registry))
