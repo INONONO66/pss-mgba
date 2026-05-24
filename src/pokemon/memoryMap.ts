@@ -1,114 +1,39 @@
-// International Pokémon Red/Blue WRAM symbols. Addresses are cross-checked
-// against pret/pokered's WRAM layout and DataCrystal's RAM map; keep tests in
-// tests/pokemon/memoryMap.test.ts in lock-step when changing these values.
-export const RED_BLUE_MEMORY_MAP = {
-  wIsInBattle: 0xd057,
-  wBattleType: 0xd05a,
-  wBattleMonHP: 0xd015,
-  wEnemyMonHP: 0xcfe6,
-  wBattleResult: 0xcf0b,
-  wCurrentMenuItem: 0xcc26,
-  wTileMap: 0xc3a0,
-  wTileMapLength: 360,
-  wNamingScreenNameLength: 0xcee9,
-  wNamingScreenSubmitName: 0xceea,
-  wNamingScreenType: 0xd07d,
-  wSpritePlayerStateData1FacingDirection: 0xc109,
-  wTextBoxID: 0xd125,
-  wPlayerName: 0xd158,
-  NAME_LENGTH: 11,
-  wPartyCount: 0xd163,
-  wPartySpecies: 0xd164,
-  wPartyMons: 0xd16b,
-  PARTY_LENGTH: 6,
-  PARTYMON_STRUCT_LENGTH: 0x2c,
-  wPartyMon1HP: 0xd16c,
-  wPartyMon1MaxHP: 0xd18d,
-  wPartyMonOT: 0xd273,
-  wPartyMonNicks: 0xd2b5,
-  wPokedexOwned: 0xd2f7,
-  wPokedexSeen: 0xd30a,
-  POKEDEX_FLAG_BYTES: 19,
-  wNumBagItems: 0xd31d,
-  wBagItems: 0xd31e,
-  BAG_ITEM_CAPACITY: 20,
-  wPlayerMoney: 0xd347,
-  wRivalName: 0xd34a,
-  wObtainedBadges: 0xd356,
-  wCurMap: 0xd35e,
-  wYCoord: 0xd361,
-  wXCoord: 0xd362,
-  wYBlockCoord: 0xd363,
-  wXBlockCoord: 0xd364,
-  wLetterPrintingDelayFlags: 0xd358,
+// International Pokémon Red/Blue WRAM symbols. Addresses are loaded from a
+// conservative JSON profile so future game profiles can be added without
+// replacing the compatibility exports used throughout the harness.
+import {
+  assertRequiredMemorySymbols,
+  assertRequiredProfileConstants,
+  loadMemoryProfile,
+  REQUIRED_RED_BLUE_CONSTANTS,
+  REQUIRED_RED_BLUE_MEMORY_SYMBOLS,
+  type RequiredRedBlueConstant,
+  type RequiredRedBlueMemorySymbol,
+} from "./memory-profile.js";
 
-  // map header (loaded when map changes)
-  wCurMapTileset: 0xd367,
-  wCurMapHeight: 0xd368,
-  wCurMapWidth: 0xd369,
-  wCurMapDataPtr: 0xd36a,
-  wCurMapConnections: 0xd370,
+const redBlueMemoryProfile = loadMemoryProfile(
+  new URL("./data/red-blue-memory-profile.json", import.meta.url)
+);
+assertRequiredMemorySymbols(
+  redBlueMemoryProfile,
+  REQUIRED_RED_BLUE_MEMORY_SYMBOLS,
+  "red-blue-memory-profile.json"
+);
+assertRequiredProfileConstants(
+  redBlueMemoryProfile,
+  REQUIRED_RED_BLUE_CONSTANTS,
+  "red-blue-memory-profile.json"
+);
 
-  wNorthConnection: 0xd371,
-  wSouthConnection: 0xd37c,
-  wWestConnection: 0xd387,
-  wEastConnection: 0xd392,
-  CONNECTION_SIZE: 11,
+export const RED_BLUE_MEMORY_MAP = redBlueMemoryProfile.memoryMap as Readonly<
+  Record<RequiredRedBlueMemorySymbol, number>
+>;
 
-  // overworld map block buffer
-  wOverworldMap: 0xc6e8,
-  wOverworldMapMaxSize: 1300,
-
-  // sprite state tables (16 sprites × 0x10 bytes each)
-  wSpriteStateData1: 0xc100,
-  wSpriteStateData2: 0xc200,
-  SPRITE_COUNT: 16,
-  SPRITE_STRUCT_SIZE: 0x10,
-
-  // warps
-  wNumberOfWarps: 0xd3ae,
-  wWarpEntries: 0xd3af,
-  WARP_ENTRY_SIZE: 4,
-
-  // misc overworld
-  wTileInFrontOfPlayer: 0xcfc6,
-  wTilePlayerStandingOn: 0xcf0e,
-  wGrassRate: 0xd887,
-  wWalkCounter: 0xcfc5,
-  wJoyIgnore: 0xcd6b,
-  wNumberOfSprites: 0xd4e1,
-
-  // event flags
-  wEventFlags: 0xd747,
-  EVENT_GOT_POKEDEX: 0x25,
-  EVENT_OAK_GOT_PARCEL: 0x38,
-  EVENT_GOT_OAKS_PARCEL: 0x39,
-
-  // play time
-  wPlayTimeHours: 0xda41,
-  wPlayTimeMaxed: 0xda42,
-  wPlayTimeMinutes: 0xda43,
-  wPlayTimeSeconds: 0xda44,
-  wPlayTimeFrames: 0xda45,
-
-  // current enemy battle mon
-  wEnemyMon: 0xcfe5,
-  wEnemyMonSpecies: 0xcfe5,
-  wEnemyMonLevel: 0xcff3,
-  wEnemyMonStatus: 0xcfe9,
-  wEnemyMonType1: 0xcfea,
-  wEnemyMonType2: 0xcfeb,
-  wEnemyMonMoves: 0xcfed,
-  wEnemyMonMaxHP: 0xcff4,
-  wEnemyMonPP: 0xcffe,
-  BATTLEMON_STRUCT_LENGTH: 0x1d,
-
-  wTilesetBank: 0xd52b,
-  wTilesetCollisionPtr: 0xd530,
-  wTilesetGrassTile: 0xd535,
-} as const;
-
-export const HALL_OF_FAME_MAP_ID = 0x76;
+const RED_BLUE_PROFILE_CONSTANTS = redBlueMemoryProfile.constants as Readonly<
+  Record<RequiredRedBlueConstant, number>
+>;
+export const HALL_OF_FAME_MAP_ID =
+  RED_BLUE_PROFILE_CONSTANTS.HALL_OF_FAME_MAP_ID;
 
 export type RedBlueMemorySymbol = keyof typeof RED_BLUE_MEMORY_MAP;
 
@@ -120,23 +45,32 @@ export const wBattleResult = RED_BLUE_MEMORY_MAP.wBattleResult;
 export const wCurrentMenuItem = RED_BLUE_MEMORY_MAP.wCurrentMenuItem;
 export const wTileMap = RED_BLUE_MEMORY_MAP.wTileMap;
 export const wTileMapLength = RED_BLUE_MEMORY_MAP.wTileMapLength;
-export const wNamingScreenNameLength = RED_BLUE_MEMORY_MAP.wNamingScreenNameLength;
-export const wNamingScreenSubmitName = RED_BLUE_MEMORY_MAP.wNamingScreenSubmitName;
+export const wNamingScreenNameLength =
+  RED_BLUE_MEMORY_MAP.wNamingScreenNameLength;
+export const wNamingScreenSubmitName =
+  RED_BLUE_MEMORY_MAP.wNamingScreenSubmitName;
 export const wNamingScreenType = RED_BLUE_MEMORY_MAP.wNamingScreenType;
-export const wSpritePlayerStateData1FacingDirection = RED_BLUE_MEMORY_MAP.wSpritePlayerStateData1FacingDirection;
+export const wSpritePlayerStateData1FacingDirection =
+  RED_BLUE_MEMORY_MAP.wSpritePlayerStateData1FacingDirection;
 export const wTextBoxID = RED_BLUE_MEMORY_MAP.wTextBoxID;
 export const wPlayerName = RED_BLUE_MEMORY_MAP.wPlayerName;
+export const NAME_LENGTH = RED_BLUE_MEMORY_MAP.NAME_LENGTH;
 export const wPartyCount = RED_BLUE_MEMORY_MAP.wPartyCount;
 export const wPartySpecies = RED_BLUE_MEMORY_MAP.wPartySpecies;
 export const wPartyMons = RED_BLUE_MEMORY_MAP.wPartyMons;
+export const PARTY_LENGTH = RED_BLUE_MEMORY_MAP.PARTY_LENGTH;
+export const PARTYMON_STRUCT_LENGTH =
+  RED_BLUE_MEMORY_MAP.PARTYMON_STRUCT_LENGTH;
 export const wPartyMon1HP = RED_BLUE_MEMORY_MAP.wPartyMon1HP;
 export const wPartyMon1MaxHP = RED_BLUE_MEMORY_MAP.wPartyMon1MaxHP;
 export const wPartyMonOT = RED_BLUE_MEMORY_MAP.wPartyMonOT;
 export const wPartyMonNicks = RED_BLUE_MEMORY_MAP.wPartyMonNicks;
 export const wPokedexOwned = RED_BLUE_MEMORY_MAP.wPokedexOwned;
 export const wPokedexSeen = RED_BLUE_MEMORY_MAP.wPokedexSeen;
+export const POKEDEX_FLAG_BYTES = RED_BLUE_MEMORY_MAP.POKEDEX_FLAG_BYTES;
 export const wNumBagItems = RED_BLUE_MEMORY_MAP.wNumBagItems;
 export const wBagItems = RED_BLUE_MEMORY_MAP.wBagItems;
+export const BAG_ITEM_CAPACITY = RED_BLUE_MEMORY_MAP.BAG_ITEM_CAPACITY;
 export const wPlayerMoney = RED_BLUE_MEMORY_MAP.wPlayerMoney;
 export const wRivalName = RED_BLUE_MEMORY_MAP.wRivalName;
 export const wObtainedBadges = RED_BLUE_MEMORY_MAP.wObtainedBadges;
@@ -145,21 +79,53 @@ export const wYCoord = RED_BLUE_MEMORY_MAP.wYCoord;
 export const wXCoord = RED_BLUE_MEMORY_MAP.wXCoord;
 export const wYBlockCoord = RED_BLUE_MEMORY_MAP.wYBlockCoord;
 export const wXBlockCoord = RED_BLUE_MEMORY_MAP.wXBlockCoord;
-export const wLetterPrintingDelayFlags = RED_BLUE_MEMORY_MAP.wLetterPrintingDelayFlags;
+export const wLetterPrintingDelayFlags =
+  RED_BLUE_MEMORY_MAP.wLetterPrintingDelayFlags;
 export const wCurMapTileset = RED_BLUE_MEMORY_MAP.wCurMapTileset;
 export const wCurMapHeight = RED_BLUE_MEMORY_MAP.wCurMapHeight;
 export const wCurMapWidth = RED_BLUE_MEMORY_MAP.wCurMapWidth;
+export const wCurMapDataPtr = RED_BLUE_MEMORY_MAP.wCurMapDataPtr;
+export const wCurMapConnections = RED_BLUE_MEMORY_MAP.wCurMapConnections;
+export const wNorthConnection = RED_BLUE_MEMORY_MAP.wNorthConnection;
+export const wSouthConnection = RED_BLUE_MEMORY_MAP.wSouthConnection;
+export const wWestConnection = RED_BLUE_MEMORY_MAP.wWestConnection;
+export const wEastConnection = RED_BLUE_MEMORY_MAP.wEastConnection;
+export const CONNECTION_SIZE = RED_BLUE_MEMORY_MAP.CONNECTION_SIZE;
 export const wOverworldMap = RED_BLUE_MEMORY_MAP.wOverworldMap;
+export const wOverworldMapMaxSize = RED_BLUE_MEMORY_MAP.wOverworldMapMaxSize;
 export const wSpriteStateData1 = RED_BLUE_MEMORY_MAP.wSpriteStateData1;
 export const wSpriteStateData2 = RED_BLUE_MEMORY_MAP.wSpriteStateData2;
+export const SPRITE_COUNT = RED_BLUE_MEMORY_MAP.SPRITE_COUNT;
+export const SPRITE_STRUCT_SIZE = RED_BLUE_MEMORY_MAP.SPRITE_STRUCT_SIZE;
 export const wNumberOfWarps = RED_BLUE_MEMORY_MAP.wNumberOfWarps;
 export const wWarpEntries = RED_BLUE_MEMORY_MAP.wWarpEntries;
+export const WARP_ENTRY_SIZE = RED_BLUE_MEMORY_MAP.WARP_ENTRY_SIZE;
 export const wTileInFrontOfPlayer = RED_BLUE_MEMORY_MAP.wTileInFrontOfPlayer;
-export const wNumberOfSprites = RED_BLUE_MEMORY_MAP.wNumberOfSprites;
+export const wTilePlayerStandingOn = RED_BLUE_MEMORY_MAP.wTilePlayerStandingOn;
+export const wGrassRate = RED_BLUE_MEMORY_MAP.wGrassRate;
+export const wWalkCounter = RED_BLUE_MEMORY_MAP.wWalkCounter;
 export const wJoyIgnore = RED_BLUE_MEMORY_MAP.wJoyIgnore;
+export const wNumberOfSprites = RED_BLUE_MEMORY_MAP.wNumberOfSprites;
 export const wEventFlags = RED_BLUE_MEMORY_MAP.wEventFlags;
+export const EVENT_GOT_POKEDEX = RED_BLUE_MEMORY_MAP.EVENT_GOT_POKEDEX;
+export const EVENT_OAK_GOT_PARCEL = RED_BLUE_MEMORY_MAP.EVENT_OAK_GOT_PARCEL;
+export const EVENT_GOT_OAKS_PARCEL = RED_BLUE_MEMORY_MAP.EVENT_GOT_OAKS_PARCEL;
 export const wPlayTimeHours = RED_BLUE_MEMORY_MAP.wPlayTimeHours;
+export const wPlayTimeMaxed = RED_BLUE_MEMORY_MAP.wPlayTimeMaxed;
+export const wPlayTimeMinutes = RED_BLUE_MEMORY_MAP.wPlayTimeMinutes;
+export const wPlayTimeSeconds = RED_BLUE_MEMORY_MAP.wPlayTimeSeconds;
+export const wPlayTimeFrames = RED_BLUE_MEMORY_MAP.wPlayTimeFrames;
 export const wEnemyMon = RED_BLUE_MEMORY_MAP.wEnemyMon;
 export const wEnemyMonSpecies = RED_BLUE_MEMORY_MAP.wEnemyMonSpecies;
 export const wEnemyMonLevel = RED_BLUE_MEMORY_MAP.wEnemyMonLevel;
+export const wEnemyMonStatus = RED_BLUE_MEMORY_MAP.wEnemyMonStatus;
+export const wEnemyMonType1 = RED_BLUE_MEMORY_MAP.wEnemyMonType1;
+export const wEnemyMonType2 = RED_BLUE_MEMORY_MAP.wEnemyMonType2;
 export const wEnemyMonMoves = RED_BLUE_MEMORY_MAP.wEnemyMonMoves;
+export const wEnemyMonMaxHP = RED_BLUE_MEMORY_MAP.wEnemyMonMaxHP;
+export const wEnemyMonPP = RED_BLUE_MEMORY_MAP.wEnemyMonPP;
+export const BATTLEMON_STRUCT_LENGTH =
+  RED_BLUE_MEMORY_MAP.BATTLEMON_STRUCT_LENGTH;
+export const wTilesetBank = RED_BLUE_MEMORY_MAP.wTilesetBank;
+export const wTilesetCollisionPtr = RED_BLUE_MEMORY_MAP.wTilesetCollisionPtr;
+export const wTilesetGrassTile = RED_BLUE_MEMORY_MAP.wTilesetGrassTile;

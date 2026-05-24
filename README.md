@@ -232,6 +232,12 @@ Do not replace `src/pokemon/memoryMap.ts`, `src/pokemon/PokemonStateReader.ts`,
 `src/pokemon/GameWorld.ts`, `src/pokemon/MapMemory.ts`, or the modular readers
 with the compact upstream `src/pokemon-state.ts` reader.
 
+`src/pokemon/memoryMap.ts` keeps the compatibility exports used by the runtime,
+but its Red/Blue WRAM symbols are sourced from the conservative JSON profile at
+`src/pokemon/data/red-blue-memory-profile.json`. Future game support should add a
+new profile and loader wiring instead of hardcoding another address table in
+TypeScript. This profile foundation does not by itself implement another game.
+
 The optional upstream trace report command is available as:
 
 ```bash
