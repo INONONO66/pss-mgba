@@ -93,6 +93,15 @@ export function createDevViewerServer(options: DevViewerServerOptions): Server {
         return;
       }
 
+      if (requestUrl.pathname === "/api/events") {
+        const limitParam = Number(requestUrl.searchParams.get("limit") ?? "20");
+        const limit = Number.isFinite(limitParam) ? Math.max(1, Math.min(100, Math.trunc(limitParam))) : 20;
+        const events = await listLatestEvents(paths.eventsFile, limit);
+        response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        response.end(JSON.stringify({ runId: options.runId, limit, count: events.length, events }));
+        return;
+      }
+
       if (requestUrl.pathname.startsWith("/vision/")) {
         const fileName = decodeURIComponent(requestUrl.pathname.slice("/vision/".length));
         const contentType = isSafeVisionFileName(fileName) ? visionImageContentType(fileName) : undefined;
@@ -161,6 +170,9 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     code { color: var(--color-text); font-family: inherit; }
     .layout { display: grid; grid-template-columns: minmax(320px, 2fr) minmax(220px, 1fr); gap: var(--space-3); align-items: stretch; }
     .conversation-panel { margin-top: var(--space-3); border: var(--line-thin); background: var(--color-surface); min-height: 340px; max-height: 58vh; display: grid; grid-template-columns: 220px minmax(0, 1fr); overflow: hidden; }
+    .event-panel { margin-top: var(--space-3); border: var(--line-thin); background: var(--color-surface); max-height: 260px; overflow: auto; }
+    .event-list { margin: 0; padding: var(--space-3); display: grid; gap: var(--space-2); }
+    .event-item { border: var(--line-thin); background: #10100d; padding: 10px 12px; color: var(--color-muted); font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
     .conversation-header { padding: var(--space-3); background: var(--color-overlay); border-bottom: var(--line-thin); }
     .conversation-main { min-width: 0; overflow: auto; }
     .conversation-body { margin: 0; padding: var(--space-3); white-space: pre-wrap; word-break: break-word; color: var(--color-muted); font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -218,6 +230,13 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
         <pre id="llm-conversation" class="conversation-body">No LLM conversation recorded yet.</pre>
       </div>
     </section>
+    <section class="event-panel">
+      <div class="conversation-header">
+        <h2>Run events</h2>
+        <p id="event-status">Waiting...</p>
+      </div>
+      <div id="event-list" class="event-list"></div>
+    </section>
   </main>
   <script>
     const liveFrame = document.getElementById('live-frame');
@@ -226,6 +245,8 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     const llmStatus = document.getElementById('llm-status');
     const llmConversation = document.getElementById('llm-conversation');
     const llmHistory = document.getElementById('llm-history');
+    const eventStatus = document.getElementById('event-status');
+    const eventList = document.getElementById('event-list');
     let selectedConversationFile = null;
 
     function text(node, value) { node.appendChild(document.createTextNode(value)); }
@@ -288,6 +309,40 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       llmConversation.textContent = formatConversation(selected);
     }
 
+    async function refreshEvents() {
+      const payload = await fetch('/api/events?limit=20', { cache: 'no-store' }).then((response) => response.json());
+      eventStatus.textContent = payload.count + '/' + payload.limit + ' latest event(s)';
+      eventList.textContent = '';
+      if (!payload.events || payload.events.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'empty';
+        empty.textContent = 'No run events recorded yet.';
+        eventList.appendChild(empty);
+        return;
+      }
+
+      for (const event of payload.events) {
+        const item = document.createElement('article');
+        item.className = 'event-item';
+        item.textContent = formatEvent(event);
+        eventList.appendChild(item);
+      }
+    }
+
+    function formatEvent(event) {
+      const header = '[' + (event.sequence ?? '-') + '] ' + event.type + ' · ' + event.timestamp;
+      const supervisor = event.payload?.supervisor;
+      if (supervisor !== undefined) {
+        return [
+          header,
+          'goal: ' + (supervisor.activeGoal?.title ?? '?') + ' (' + (supervisor.activeGoal?.kind ?? '?') + ')',
+          'state: ' + (supervisor.state ?? '?'),
+          'guidance: ' + ((supervisor.guidance ?? []).join(' | ') || '?')
+        ].join('\\n');
+      }
+      return header + '\\n' + JSON.stringify(event.payload ?? {}, null, 2);
+    }
+
     function formatConversation(conversation) {
       const sections = [];
       sections.push('MODEL: ' + (conversation.model ?? '?') + ' | MODE: ' + (conversation.harnessMode ?? '?'));
@@ -342,7 +397,7 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     }
 
     async function tick() {
-      await Promise.allSettled([refreshLiveFrame(), refreshVisionImages(), refreshLlmConversation()]);
+      await Promise.allSettled([refreshLiveFrame(), refreshVisionImages(), refreshLlmConversation(), refreshEvents()]);
     }
 
     setInterval(tick, 1000);
@@ -385,6 +440,34 @@ async function listLatestLlmConversations(directory: string, limit: number): Pro
     }
   }
   return conversations;
+}
+
+async function listLatestEvents(file: string, limit: number): Promise<Array<Record<string, unknown>>> {
+  let content: string;
+  try {
+    content = await readFile(file, "utf8");
+  } catch (error) {
+    if (isNotFound(error)) {
+      return [];
+    }
+    throw error;
+  }
+
+  const lines = content.trim().length === 0 ? [] : content.trim().split("\n");
+  const events: Array<Record<string, unknown>> = [];
+  for (const line of lines.slice(-limit).reverse()) {
+    try {
+      const parsed = JSON.parse(line) as unknown;
+      const sanitized = sanitizeConversationForDashboard(parsed);
+      if (isRecord(sanitized)) {
+        events.push(sanitized);
+      }
+    } catch {
+      events.push({ type: "invalid_event", payload: { message: "failed to parse event" } });
+    }
+  }
+
+  return events;
 }
 
 function sanitizeConversationForDashboard(value: unknown): unknown {

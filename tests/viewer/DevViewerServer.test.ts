@@ -18,6 +18,13 @@ interface LlmConversationsResponse {
   readonly conversations: Array<{ readonly fileName: string; readonly model?: string; readonly responseContent?: string }>;
 }
 
+interface EventsResponse {
+  readonly runId: string;
+  readonly limit: number;
+  readonly count: number;
+  readonly events: Array<{ readonly type: string; readonly payload?: { readonly supervisor?: { readonly state?: string; readonly activeGoal?: { readonly title?: string } } } }>;
+}
+
 describe("DevViewerServer", () => {
   it("serves the live frame and latest LLM context images for one active run", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "dev-viewer-"));
@@ -28,6 +35,21 @@ describe("DevViewerServer", () => {
     await writeFile(path.join(paths.visionDir, "000001-frame-11.jpeg"), Buffer.from([1, 2, 3]));
     await writeFile(path.join(paths.visionDir, "000002-frame-22.png"), Buffer.from([4, 5, 6]));
     await writeFile(path.join(paths.visionDir, "000003-frame-33.webp"), Buffer.from([7, 8, 9]));
+    await writeFile(paths.eventsFile, [
+      JSON.stringify({ type: "run_started", timestamp: "2026-05-24T00:00:00.000Z", payload: { config: { mode: "test" } } }),
+      JSON.stringify({
+        type: "decision",
+        sequence: 1,
+        timestamp: "2026-05-24T00:00:01.000Z",
+        payload: {
+          supervisor: {
+            state: "progressing",
+            activeGoal: { title: "Obtain the first party Pokemon", kind: "advance-story" },
+            guidance: ["Current focus: Obtain the first party Pokemon."]
+          }
+        }
+      })
+    ].join("\n"));
     await writeFile(path.join(paths.llmConversationsDir, "000001.json"), JSON.stringify({
       model: "grok-test",
       messages: [{
@@ -69,6 +91,7 @@ describe("DevViewerServer", () => {
       expect(html).toContain("/api/live-frame");
       expect(html).toContain("/api/vision-images");
       expect(html).toContain("/api/llm-conversations");
+      expect(html).toContain("/api/events");
       expect(html).toContain(paths.llmConversationsDir);
       expect(html).toContain("setInterval(tick, 1000)");
       expect(html).toContain(".layout");
@@ -80,6 +103,8 @@ describe("DevViewerServer", () => {
       expect(html).toContain(".conversation-panel");
       expect(html).toContain(".history-rail");
       expect(html).toContain(".history-button");
+      expect(html).toContain(".event-panel");
+      expect(html).toContain("id=\"event-list\"");
       expect(html).toContain("sequence (");
       expect(html).toContain("childActions.join(' → ')");
       expect(html).toContain("aspect-ratio: 1 / 1");
@@ -108,6 +133,18 @@ describe("DevViewerServer", () => {
       expect(JSON.stringify(conversations)).not.toContain("data:image");
       expect(JSON.stringify(conversations)).not.toContain("base64");
       expect(JSON.stringify(conversations)).toContain("[image input omitted from dashboard log]");
+
+      const events = await fetchEventJson(`${viewer.url}/api/events?limit=2`);
+      expect(events).toMatchObject({ runId: "viewer-run", limit: 2, count: 2 });
+      expect(events.events[0]).toMatchObject({
+        type: "decision",
+        payload: {
+          supervisor: {
+            state: "progressing",
+            activeGoal: { title: "Obtain the first party Pokemon" }
+          }
+        }
+      });
 
       const imageResponse = await fetch(`${viewer.url}/vision/000001-frame-11.jpeg`);
       expect(imageResponse.headers.get("content-type")).toContain("image/jpeg");
@@ -172,4 +209,10 @@ async function fetchLlmJson(url: string): Promise<LlmConversationsResponse> {
   const response = await fetch(url);
   expect(response.ok).toBe(true);
   return await response.json() as LlmConversationsResponse;
+}
+
+async function fetchEventJson(url: string): Promise<EventsResponse> {
+  const response = await fetch(url);
+  expect(response.ok).toBe(true);
+  return await response.json() as EventsResponse;
 }
