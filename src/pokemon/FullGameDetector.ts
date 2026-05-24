@@ -12,6 +12,7 @@ export type FullGameCheckpointName =
   | "rivalBattleExited"
   | "badgesObserved"
   | "allBadgesObtained"
+  | "hallOfFameObserved"
   | "hallOfFameCompleted"
   | "completed";
 
@@ -40,6 +41,7 @@ export interface FullGameCheckpoints {
   readonly rivalBattleExited: boolean;
   readonly badgesObserved: boolean;
   readonly allBadgesObtained: boolean;
+  readonly hallOfFameObserved: boolean;
   readonly hallOfFameCompleted: boolean;
   readonly completed: boolean;
 }
@@ -68,6 +70,7 @@ const EMPTY_CHECKPOINTS: FullGameCheckpoints = {
   rivalBattleExited: false,
   badgesObserved: false,
   allBadgesObtained: false,
+  hallOfFameObserved: false,
   hallOfFameCompleted: false,
   completed: false
 };
@@ -136,6 +139,7 @@ export class FullGameDetector implements ProgressDetector<FullGameObservableStat
   private step = 0;
   private lastProgressStep = 0;
   private starterObservationStreak = 0;
+  private hallOfFameObservationStreak = 0;
   private lastBattleFlag: number | undefined;
   private readonly checkpointEvidence: FullGameCheckpointEvidence[] = [];
   private lastObserved: FullGameObservedFields | undefined;
@@ -151,6 +155,9 @@ export class FullGameDetector implements ProgressDetector<FullGameObservableStat
     this.lastObserved = observed;
     this.starterObservationStreak = observed.wPartyCount !== undefined && observed.wPartyCount >= 1
       ? this.starterObservationStreak + 1
+      : 0;
+    this.hallOfFameObservationStreak = observed.hallOfFameComplete === true
+      ? this.hallOfFameObservationStreak + 1
       : 0;
 
     const advance = (checkpoint: FullGameCheckpointName): void => {
@@ -177,7 +184,10 @@ export class FullGameDetector implements ProgressDetector<FullGameObservableStat
     if (this.checkpoints.badgesObserved && !this.checkpoints.allBadgesObtained && observed.badgeCount === 8) {
       advance("allBadgesObtained");
     }
-    if (!this.checkpoints.hallOfFameCompleted && observed.hallOfFameComplete === true) {
+    if (!this.checkpoints.hallOfFameObserved && this.hallOfFameObservationStreak >= 1) {
+      advance("hallOfFameObserved");
+    }
+    if (!this.checkpoints.hallOfFameCompleted && this.hallOfFameObservationStreak >= 2) {
       advance("hallOfFameCompleted");
     }
     if (this.checkpoints.hallOfFameCompleted && !this.checkpoints.completed) {

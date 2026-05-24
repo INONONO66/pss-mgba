@@ -1,6 +1,6 @@
 # TypeScript Pokemon Harness
 
-Stage 1 is the default bounded Pokemon Red and Blue harness mode for mGBA-http. It reads RAM state, records evidence, chooses safe controller actions, and stops at the Stage 1 contract described below. An opt-in full-game mode exists, but it only treats Hall of Fame map observation as completion.
+Stage 1 is the default bounded Pokemon Red and Blue harness mode for mGBA-http. It reads RAM state, records evidence, chooses safe controller actions, and stops at the Stage 1 contract described below. An opt-in full-game mode exists, but it only treats stable Hall of Fame map observation as completion.
 
 This project does not bundle a ROM. You must provide your own legal Pokemon Red or Pokemon Blue ROM and load it in mGBA yourself.
 
@@ -55,7 +55,7 @@ HARNESS_MODE=stage1
 AI_PROVIDER=heuristic
 ```
 
-`HARNESS_MODE` defaults to `stage1`. Set `HARNESS_MODE=full-game` or pass `--mode full-game` to opt into full-game detection. Full-game mode reads badge progress as a signal, but badges alone do not complete the run.
+`HARNESS_MODE` defaults to `stage1`. Set `HARNESS_MODE=full-game` or pass `--mode full-game` to opt into full-game detection. Full-game mode reads badge progress as a signal, but badges alone do not complete the run. Completion requires stable Hall of Fame observation, not a single transient frame.
 
 Set `AI_PROVIDER=heuristic` for local deterministic actions, or `AI_PROVIDER=openai` to select actions through the OpenAI-compatible Chat Completions policy. For CodexLB, keep `AI_PROVIDER=openai` and point `OPENAI_BASE_URL` at the CodexLB-compatible endpoint.
 
@@ -137,6 +137,14 @@ Start an opt-in full-game run. Completion is recorded only after observing Hall 
 ```bash
 pnpm run harness run --mode full-game --policy openai --max-steps 1000 --run-id local-full-game
 ```
+
+For the recommended full-game LLM+vision launch path, use:
+
+```bash
+pnpm run harness:full-game --run-id local-full-game
+```
+
+That script expands to `run --mode full-game --policy openai --vision --max-steps 1500`. It still requires mGBA-http, your own loaded ROM, and a private `OPENAI_API_KEY` when using the OpenAI-compatible policy.
 
 Start the integrated dev viewer and full-game vision loop together:
 
@@ -228,7 +236,7 @@ When an LLM-backed provider falls back to the local heuristic policy, the record
 
 Full-game mode is opt in through `HARNESS_MODE=full-game` or `--mode full-game`. It preserves the same safe-input and read-only-RAM rules as Stage 1.
 
-The detector tracks early Stage 1 milestones, badge observation, all-badges observation, and Hall of Fame observation. It does not complete on Rival battle exit or all badges alone. Completion requires observing Hall of Fame map id `0x76` or the derived `hallOfFameComplete` state field.
+The detector tracks early Stage 1 milestones, badge observation, all-badges observation, and Hall of Fame observation. It does not complete on Rival battle exit or all badges alone. Completion requires two consecutive observations of Hall of Fame map id `0x76` or the derived `hallOfFameComplete` state field.
 
 The LLM full-game prompt treats badges as progress only, forbids memory writes and hardcoded global input timelines, and forbids route-facts-alone completion claims. The local heuristic policy remains a Stage 1-oriented fallback and does not claim reliable full-game clears.
 

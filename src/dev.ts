@@ -27,6 +27,7 @@ export async function runDev(args: readonly string[] = process.argv.slice(2), io
 
   io.stdout(`Dev viewer: ${viewer.url}`);
   io.stdout(`Run ID: ${config.harnessRunId}`);
+  io.stdout(formatDevRunBanner(config));
 
   try {
     return await (dependencies.runCli ?? runCli)(harnessArgs, io);
@@ -45,6 +46,19 @@ export function buildDevHarnessArgs(args: readonly string[], runId: string): str
   ensureOption(result, "--run-id", runId);
   ensureFlag(result, "--vision");
   return result;
+}
+
+export function formatDevRunBanner(config: Pick<HarnessConfig, "harnessMode" | "aiProvider" | "llmVisionEnabled" | "loopMaxSteps">): string {
+  const completion = config.harnessMode === "full-game"
+    ? "stable Hall of Fame state only"
+    : "Stage 1 contract";
+  return [
+    `Mode: ${config.harnessMode}`,
+    `Policy: ${config.aiProvider}`,
+    `Vision: ${config.llmVisionEnabled ? "enabled" : "disabled"}`,
+    `Max steps: ${config.loopMaxSteps}`,
+    `Completion: ${completion}`,
+  ].join("\n");
 }
 
 async function startViewer(config: HarnessConfig): Promise<StartedDevViewerServer> {

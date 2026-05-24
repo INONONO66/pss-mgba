@@ -10,6 +10,7 @@
     "test:integration": "vitest run tests/integration",
     "check:secrets": "tsx scripts/check-no-secrets.ts",
     "harness": "tsx src/index.ts",
+    "harness:full-game": "tsx src/index.ts run --mode full-game --policy openai --vision --max-steps 1500",
     "dev": "tsx src/dev.ts",
     "dev:tmux": "tsx scripts/dev-tmux.ts",
     "smoke:mgba": "tsx src/index.ts smoke",
