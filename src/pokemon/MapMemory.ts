@@ -71,10 +71,10 @@ export class MapMemory {
     const record = this.getOrCreate(mapId);
 
     if (world.mapLayout.width > 0) {
-      record.width = world.mapLayout.width;
+      record.width = world.mapLayout.width * 2;
     }
     if (world.mapLayout.height > 0) {
-      record.height = world.mapLayout.height;
+      record.height = world.mapLayout.height * 2;
     }
 
     const playerScrY = Math.floor((player.yScreen + 4) / 8);
