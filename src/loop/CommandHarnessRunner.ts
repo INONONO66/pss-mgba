@@ -90,6 +90,8 @@ export class CommandHarnessRunner {
 
       const state = await this.options.readGameState();
       this.updateExecutionContext(state);
+      await this.options.updateMapMemory();
+      this.options.updateMapGraph();
 
       if (state.mode === "dialog" && !(await this.isDialogDecisionNeeded())) {
         console.log(`[auto-advance] dialog detected at loop start, pressing A...`);
@@ -99,9 +101,6 @@ export class CommandHarnessRunner {
         }
         continue;
       }
-
-      await this.options.updateMapMemory();
-      this.options.updateMapGraph();
 
       const commandStatus = await this.chooseAndExecute(state);
       if (commandStatus !== "running") {
@@ -185,10 +184,21 @@ export class CommandHarnessRunner {
 
   private async autoAdvanceDialog(): Promise<string[]> {
     const collectedTexts: string[] = [];
+    let noTextCount = 0;
+
     for (let press = 0; press < AUTO_ADVANCE_LIMIT; press += 1) {
       const preText = await this.options.executionContext.dialogStateReader.readScreenText();
-      if (preText.trim().length > 0 && !collectedTexts.includes(preText.trim())) {
-        collectedTexts.push(preText.trim());
+      if (preText.trim().length > 0) {
+        noTextCount = 0;
+        if (!collectedTexts.includes(preText.trim())) {
+          collectedTexts.push(preText.trim());
+        }
+      } else {
+        noTextCount += 1;
+        if (noTextCount >= 3) {
+          console.log(`[auto-advance] no text for ${noTextCount} reads, exiting (false positive)`);
+          return collectedTexts;
+        }
       }
 
       await this.options.executionContext.controller.pressButton("A", AUTO_ADVANCE_FRAMES);
