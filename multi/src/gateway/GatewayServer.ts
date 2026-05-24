@@ -8,6 +8,7 @@ import { WebSocketServer } from 'ws'
 import type { Config } from '../config.js'
 import { DashboardBroadcast } from '../streaming/DashboardBroadcast.js'
 import { FrameCapture } from '../streaming/FrameCapture.js'
+import { renderDashboard } from '../dashboard/DashboardPage.js'
 import { createAdminRouter, type IInstanceManager } from './AdminRouter.js'
 import { createApiRouter, type InstanceRegistry } from './ApiRouter.js'
 
@@ -27,10 +28,7 @@ export function createGatewayServer(
 
   app.use('*', logger())
   app.get('/health', (c) => c.json({ status: 'ok' }))
-  app.get(
-    '/',
-    (c) => c.html('<html><body><h1>mGBA Gateway Dashboard</h1><p>Coming soon...</p></body></html>'),
-  )
+  app.get('/', (c) => c.html(renderDashboard()))
 
   app.route('/admin', createAdminRouter(config, registry, instanceManager))
   app.route('/api/v1/:token', createApiRouter(registry))
