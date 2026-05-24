@@ -25,6 +25,17 @@ interface EventsResponse {
   readonly events: Array<{ readonly type: string; readonly payload?: { readonly supervisor?: { readonly state?: string; readonly activeGoal?: { readonly title?: string } } } }>;
 }
 
+interface RunSummaryResponse {
+  readonly runId: string;
+  readonly status: string;
+  readonly totalSteps?: number;
+  readonly finalFrame?: number;
+  readonly counts?: { readonly decisions?: number; readonly errors?: number };
+  readonly detectorStatus?: { readonly status?: string };
+  readonly latestSupervisor?: { readonly state?: string; readonly activeGoal?: { readonly title?: string } };
+  readonly lastAction?: { readonly confidence?: number };
+}
+
 describe("DevViewerServer", () => {
   it("serves the live frame and latest LLM context images for one active run", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "dev-viewer-"));
@@ -50,6 +61,26 @@ describe("DevViewerServer", () => {
         }
       })
     ].join("\n"));
+    await writeFile(paths.summaryFile, JSON.stringify({
+      runId: "viewer-run",
+      status: "failed_timeout",
+      startedAt: "2026-05-24T00:00:00.000Z",
+      finishedAt: "2026-05-24T00:00:02.000Z",
+      counts: { states: 1, decisions: 1, actions: 1, screenshots: 1, llmConversations: 1, errors: 0, events: 7 },
+      result: {
+        status: "failed_timeout",
+        totalSteps: 12,
+        finalFrame: 345,
+        detector: { status: "running", progressStep: 10, lastProgressStep: 8 },
+        last20Actions: [{
+          step: 12,
+          frame: 345,
+          action: { type: "press", button: "A", frames: 5 },
+          confidence: 0.8,
+          rationale: "Advance current dialog."
+        }]
+      }
+    }));
     await writeFile(path.join(paths.llmConversationsDir, "000001.json"), JSON.stringify({
       model: "grok-test",
       messages: [{
@@ -92,6 +123,7 @@ describe("DevViewerServer", () => {
       expect(html).toContain("/api/vision-images");
       expect(html).toContain("/api/llm-conversations");
       expect(html).toContain("/api/events");
+      expect(html).toContain("/api/run-summary");
       expect(html).toContain(paths.llmConversationsDir);
       expect(html).toContain("setInterval(tick, 1000)");
       expect(html).toContain(".layout");
@@ -104,6 +136,9 @@ describe("DevViewerServer", () => {
       expect(html).toContain(".history-rail");
       expect(html).toContain(".history-button");
       expect(html).toContain(".event-panel");
+      expect(html).toContain(".summary-strip");
+      expect(html).toContain("id=\"summary-status\"");
+      expect(html).toContain("id=\"summary-supervisor\"");
       expect(html).toContain("id=\"event-list\"");
       expect(html).toContain("sequence (");
       expect(html).toContain("childActions.join(' → ')");
@@ -145,6 +180,23 @@ describe("DevViewerServer", () => {
           }
         }
       });
+
+      const summary = await fetchRunSummaryJson(`${viewer.url}/api/run-summary`);
+      expect(summary).toMatchObject({
+        runId: "viewer-run",
+        status: "failed_timeout",
+        totalSteps: 12,
+        finalFrame: 345,
+        counts: { decisions: 1, errors: 0 },
+        detectorStatus: { status: "running" },
+        latestSupervisor: {
+          state: "progressing",
+          activeGoal: { title: "Obtain the first party Pokemon" }
+        },
+        lastAction: { confidence: 0.8 }
+      });
+      expect(JSON.stringify(summary)).not.toContain("last20Actions");
+      expect(JSON.stringify(summary)).not.toContain("recentStateHashes");
 
       const imageResponse = await fetch(`${viewer.url}/vision/000001-frame-11.jpeg`);
       expect(imageResponse.headers.get("content-type")).toContain("image/jpeg");
@@ -215,4 +267,10 @@ async function fetchEventJson(url: string): Promise<EventsResponse> {
   const response = await fetch(url);
   expect(response.ok).toBe(true);
   return await response.json() as EventsResponse;
+}
+
+async function fetchRunSummaryJson(url: string): Promise<RunSummaryResponse> {
+  const response = await fetch(url);
+  expect(response.ok).toBe(true);
+  return await response.json() as RunSummaryResponse;
 }
