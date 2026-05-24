@@ -1,11 +1,13 @@
 import type { AgentTools } from "@minpeter/pss-runtime";
 import { env } from "../env";
 import { MGBA_BUTTONS, MgbaHttpClient } from "../mgba-http";
+import {
+  createSupervisedMgbaClient,
+  type SupervisorIntervention,
+} from "../supervisor";
 import type { MgbaToolContext } from "./context";
 import { createHoldManyTool, createHoldTool } from "./hold";
-import { createLoadRomTool } from "./load-rom";
 import { createReleaseTool } from "./release";
-import { createResetTool } from "./reset";
 import { createScreenshotTool } from "./screenshot";
 import { createStatusTool } from "./status";
 import { createTapManyTool, createTapTool } from "./tap";
@@ -13,15 +15,25 @@ import { createTapManyTool, createTapTool } from "./tap";
 export interface MgbaControlPlaneOptions {
   client?: MgbaHttpClient;
   includeObservationTools?: boolean;
+  onSupervisorIntervention?: (intervention: SupervisorIntervention) => void;
   romPath?: string;
 }
 
 export function createMgbaControlPlane({
   client = new MgbaHttpClient({ baseUrl: env.MGBA_HTTP_BASE_URL }),
   includeObservationTools = true,
+  onSupervisorIntervention,
   romPath = env.MGBA_ROM_PATH,
 }: MgbaControlPlaneOptions = {}): AgentTools {
-  return createMgbaTools({ client, romPath }, { includeObservationTools });
+  return createMgbaTools(
+    {
+      client: createSupervisedMgbaClient(client, {
+        onIntervention: onSupervisorIntervention,
+      }),
+      romPath,
+    },
+    { includeObservationTools }
+  );
 }
 
 export function describeMgbaControlPlane(): string {
@@ -39,22 +51,20 @@ function createMgbaTools(
           mgba_screenshot: createScreenshotTool(context),
         }
       : {}),
-    mgba_load_rom: createLoadRomTool(context),
     mgba_tap: createTapTool(context),
     mgba_tap_many: createTapManyTool(context),
     mgba_hold: createHoldTool(context),
     mgba_hold_many: createHoldManyTool(context),
     mgba_release: createReleaseTool(context),
-    mgba_reset: createResetTool(context),
   } satisfies AgentTools;
 }
 
 function describeMgbaTools(): string {
   return [
-    "You can control mGBA through mGBA-http tools.",
-    "Use MGBA_ROM_PATH via mgba_load_rom when a ROM needs to be loaded.",
+    "You can control the already-running game through button tools.",
+    "Game progress must never be reset or reloaded by the model; reset and ROM-loading tools are intentionally not exposed.",
     `Available buttons: ${MGBA_BUTTONS.join(", ")}.`,
-    "Prefer mgba_tap for discrete actions and mgba_hold for movement across multiple frames.",
-    "Observation may be injected by the runner. If mgba_screenshot/mgba_status are not available, rely on the provided screenshot/status input and choose exactly one useful action.",
+    "Use mgba_tap for A/B/Start/Select interactions, dialogue, menus, and facing/very small directional nudges. Use mgba_hold for movement. A local supervisor enforces deterministic timing: single directional movement uses duration 12, non-directional taps use duration 6, and unsafe long movement chains are shortened to one supervised tile before the next observation.",
+    "The runner usually injects current screenshot/status into each turn, so mgba_screenshot and mgba_status are available but not recommended unless the injected observation is stale, ambiguous, or insufficient.",
   ].join("\n");
 }

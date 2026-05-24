@@ -9,12 +9,12 @@ describe("createMgbaControlPlane", () => {
       romPath: "/tmp/game.gb",
     });
 
+    expect(tools).not.toHaveProperty("mgba_reset");
+    expect(tools).not.toHaveProperty("mgba_load_rom");
     expect(Object.keys(tools).sort()).toEqual([
       "mgba_hold",
       "mgba_hold_many",
-      "mgba_load_rom",
       "mgba_release",
-      "mgba_reset",
       "mgba_screenshot",
       "mgba_status",
       "mgba_tap",
@@ -29,12 +29,12 @@ describe("createMgbaControlPlane", () => {
       romPath: "/tmp/game.gb",
     });
 
+    expect(tools).not.toHaveProperty("mgba_reset");
+    expect(tools).not.toHaveProperty("mgba_load_rom");
     expect(Object.keys(tools).sort()).toEqual([
       "mgba_hold",
       "mgba_hold_many",
-      "mgba_load_rom",
       "mgba_release",
-      "mgba_reset",
       "mgba_tap",
       "mgba_tap_many",
     ]);
