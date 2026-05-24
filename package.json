@@ -6,29 +6,37 @@
   "packageManager": "pnpm@11.2.2",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "test:integration": "vitest run tests/integration",
     "check:secrets": "tsx scripts/check-no-secrets.ts",
+    "check": "pnpm run check:secrets && pnpm run typecheck && pnpm test",
     "harness": "tsx src/index.ts",
     "harness:full-game": "tsx src/index.ts run --mode full-game --policy openai --vision --max-steps 1500",
     "dev": "tsx src/dev.ts",
-    "dev:tmux": "tsx scripts/dev-tmux.ts",
+    "dev:runtime": "tsx src/index.ts run --policy openai --mode full-game --vision",
     "smoke:mgba": "tsx src/index.ts smoke",
+    "trace:report": "tsx src/trace-report.ts",
     "build": "tsc -p tsconfig.json"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
-    "dotenv": "latest",
+    "@ai-sdk/openai-compatible": "3.0.0-canary.48",
+    "@minpeter/pss-runtime": "^0.0.6",
+    "@t3-oss/env-core": "^0.13.11",
+    "ai": "7.0.0-canary.142",
+    "dotenv": "17.4.2",
     "openai": "latest",
     "sharp": "^0.34.5",
-    "zod": "latest"
+    "zod": "4.4.3"
   },
   "devDependencies": {
-    "@types/node": "latest",
-    "tsx": "latest",
-    "typescript": "latest",
-    "vitest": "latest"
+    "@biomejs/biome": "2.4.15",
+    "@types/node": "25.9.1",
+    "tsx": "4.22.3",
+    "typescript": "6.0.3",
+    "ultracite": "7.7.0",
+    "vitest": "4.1.7"
   }
 }
