@@ -572,7 +572,7 @@ function worldSnapshot(overrides: { readonly tileMapBytes?: Uint8Array } = {}): 
       screenText: ""
     },
     tileMapBytes: overrides.tileMapBytes ?? Uint8Array.from(Array.from({ length: 360 }, () => 1)),
-    mapLayout: { mapId: 1, tilesetId: 0, height: 10, width: 10, grid: [] },
+    mapLayout: { mapId: 1, tilesetId: 0, height: 10, width: 10 },
     sprites: {
       player: {
         slot: 0,
