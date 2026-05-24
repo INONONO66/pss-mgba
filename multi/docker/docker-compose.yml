@@ -1,0 +1,31 @@
+name: pss-mgba
+
+services:
+  gateway:
+    build:
+      context: ..
+      dockerfile: docker/gateway/Dockerfile
+    ports:
+      - "8787:8787"
+    environment:
+      - PORT=8787
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-dev-admin-token}
+      - MAX_INSTANCES=${MAX_INSTANCES:-10}
+      - EMULATOR_IMAGE=${EMULATOR_IMAGE:-pss-mgba-emulator}
+      - NETWORK_NAME=pss-mgba-net
+      - ROM_PATH=${ROM_PATH:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - pss-mgba-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8787/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+networks:
+  pss-mgba-net:
+    name: pss-mgba-net
+    driver: bridge
