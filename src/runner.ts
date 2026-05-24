@@ -95,13 +95,13 @@ export async function createObservedTurnInput({
   turn,
 }: {
   client: MgbaHttpClient;
-  onObservation?: (observation: MgbaObservation) => void;
+  onObservation?: (observation: MgbaObservation) => void | Promise<void>;
   recentActions?: readonly string[];
   stuckMemory?: StuckMemorySnapshot;
   turn: number;
 }): Promise<ObservedAgentInput> {
   const observation = await captureMgbaObservation(client);
-  onObservation?.(observation);
+  await onObservation?.(observation);
   return createObservedInput({
     observation,
     recentActions,
@@ -118,7 +118,7 @@ export async function createObservedContinuationInput({
   turn,
 }: {
   client: MgbaHttpClient;
-  onObservation?: (observation: MgbaObservation) => void;
+  onObservation?: (observation: MgbaObservation) => void | Promise<void>;
   recentActions?: readonly string[];
   stuckMemory?: StuckMemorySnapshot;
   turn: number;

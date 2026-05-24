@@ -19,7 +19,7 @@ describe("createScreenshotTool", () => {
         return "";
       },
     } as MgbaHttpClient;
-    const tool = createScreenshotTool({ client, romPath: "/tmp/game.gb" });
+    const tool = createScreenshotTool({ client });
 
     const output = await tool.execute?.(
       {},
@@ -71,7 +71,7 @@ describe("createScreenshotTool", () => {
         return "";
       },
     } as MgbaHttpClient;
-    const tool = createScreenshotTool({ client, romPath: "/tmp/game.gb" });
+    const tool = createScreenshotTool({ client });
 
     const output = await tool.execute?.(
       {},
@@ -113,7 +113,7 @@ describe("createScreenshotTool", () => {
         return "";
       },
     } as MgbaHttpClient;
-    const tool = createScreenshotTool({ client, romPath: "/tmp/game.gb" });
+    const tool = createScreenshotTool({ client });
 
     const output = await tool.execute?.(
       {},
@@ -141,7 +141,7 @@ describe("createScreenshotTool", () => {
         return "";
       },
     } as MgbaHttpClient;
-    const tool = createScreenshotTool({ client, romPath: "/tmp/game.gb" });
+    const tool = createScreenshotTool({ client });
     const options = {
       abortSignal: undefined,
       context: undefined,

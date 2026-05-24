@@ -345,6 +345,28 @@ describe("mGBA observation input", () => {
     ]);
   });
 
+  it("awaits async observation hooks before returning observed input", async () => {
+    const order: string[] = [];
+    const input = await createObservedTurnInput({
+      client: fakeClient(),
+      onObservation: async () => {
+        order.push("hook-start");
+        await Promise.resolve();
+        order.push("hook-end");
+      },
+      turn: 1,
+    });
+
+    order.push("after-input");
+    expect(order).toEqual(["hook-start", "hook-end", "after-input"]);
+    expect(input[1]).toEqual(
+      expect.objectContaining({
+        image: `data:image/png;base64,${pngBase64}`,
+        type: "image",
+      })
+    );
+  });
+
   it("builds observed continuation input for the next autonomous turn", async () => {
     let observedFrame: number | null | undefined;
     const input = await createObservedContinuationInput({

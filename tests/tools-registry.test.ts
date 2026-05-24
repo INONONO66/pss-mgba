@@ -6,7 +6,6 @@ describe("createMgbaControlPlane", () => {
   it("registers screenshot observation with the mGBA tools", () => {
     const tools = createMgbaControlPlane({
       client: new MgbaHttpClient({ baseUrl: "http://127.0.0.1:5000" }),
-      romPath: "/tmp/game.gb",
     });
 
     expect(tools).not.toHaveProperty("mgba_reset");
@@ -26,7 +25,6 @@ describe("createMgbaControlPlane", () => {
     const tools = createMgbaControlPlane({
       client: new MgbaHttpClient({ baseUrl: "http://127.0.0.1:5000" }),
       includeObservationTools: false,
-      romPath: "/tmp/game.gb",
     });
 
     expect(tools).not.toHaveProperty("mgba_reset");

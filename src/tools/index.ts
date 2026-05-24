@@ -16,21 +16,18 @@ export interface MgbaControlPlaneOptions {
   client?: MgbaHttpClient;
   includeObservationTools?: boolean;
   onSupervisorIntervention?: (intervention: SupervisorIntervention) => void;
-  romPath?: string;
 }
 
 export function createMgbaControlPlane({
   client = new MgbaHttpClient({ baseUrl: env.MGBA_HTTP_BASE_URL }),
   includeObservationTools = true,
   onSupervisorIntervention,
-  romPath = env.MGBA_ROM_PATH,
 }: MgbaControlPlaneOptions = {}): AgentTools {
   return createMgbaTools(
     {
       client: createSupervisedMgbaClient(client, {
         onIntervention: onSupervisorIntervention,
       }),
-      romPath,
     },
     { includeObservationTools }
   );
