@@ -1,0 +1,28 @@
+{
+  "name": "pss-mgba-multi",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1",
+    "dockerode": "^4",
+    "hono": "^4",
+    "sharp": "^0.34.5",
+    "ws": "^8",
+    "zod": "^3"
+  },
+  "devDependencies": {
+    "@types/dockerode": "latest",
+    "@types/ws": "latest",
+    "@types/node": "latest",
+    "tsx": "latest",
+    "typescript": "latest",
+    "vitest": "latest"
+  }
+}
