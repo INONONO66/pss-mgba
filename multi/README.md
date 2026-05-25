@@ -30,6 +30,10 @@ Useful options:
 
 The command writes standalone machine-readable JSON and a human-readable summary. It exits non-zero when any pass/fail target is missed, so it can be used from CI or a server shell without opening the dashboard UI.
 
+## Dashboard stream protocol
+
+Dashboard WebSocket messages use a versioned `PSMG` binary envelope with per-instance sequence numbers, frame type, timestamp, payload length, and flags. See `docs/stream-protocol.md` for the wire format and viewer control messages for keyframe replay plus client render metrics.
+
 ## Report contents
 
 The JSON report uses schema `pss-mgba-headless-benchmark/v1` and includes:
@@ -37,7 +41,7 @@ The JSON report uses schema `pss-mgba-headless-benchmark/v1` and includes:
 - per-instance displayed/render-equivalent FPS distribution: p50, p95, p99, min, max, and average
 - per-instance frame interval distribution with the same fields; strict sustained FPS is gated by p95 frame interval, so leading/trailing silence counts as a miss
 - expected frame count, dropped/late frame count, ratio, threshold, duration, reconnect count, and keyframe-recovery count
-- benchmark-window server stream production/drop deltas when exposed by the gateway
+- benchmark-window server stream production/drop deltas and protocol sequence-gap drops when exposed by the gateway
 - resource samples with per-container RAM/CPU and required gateway process RSS for strict acceptance
 - aggregate peak/average RAM and CPU, memory coverage, measurement window, plus final `PASS`/`FAIL` verdict
 

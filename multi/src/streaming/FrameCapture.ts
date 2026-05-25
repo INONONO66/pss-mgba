@@ -10,9 +10,11 @@ const CAPTURE_PATH = '/tmp/frame.png'
 export interface CapturedFrame {
   instanceIndex: number
   instanceId: string
-  token: string
+  isKeyframe: boolean
   jpegBuffer: Buffer
+  sequence: number
   timestampMs: number
+  token: string
 }
 
 export type FrameHandler = (frame: CapturedFrame) => void
@@ -21,6 +23,7 @@ export class FrameCapture {
   private timer?: NodeJS.Timeout
   private instanceKeys: string[] = []
   private currentIndex = 0
+  private readonly frameSequences = new Map<string, number>()
   private readonly handlers: FrameHandler[] = []
   private readonly registry: InstanceRegistry
   private readonly captureIntervalMs: number
@@ -89,8 +92,10 @@ export class FrameCapture {
       const frame: CapturedFrame = {
         instanceIndex: this.instanceKeys.indexOf(token),
         instanceId: entry.info.id,
+        isKeyframe: true,
         token,
         jpegBuffer,
+        sequence: this.nextSequence(entry.info.id),
         timestampMs: Date.now(),
       }
 
@@ -100,6 +105,12 @@ export class FrameCapture {
     } catch {
       return
     }
+  }
+
+  private nextSequence(instanceId: string): number {
+    const current = this.frameSequences.get(instanceId) ?? 0
+    this.frameSequences.set(instanceId, (current + 1) >>> 0)
+    return current
   }
 }
 
