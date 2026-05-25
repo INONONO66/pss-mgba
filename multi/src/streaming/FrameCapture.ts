@@ -12,6 +12,7 @@ const CONTAINER_CAPTURE_PATH = '/capture/frame.png'
 const HOST_CAPTURE_FILE = 'frame.png'
 const BYTES_PER_PIXEL = 4
 const DELTA_RECORD_HEADER_BYTES = 8
+const EMPTY_DELTA_PAYLOAD = deflateRawSync(Buffer.alloc(2), { level: 1 })
 
 export interface CapturedFrame {
   changedTiles: number
@@ -36,6 +37,8 @@ interface PreviousFrameState {
   height: number
   raw: Buffer
   sequence: number
+  sourceCaptureCount: number
+  sourceCapturedAtMs: number
   width: number
 }
 
@@ -47,17 +50,20 @@ export class FrameCapture {
   private readonly previousFrames = new Map<string, PreviousFrameState>()
   private readonly registry: InstanceRegistry
   private readonly captureIntervalMs: number
+  private readonly sourceCaptureIntervalMs: number
   private readonly keyframeInterval: number
   private readonly tileSize: number
 
   constructor(
     registry: InstanceRegistry,
     captureIntervalMs: number,
+    sourceCaptureIntervalMs: number,
     keyframeInterval: number,
     tileSize: number,
   ) {
     this.registry = registry
     this.captureIntervalMs = captureIntervalMs
+    this.sourceCaptureIntervalMs = sourceCaptureIntervalMs
     this.keyframeInterval = keyframeInterval
     this.tileSize = tileSize
   }
@@ -111,11 +117,21 @@ export class FrameCapture {
 
   private async captureOne(token: string, instanceIndex: number): Promise<void> {
     if (this.inFlightTokens.has(token)) {
+      this.emitRepeatFrame(token, instanceIndex)
       return
     }
 
     const entry = this.registry.get(token)
     if (!entry) {
+      return
+    }
+
+    const previous = this.previousFrames.get(entry.info.id)
+    const dueForSourceCapture = previous === undefined ||
+      previous.forceKeyframe ||
+      Date.now() - previous.sourceCapturedAtMs >= this.sourceCaptureIntervalMs
+    if (!dueForSourceCapture) {
+      this.emitRepeatFrame(token, instanceIndex)
       return
     }
 
@@ -137,9 +153,10 @@ export class FrameCapture {
       const timestampMs = Date.now()
       const previous = this.previousFrames.get(entry.info.id)
       const sequence = (previous?.sequence ?? 0) + 1
+      const sourceCaptureCount = (previous?.sourceCaptureCount ?? 0) + 1
       const dimensionsChanged = previous?.width !== width || previous?.height !== height
       const forceKeyframe = previous?.forceKeyframe ?? false
-      const periodicKeyframe = sequence === 1 || sequence % this.keyframeInterval === 0
+      const periodicKeyframe = sourceCaptureCount % this.keyframeInterval === 0
       const isKeyframe = !previous || dimensionsChanged || forceKeyframe || periodicKeyframe
       const encoded = isKeyframe
         ? encodeKeyframe(raw)
@@ -150,6 +167,8 @@ export class FrameCapture {
         height,
         raw: Buffer.from(raw),
         sequence,
+        sourceCaptureCount,
+        sourceCapturedAtMs: timestampMs,
         width,
       })
 
@@ -176,6 +195,44 @@ export class FrameCapture {
       return
     } finally {
       this.inFlightTokens.delete(token)
+    }
+  }
+
+  private emitRepeatFrame(token: string, instanceIndex: number): void {
+    const entry = this.registry.get(token)
+    if (!entry) {
+      return
+    }
+
+    const previous = this.previousFrames.get(entry.info.id)
+    if (!previous) {
+      return
+    }
+
+    const sequence = previous.sequence + 1
+    this.previousFrames.set(entry.info.id, {
+      ...previous,
+      sequence,
+    })
+
+    const frame: CapturedFrame = {
+      changedTiles: 0,
+      frameType: StreamFrameType.Delta,
+      height: previous.height,
+      instanceIndex,
+      instanceId: entry.info.id,
+      payload: EMPTY_DELTA_PAYLOAD,
+      payloadBytes: EMPTY_DELTA_PAYLOAD.byteLength,
+      rawBytes: previous.raw.byteLength,
+      sequence,
+      tileSize: this.tileSize,
+      timestampMs: Date.now(),
+      token,
+      width: previous.width,
+    }
+
+    for (const handler of this.handlers) {
+      handler(frame)
     }
   }
 }
