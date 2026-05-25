@@ -320,6 +320,11 @@ export function renderDashboard(): string {
   '            removeTile(idx)' +
   '          }' +
   '        })' +
+  '        list.forEach(function (inst) {' +
+  '          if (inst.token && !tiles.has(inst.index)) {' +
+  '            ensureTile(inst.index, inst.token, inst.id)' +
+  '          }' +
+  '        })' +
   '        updateInstanceCount()' +
   '      } catch (err) {' +
   '        console.error(err)' +
@@ -405,7 +410,7 @@ export function renderDashboard(): string {
   '          refreshInstances()' +
   '        })' +
   '        .catch(function (err) {' +
-  '          console.error(\'Failed to add instance:\', err)' +
+  '          alert(\'Failed to add instance: \' + err.message)' +
   '        })' +
   '    })' +
   '' +
