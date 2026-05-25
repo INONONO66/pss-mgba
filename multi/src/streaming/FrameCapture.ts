@@ -1,13 +1,15 @@
-import { execFile } from 'node:child_process'
 import { deflateRawSync } from 'node:zlib'
 
 import sharp from 'sharp'
+
+import { readCaptureFile } from '../instances/capturePaths.js'
 
 import type { InstanceRegistry } from '../gateway/ApiRouter.js'
 import { formatMessage, SUCCESS_MARKER } from '../mgba/protocol.js'
 import { StreamFrameType } from './StreamProtocol.js'
 
-const CAPTURE_PATH = '/tmp/frame.png'
+const CONTAINER_CAPTURE_PATH = '/capture/frame.png'
+const HOST_CAPTURE_FILE = 'frame.png'
 const BYTES_PER_PIXEL = 4
 const DELTA_RECORD_HEADER_BYTES = 8
 
@@ -119,12 +121,12 @@ export class FrameCapture {
 
     this.inFlightTokens.add(token)
     try {
-      const response = await entry.client.send(formatMessage('core.screenshot', CAPTURE_PATH))
+      const response = await entry.client.send(formatMessage('core.screenshot', CONTAINER_CAPTURE_PATH))
       if (response !== SUCCESS_MARKER) {
         return
       }
 
-      const pngBuffer = await readFromContainer(entry.info.containerId, CAPTURE_PATH)
+      const pngBuffer = await readCaptureFile(entry.info.captureDirectory, HOST_CAPTURE_FILE)
       const decoded = await sharp(pngBuffer)
         .ensureAlpha()
         .raw()
@@ -250,17 +252,4 @@ function copyTile(
     source.copy(tile, targetOffset, sourceOffset, sourceOffset + rowBytes)
   }
   return tile
-}
-
-function readFromContainer(containerId: string, path: string): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    execFile('docker', ['exec', containerId, 'cat', path], { encoding: 'buffer' }, (error, stdout) => {
-      if (error) {
-        reject(error)
-        return
-      }
-
-      resolve(stdout)
-    })
-  })
 }

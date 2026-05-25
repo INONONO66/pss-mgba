@@ -1,7 +1,7 @@
-import { execFile } from 'node:child_process'
 
 import { Hono } from 'hono'
 
+import { readCaptureFile } from '../instances/capturePaths.js'
 import type { InstanceInfo } from '../instances/types.js'
 import type { MgbaSocketClient } from '../mgba/MgbaSocketClient.js'
 import { formatMessage, SUCCESS_MARKER } from '../mgba/protocol.js'
@@ -25,7 +25,8 @@ interface ApiEnv {
   Variables: ApiVariables
 }
 
-const CAPTURE_PATH = '/tmp/capture.png'
+const CONTAINER_CAPTURE_PATH = '/capture/rest-capture.png'
+const HOST_CAPTURE_FILE = 'rest-capture.png'
 
 export function createApiRouter(registry: InstanceRegistry, options: ApiRouterOptions = {}): Hono<ApiEnv> {
   const app = new Hono<ApiEnv>()
@@ -107,13 +108,13 @@ export function createApiRouter(registry: InstanceRegistry, options: ApiRouterOp
 
   app.post('/core/screenshot', async (c) => {
     const entry = c.get('entry')
-    const response = await send(entry, 'core.screenshot', CAPTURE_PATH)
+    const response = await send(entry, 'core.screenshot', CONTAINER_CAPTURE_PATH)
     if (response !== SUCCESS_MARKER) {
       return c.text(response, 500)
     }
 
     try {
-      const pngBytes = await readCapture(entry.info.containerId)
+      const pngBytes = await readCaptureFile(entry.info.captureDirectory, HOST_CAPTURE_FILE)
       return c.body(new Uint8Array(pngBytes), 200, { 'content-type': 'image/png' })
     } catch {
       return c.text('Failed to read screenshot', 500)
@@ -155,22 +156,4 @@ function queryParam(value: string | undefined, name: string): QueryParamResult {
   }
 
   return { ok: true, value }
-}
-
-function readCapture(containerId: string): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      'docker',
-      ['exec', containerId, 'cat', CAPTURE_PATH],
-      { encoding: 'buffer' },
-      (error, stdout) => {
-        if (error) {
-          reject(error)
-          return
-        }
-
-        resolve(stdout)
-      },
-    )
-  })
 }

@@ -100,7 +100,9 @@ function createFixture(options: FixtureOptions = {}) {
         maxInstances: options.maxInstances ?? 10,
         emulatorImage: "pss-mgba-emulator",
         emulatorPort: 8888,
+        emulatorMemoryBytes: 805_306_368,
         captureIntervalMs: 16,
+        captureRoot: '/tmp/pss-mgba-captures-test',
         streamKeyframeInterval: 60,
         streamTileSize: 16,
         wsBackpressureLimit: 262_144,
@@ -121,6 +123,7 @@ function createInstanceInfo(id: string): InstanceInfo {
     token: `token-${id}`,
     containerId: `container-${id}`,
     containerHost: "127.0.0.1",
+    captureDirectory: `/tmp/pss-mgba-captures-test/${id}`,
     status: "running",
     createdAt: new Date("2026-05-25T00:00:00Z"),
   };

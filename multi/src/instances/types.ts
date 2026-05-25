@@ -5,6 +5,7 @@ export interface InstanceInfo {
   token: string
   containerId: string
   containerHost: string
+  captureDirectory: string
   status: InstanceStatus
   createdAt: Date
 }

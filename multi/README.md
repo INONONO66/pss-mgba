@@ -1,6 +1,6 @@
 # mGBA Multi-Instance Gateway
 
-`multi/` hosts the Docker-managed mGBA gateway and dashboard stream fan-out used for local multi-instance runs. The PR 1 performance target is intentionally strict and measurable: 10 active instances for at least 60 seconds, every stream/display-equivalent p95 FPS at or above 60, dropped/late frames at or below 1%, and total gateway plus emulator RAM at or below 16 GiB.
+`multi/` hosts the Docker-managed mGBA gateway and dashboard stream fan-out used for local multi-instance runs. The performance target is intentionally strict and measurable: 10 active instances for at least 60 seconds, every stream/display-equivalent p95 FPS at or above 60, dropped/late frames at or below 1%, and total gateway plus emulator RAM at or below 16 GiB.
 
 ## Headless performance benchmark
 
@@ -29,6 +29,14 @@ Useful options:
 - `--allow-reduced-target` marks a local/dev run as non-strict so smaller instance counts, shorter durations, or incomplete gateway RAM coverage cannot be confused with the strict acceptance benchmark.
 
 The command writes standalone machine-readable JSON and a human-readable summary. It exits non-zero when any pass/fail target is missed, so it can be used from CI or a server shell without opening the dashboard UI.
+
+## Runtime performance path
+
+The gateway now mounts a per-instance host capture directory into each emulator container at `/capture`. Streaming and REST screenshots ask mGBA to write into that bind mount and then read the PNG from the host filesystem, avoiding one `docker exec cat` process per frame. Runtime knobs:
+
+- `CAPTURE_ROOT` controls the host root for per-instance capture directories. Default: `/tmp/pss-mgba-captures`.
+- `EMULATOR_MEMORY_BYTES` sets the Docker memory and swap cap per emulator. Default: `805306368` bytes, keeping ten emulators well below the 16 GiB strict RAM target before gateway/process overhead.
+- Emulator containers use small tmpfs mounts, a 32 MiB shm segment, pids limit, dummy audio, and a compact `XVFB_SCREEN=320x240x16` display by default.
 
 ## Stream protocol
 
