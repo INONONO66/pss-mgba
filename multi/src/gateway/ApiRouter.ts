@@ -151,7 +151,7 @@ function readCapture(containerId: string): Promise<Buffer> {
     execFile(
       'docker',
       ['exec', containerId, 'cat', CAPTURE_PATH],
-      { encoding: 'buffer' },
+      { encoding: 'buffer', timeout: 10_000 },
       (error, stdout) => {
         if (error) {
           reject(error)

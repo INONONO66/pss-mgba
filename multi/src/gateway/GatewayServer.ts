@@ -2,7 +2,6 @@ import { createServer } from 'node:http'
 
 import { getRequestListener } from '@hono/node-server'
 import { Hono } from 'hono'
-import { logger } from 'hono/logger'
 import { WebSocketServer } from 'ws'
 
 import type { Config } from '../config.js'
@@ -26,15 +25,23 @@ export function createGatewayServer(
 ): GatewayServer {
   const app = new Hono()
 
-  app.use('*', logger())
+  app.use('*', async (c, next) => {
+    const start = Date.now()
+    await next()
+    const ms = Date.now() - start
+    const path = new URL(c.req.url).pathname.replace(/\/api\/v1\/[0-9a-f]{32}/g, '/api/v1/[REDACTED]')
+    console.log(`${c.req.method} ${path} ${c.res.status} ${ms}ms`)
+  })
   app.get('/health', (c) => c.json({ status: 'ok' }))
   app.get('/', (c) => c.html(renderDashboard()))
   app.get('/api/instances', (c) => {
+    const adminToken = c.req.query('admin_token')
+    const includeTokens = adminToken === config.adminToken
     const instances = instanceManager.list().map((info, index) => ({
       index,
       id: info.id,
-      token: info.token,
       status: info.status,
+      ...(includeTokens ? { token: info.token } : {}),
     }))
 
     return c.json(instances)

@@ -9,13 +9,14 @@ interface ExecFileCall {
   file: string
   args: string[]
   encoding: 'buffer'
+  timeout: number
 }
 
 type ExecFileCallback = (error: Error | null, stdout: Buffer, stderr: Buffer) => void
 type ExecFileMock = (
   file: string,
   args: string[],
-  options: { encoding: 'buffer' },
+  options: { encoding: 'buffer'; timeout: number },
   callback: ExecFileCallback,
 ) => void
 
@@ -28,8 +29,8 @@ const execFileMock = vi.hoisted(() => {
 
   return {
     calls,
-    execFile(file: string, args: string[], options: { encoding: 'buffer' }, callback: ExecFileCallback) {
-      calls.push({ file, args, encoding: options.encoding })
+    execFile(file: string, args: string[], options: { encoding: 'buffer'; timeout: number }, callback: ExecFileCallback) {
+      calls.push({ file, args, encoding: options.encoding, timeout: options.timeout })
       implementation(file, args, options, callback)
     },
     reset() {
@@ -193,6 +194,7 @@ describe('createApiRouter', () => {
         file: 'docker',
         args: ['exec', CONTAINER_ID, 'cat', '/tmp/capture.png'],
         encoding: 'buffer',
+        timeout: 10_000,
       },
     ])
   })

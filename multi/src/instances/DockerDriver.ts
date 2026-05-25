@@ -9,6 +9,7 @@ function ignoreDockerError(): void {
 export interface ContainerCreateOptions {
   image: string
   instanceId: string
+  token: string
   romPath?: string
   networkName: string
   emulatorPort: number
@@ -35,12 +36,13 @@ export class DockerDriver {
       Labels: {
         'pss-mgba.instance-id': opts.instanceId,
         'pss-mgba.managed': 'true',
+        'pss-mgba.token': opts.token,
       },
       Env: ['DISPLAY=:99'],
       HostConfig: {
         NetworkMode: opts.networkName,
         PortBindings: {
-          [`${opts.emulatorPort}/tcp`]: [{ HostPort: '' }],
+          [`${opts.emulatorPort}/tcp`]: [{ HostIp: '127.0.0.1', HostPort: '' }],
         },
         Tmpfs: {
           '/tmp': 'rw,noexec,nosuid,size=64m',
@@ -54,14 +56,22 @@ export class DockerDriver {
     }
 
     const container = await this.docker.createContainer(createOptions)
-    await container.start()
-    const inspection = await container.inspect()
-    const hostPort = inspection.NetworkSettings.Ports?.[`${opts.emulatorPort}/tcp`]?.[0]?.HostPort
-    if (hostPort === undefined || hostPort === '') {
-      throw new Error('Container port not bound')
-    }
+    try {
+      await container.start()
+      const inspection = await container.inspect()
+      const hostPort = inspection.NetworkSettings.Ports?.[`${opts.emulatorPort}/tcp`]?.[0]?.HostPort
+      const containerIp = inspection.NetworkSettings?.Networks?.[opts.networkName]?.IPAddress
+      if ((hostPort === undefined || hostPort === '') && !containerIp) {
+        throw new Error('Container port not bound')
+      }
 
-    return { id: container.id, host: '127.0.0.1', port: Number.parseInt(hostPort, 10) }
+      const host = containerIp || '127.0.0.1'
+      const port = containerIp ? opts.emulatorPort : Number.parseInt(hostPort, 10)
+      return { id: container.id, host, port }
+    } catch (error) {
+      await container.remove({ force: true }).catch(() => undefined)
+      throw error
+    }
   }
 
   async stopContainer(containerId: string): Promise<void> {
@@ -70,7 +80,7 @@ export class DockerDriver {
     await container.remove({ force: true })
   }
 
-  async listManagedContainers(): Promise<Array<{ id: string; instanceId: string; host: string }>> {
+  async listManagedContainers(): Promise<Array<{ id: string; instanceId: string; host: string; token?: string }>> {
     const containers = await this.docker.listContainers({
       all: true,
       filters: { label: ['pss-mgba.managed=true'] },
@@ -83,7 +93,7 @@ export class DockerDriver {
           return []
         }
 
-        return [{ id: container.Id, instanceId, host }]
+        return [{ id: container.Id, instanceId, host, token: container.Labels?.['pss-mgba.token'] }]
       })
   }
 

@@ -7,6 +7,7 @@ import { InstanceManager } from '../src/instances/InstanceManager.js'
 interface CreateContainerOptions {
   image: string
   instanceId: string
+  token: string
   romPath?: string
   networkName: string
   emulatorPort: number
@@ -22,6 +23,7 @@ interface ManagedContainer {
   id: string
   instanceId: string
   host: string
+  token?: string
 }
 
 interface MgbaClientMock {
@@ -156,10 +158,11 @@ describe('InstanceManager', () => {
     expect(info.containerId).toBe(`container-${info.id}`)
     expect(dockerMock.createdOptions).toEqual([
       {
-        image: 'pss-mgba-emulator',
-        instanceId: info.id,
-        romPath: '/rom/custom.gb',
-        networkName: 'pss-mgba-net',
+          image: 'pss-mgba-emulator',
+          instanceId: info.id,
+          token: info.token,
+          romPath: '/rom/custom.gb',
+          networkName: 'pss-mgba-net',
         emulatorPort: 8888,
       },
     ])
@@ -213,6 +216,7 @@ describe('InstanceManager', () => {
       id: 'container-existing',
       instanceId: 'instance-existing',
       host: 'pss-mgba-instance-existing',
+      token: 'persisted-token',
     })
     dockerMock.runningContainers.set('container-existing', true)
     const registry: InstanceRegistry = new Map()
@@ -223,6 +227,7 @@ describe('InstanceManager', () => {
     const info = manager.get('instance-existing')
     expect(info?.containerId).toBe('container-existing')
     expect(info?.containerHost).toBe('pss-mgba-instance-existing')
+    expect(info?.token).toBe('persisted-token')
     expect(info?.status).toBe('running')
     expect(registry.size).toBe(1)
     expect(mgbaMock.clients[0]?.connectCalls).toEqual([{ host: 'pss-mgba-instance-existing', port: 8888 }])

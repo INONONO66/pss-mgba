@@ -141,6 +141,9 @@ text = text.replace('''#ifdef ENABLE_SCRIPTING
 path.write_text(text)
 PY
 
+RUN grep -q 'parseLongScriptArg' /mgba/src/platform/sdl/main.c || \
+    (echo "FATAL: mGBA source patch failed — upstream source has changed" && exit 1)
+
 WORKDIR /mgba/build
 RUN cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
