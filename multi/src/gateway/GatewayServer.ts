@@ -46,16 +46,18 @@ export function createGatewayServer(
 
   const httpServer = createServer(getRequestListener(app.fetch));
   const wss = new WebSocketServer({ server: httpServer });
+  const frameCapture = new FrameCapture(
+    registry,
+    config.captureIntervalMs,
+    config.streamKeyframeInterval,
+    config.streamTileSize
+  );
   const broadcast = new DashboardBroadcast(
     wss,
     registry,
     config.wsBackpressureLimit,
-    streamMetrics
-  );
-  const frameCapture = new FrameCapture(
-    registry,
-    config.captureIntervalMs,
-    config.jpegQuality
+    streamMetrics,
+    { requestKeyframe: (token) => frameCapture.forceKeyframe(token) }
   );
   frameCapture.onFrame((frame) => {
     streamMetrics.recordProduced(frame);

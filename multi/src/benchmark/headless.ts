@@ -1,6 +1,7 @@
 import { writeFile } from "node:fs/promises";
 
 import WebSocket, { type RawData } from "ws";
+import { decodeStreamFrame, StreamFrameType } from "../streaming/StreamProtocol.js";
 import {
   buildInstanceReport,
   finalizeBenchmarkReport,
@@ -49,8 +50,11 @@ interface AdminInstance {
 interface InstanceCapture {
   instance: AdminInstance;
   keyframeRecoveries: number;
+  lastSequence?: number;
+  needsKeyframe: boolean;
   receivedAtMs: number[];
   reconnects: number;
+  sequenceGaps: number;
   plannedClose: boolean;
   ws?: WebSocket;
 }
@@ -62,6 +66,8 @@ interface ServerStreamMetricsSnapshot {
     producedFps?: number;
     dashboardFramesDropped?: number;
     instanceFramesDropped?: number;
+    sequenceGaps?: number;
+    clientSequenceGaps?: number;
   }>;
 }
 
@@ -78,6 +84,8 @@ async function main(): Promise<void> {
       reconnects: 0,
       plannedClose: false,
       keyframeRecoveries: 0,
+      needsKeyframe: false,
+      sequenceGaps: 0,
     }));
 
     await Promise.all(
@@ -85,7 +93,8 @@ async function main(): Promise<void> {
     );
     await sleep(options.warmupMs);
     for (const capture of captures) {
-      capture.receivedAtMs.length = 0;
+      resetMeasurementCounters(capture);
+      requestMeasurementKeyframe(capture);
     }
 
     const serverStreamMetricsStart = await fetchServerStreamMetrics(
@@ -147,11 +156,16 @@ async function main(): Promise<void> {
           maxDroppedOrLateRatio: options.maxDroppedOrLateRatio,
           serverProducedFrames: serverMetrics?.producedFrames,
           serverProducedFps: serverMetrics?.producedFps,
-          serverDroppedFrames:
+          serverDroppedFrames: Math.max(
             (serverMetrics?.dashboardFramesDropped ?? 0) +
-            (serverMetrics?.instanceFramesDropped ?? 0),
+              (serverMetrics?.instanceFramesDropped ?? 0),
+            capture.sequenceGaps,
+            serverMetrics?.sequenceGaps ?? 0,
+            serverMetrics?.clientSequenceGaps ?? 0
+          ),
           reconnects: capture.reconnects,
           keyframeRecoveries: capture.keyframeRecoveries,
+          sequenceGaps: capture.sequenceGaps,
         });
       }),
       resourceSamples,
@@ -232,9 +246,25 @@ async function openCaptureSocket(
   capture.ws = ws;
 
   ws.on("message", (data) => {
-    if (rawDataToBuffer(data).byteLength >= 5) {
-      capture.receivedAtMs.push(performance.now());
+    const frame = decodeStreamFrame(rawDataToBuffer(data));
+    if (!frame) {
+      return;
     }
+
+    if (capture.lastSequence !== undefined && frame.sequence > capture.lastSequence + 1) {
+      capture.sequenceGaps += frame.sequence - capture.lastSequence - 1;
+      capture.needsKeyframe = true;
+    }
+    capture.lastSequence = frame.sequence;
+
+    if (frame.frameType === StreamFrameType.Keyframe) {
+      capture.keyframeRecoveries += 1;
+      capture.needsKeyframe = false;
+    } else if (capture.needsKeyframe) {
+      return;
+    }
+
+    capture.receivedAtMs.push(performance.now());
   });
 
   ws.on("close", () => {
@@ -247,6 +277,20 @@ async function openCaptureSocket(
     ws.once("open", resolve);
     ws.once("error", reject);
   });
+}
+
+function resetMeasurementCounters(capture: InstanceCapture): void {
+  capture.receivedAtMs.length = 0;
+  capture.keyframeRecoveries = 0;
+  capture.needsKeyframe = true;
+  capture.reconnects = 0;
+  capture.sequenceGaps = 0;
+}
+
+function requestMeasurementKeyframe(capture: InstanceCapture): void {
+  if (capture.ws?.readyState === WebSocket.OPEN) {
+    capture.ws.send(JSON.stringify({ type: "keyframe" }));
+  }
 }
 
 async function collectSamplesDuringRun(
@@ -337,6 +381,14 @@ function diffServerStreamMetrics(
         instanceFramesDropped: subtractMetric(
           endMetrics.instanceFramesDropped,
           startMetrics?.instanceFramesDropped
+        ),
+        sequenceGaps: subtractMetric(
+          endMetrics.sequenceGaps,
+          startMetrics?.sequenceGaps
+        ),
+        clientSequenceGaps: subtractMetric(
+          endMetrics.clientSequenceGaps,
+          startMetrics?.clientSequenceGaps
         ),
       };
     }),

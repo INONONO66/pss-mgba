@@ -30,6 +30,12 @@ Useful options:
 
 The command writes standalone machine-readable JSON and a human-readable summary. It exits non-zero when any pass/fail target is missed, so it can be used from CI or a server shell without opening the dashboard UI.
 
+## Stream protocol
+
+Dashboard and per-instance WebSocket clients receive binary `pss-mgba-stream/v1` frames, not legacy JPEG image messages. The gateway captures the emulator screenshot as RGBA pixels, emits zlib-compressed keyframes, and then emits zlib-compressed tile deltas with per-instance sequence numbers. New subscribers receive the latest keyframe first; per-instance subscribers can request another keyframe with `{ "type": "keyframe" }`. Viewer/client metric deltas can be posted back with `{ "type": "client-metrics", "metrics": { ... } }` and are included in `/admin/metrics/streams`.
+
+Transport tuning is exposed with `CAPTURE_INTERVAL_MS`, `STREAM_KEYFRAME_INTERVAL`, `STREAM_TILE_SIZE`, and `WS_BACKPRESSURE_LIMIT`. The defaults target the strict 10-instance/60fps benchmark path without enabling more than ten instances. See `docs/stream-protocol.md` for the wire format.
+
 ## Report contents
 
 The JSON report uses schema `pss-mgba-headless-benchmark/v1` and includes:
