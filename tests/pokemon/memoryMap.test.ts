@@ -16,6 +16,7 @@ import {
   wCurMapTileset,
   wCurMapWidth,
   wCurrentMenuItem,
+  wBoxItems,
   wEnemyMonHP,
   wIsInBattle,
   wLetterPrintingDelayFlags,
@@ -33,9 +34,11 @@ import {
   wSpriteStateData1,
   wSpriteStateData2,
   wTextBoxID,
+  wTextProgress,
   wTileInFrontOfPlayer,
   wTileMap,
   wTileMapLength,
+  wNumBoxItems,
   wWarpEntries,
   wXBlockCoord,
   wXCoord,
@@ -77,11 +80,14 @@ describe("Red/Blue memory map", () => {
       POKEDEX_FLAG_BYTES: 19,
       wNumBagItems: 0xd3_1d,
       wBagItems: 0xd3_1e,
+      wNumBoxItems: 0xd5_3a,
+      wBoxItems: 0xd5_3b,
       BAG_ITEM_CAPACITY: 20,
       wPlayerMoney: 0xd3_47,
       wRivalName: 0xd3_4a,
       wObtainedBadges: 0xd3_56,
       wCurMap: 0xd3_5e,
+      wTextProgress: 0xc4_f2,
       wYCoord: 0xd3_61,
       wXCoord: 0xd3_62,
       wYBlockCoord: 0xd3_63,
@@ -201,6 +207,8 @@ describe("Red/Blue memory map", () => {
     expect(wEnemyMonHP).toBe(0xcf_e6);
     expect(wBattleResult).toBe(0xcf_0b);
     expect(wCurrentMenuItem).toBe(0xcc_26);
+    expect(wNumBoxItems).toBe(0xd5_3a);
+    expect(wBoxItems).toBe(0xd5_3b);
     expect(wTileMap).toBe(0xc3_a0);
     expect(wTileMapLength).toBe(360);
     expect(wNamingScreenNameLength).toBe(0xce_e9);
@@ -213,6 +221,7 @@ describe("Red/Blue memory map", () => {
     expect(wPartyMon1MaxHP).toBe(0xd1_8d);
     expect(wObtainedBadges).toBe(0xd3_56);
     expect(wCurMap).toBe(0xd3_5e);
+    expect(wTextProgress).toBe(0xc4_f2);
     expect(wYCoord).toBe(0xd3_61);
     expect(wXCoord).toBe(0xd3_62);
     expect(wYBlockCoord).toBe(0xd3_63);
