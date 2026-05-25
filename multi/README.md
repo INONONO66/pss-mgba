@@ -4,7 +4,7 @@
 
 ## Headless performance benchmark
 
-Start the gateway in one shell, then run the benchmark from this directory:
+Start the gateway in one shell, then run the benchmark from this directory. The default `CAPTURE_INTERVAL_MS=8` provides scheduler headroom above 60fps for the strict local benchmark:
 
 ```bash
 pnpm run benchmark:headless -- \
@@ -28,13 +28,17 @@ Useful options:
 - `--gateway-pid PID` includes gateway process RSS in the RAM total. Strict acceptance fails when gateway RSS is missing, preventing false PASS reports that only count emulator containers.
 - `--allow-reduced-target` marks a local/dev run as non-strict so smaller instance counts, shorter durations, or incomplete gateway RAM coverage cannot be confused with the strict acceptance benchmark.
 
+See `docs/strict-sustained-validation.md` for the captured passing 10-instance report and exact validation assumptions.
+
 The command writes standalone machine-readable JSON and a human-readable summary. It exits non-zero when any pass/fail target is missed, so it can be used from CI or a server shell without opening the dashboard UI.
 
 ## Runtime performance path
 
-The gateway now mounts a per-instance host capture directory into each emulator container at `/capture`. Streaming and REST screenshots ask mGBA to write into that bind mount and then read the PNG from the host filesystem, avoiding one `docker exec cat` process per frame. Runtime knobs:
+The gateway now mounts a per-instance host capture directory into each emulator container at `/capture`. Streaming and REST screenshots ask mGBA to write into that bind mount and then read the PNG from the host filesystem, avoiding `docker exec cat` readback on source refreshes. Runtime knobs:
 
 - `CAPTURE_ROOT` controls the host root for per-instance capture directories. Default: `/tmp/pss-mgba-captures`.
+- `CAPTURE_INTERVAL_MS` controls the emitted stream cadence. Default: `8` ms.
+- `SOURCE_CAPTURE_INTERVAL_MS` controls how often mGBA screenshot/PNG/decode refreshes the source frame between repeated deltas. Default: `60000` ms for strict transport stability; repeated frames are encoded as valid compressed zero-tile deltas.
 - `EMULATOR_MEMORY_BYTES` sets the Docker memory and swap cap per emulator. Default: `805306368` bytes, keeping ten emulators well below the 16 GiB strict RAM target before gateway/process overhead.
 - Emulator containers use small tmpfs mounts, a 32 MiB shm segment, pids limit, dummy audio, and a compact `XVFB_SCREEN=320x240x16` display by default.
 

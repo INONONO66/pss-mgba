@@ -319,6 +319,7 @@ function createConfig(): Config {
     emulatorPort: 8888,
     emulatorMemoryBytes: 805_306_368,
     captureIntervalMs: 16,
+    sourceCaptureIntervalMs: 250,
     captureRoot: '/tmp/pss-mgba-captures-test',
     streamKeyframeInterval: 60,
     streamTileSize: 16,

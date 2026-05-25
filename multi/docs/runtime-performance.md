@@ -12,7 +12,7 @@ ${CAPTURE_ROOT:-/tmp/pss-mgba-captures}/<instance-id>:/capture:rw
 
 The gateway creates the capture root and per-instance directories as owner-only `0700` directories, rejects symlinked/non-directory capture paths, and stores canonical host paths in container labels.
 
-`FrameCapture` asks mGBA to write `/capture/frame.png` and then reads `<capture-root>/<instance-id>/frame.png` directly from the host filesystem. The REST screenshot endpoint uses `/capture/rest-capture.png` the same way. This removes a `docker exec cat` subprocess from every frame and avoids routing PNG bytes through the Docker CLI during the streaming hot path.
+`FrameCapture` asks mGBA to write `/capture/frame.png` and then reads `<capture-root>/<instance-id>/frame.png` directly from the host filesystem. The REST screenshot endpoint uses `/capture/rest-capture.png` the same way. This removes a `docker exec cat` subprocess from source refreshes and avoids routing PNG bytes through the Docker CLI during the streaming hot path. Between source refreshes, the stream repeats the latest decoded frame as compressed zero-tile deltas so WebSocket delivery cadence stays independent of slower screenshot/PNG/decode work.
 
 ## Container limits
 
@@ -24,6 +24,8 @@ The gateway creates the capture root and per-instance directories as owner-only 
 - pids limit of 128
 - dummy SDL audio driver
 - compact `XVFB_SCREEN=320x240x16` display
+- `CAPTURE_INTERVAL_MS=8` emitted-frame cadence by default
+- `SOURCE_CAPTURE_INTERVAL_MS=60000` source refresh interval by default for strict transport stability
 
 CPU is intentionally not capped here because the benchmark is measuring whether the local runtime can sustain the target cadence. These limits are intentionally per-container and preserve the existing max-10 instance cap. They do not prove the sustained target by themselves; the strict benchmark remains the acceptance gate.
 

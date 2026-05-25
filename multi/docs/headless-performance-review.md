@@ -23,10 +23,11 @@ when deciding whether a live run proves the 10-instance target:
 
 - `src/streaming/FrameCapture.ts` schedules every registered instance each
   interval with per-instance in-flight guards. The default
-  `CAPTURE_INTERVAL_MS=16` is intended to exercise a 60fps cadence, but it must
-  still be validated under load before a strict pass is accepted.
+  `CAPTURE_INTERVAL_MS=8` is intended to keep local timer jitter below the
+  60fps frame budget, but it must still be validated under load before a
+  strict pass is accepted.
 - The gateway still obtains source pixels through mGBA screenshot, but the runtime capture path
-  removes the per-frame `docker exec cat` readback by mounting a per-instance
+  removes the Docker CLI readback by mounting a per-instance
   host capture directory at `/capture` and reading the file directly from the
   gateway process.
 - `src/streaming/DashboardBroadcast.ts` now sends typed keyframe/delta frames

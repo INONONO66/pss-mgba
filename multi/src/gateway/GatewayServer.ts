@@ -49,6 +49,7 @@ export function createGatewayServer(
   const frameCapture = new FrameCapture(
     registry,
     config.captureIntervalMs,
+    config.sourceCaptureIntervalMs,
     config.streamKeyframeInterval,
     config.streamTileSize
   );

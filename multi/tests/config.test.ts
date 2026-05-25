@@ -11,7 +11,13 @@ describe("loadConfig", () => {
 
   it("defaults to the 10-instance target and rejects larger env overrides", () => {
     delete process.env.MAX_INSTANCES;
-    expect(loadConfig().maxInstances).toBe(10);
+    delete process.env.CAPTURE_INTERVAL_MS;
+    delete process.env.SOURCE_CAPTURE_INTERVAL_MS;
+    expect(loadConfig()).toMatchObject({
+      captureIntervalMs: 8,
+      maxInstances: 10,
+      sourceCaptureIntervalMs: 60000,
+    });
 
     process.env.MAX_INSTANCES = "11";
     expect(() => loadConfig()).toThrow();
@@ -20,6 +26,7 @@ describe("loadConfig", () => {
   it("coerces benchmark-relevant numeric settings", () => {
     process.env.MAX_INSTANCES = "4";
     process.env.CAPTURE_INTERVAL_MS = "16";
+    process.env.SOURCE_CAPTURE_INTERVAL_MS = "125";
     process.env.EMULATOR_MEMORY_BYTES = "536870912";
     process.env.CAPTURE_ROOT = "/tmp/pss-mgba-captures-test";
     process.env.STREAM_KEYFRAME_INTERVAL = "120";
@@ -28,6 +35,7 @@ describe("loadConfig", () => {
 
     expect(loadConfig()).toMatchObject({
       captureIntervalMs: 16,
+      sourceCaptureIntervalMs: 125,
       captureRoot: '/tmp/pss-mgba-captures-test',
       emulatorMemoryBytes: 536870912,
       maxInstances: 4,

@@ -1,0 +1,1880 @@
+{
+  "schemaVersion": "pss-mgba-headless-benchmark/v1",
+  "generatedAt": "2026-05-25T17:10:57.152Z",
+  "baseUrl": "http://127.0.0.1:8787",
+  "target": {
+    "instances": 10,
+    "durationMs": 60000,
+    "minP95Fps": 60,
+    "maxDroppedOrLateRatio": 0.01,
+    "maxTotalRamBytes": 17179869184,
+    "requiresGatewayMemory": true,
+    "strictAcceptance": true
+  },
+  "measurementWindow": {
+    "startedAt": "2026-05-25T17:09:55.070Z",
+    "endedAt": "2026-05-25T17:10:57.114Z",
+    "durationMs": 62044
+  },
+  "instances": [
+    {
+      "instanceId": "349da275-a5bc-4d3c-aab2-421e9a3ee89a",
+      "receivedFrames": 7064,
+      "expectedFrames": 3722,
+      "displayedFps": {
+        "count": 7065,
+        "min": 34.94105880143511,
+        "max": 247402.27607146892,
+        "average": 149.94264762950613,
+        "p50": 110.89446030049491,
+        "p95": 130.55541013144918,
+        "p99": 138.17322832908764
+      },
+      "frameIntervalMs": {
+        "count": 7065,
+        "min": 0.004042000000481494,
+        "max": 28.61962499999936,
+        "average": 8.781813470205245,
+        "p50": 9.01758300000074,
+        "p95": 9.379124999999476,
+        "p99": 10.396082999999635
+      },
+      "droppedOrLateFrames": 1,
+      "droppedOrLateFrameRatio": 0.00026867275658248256,
+      "lateFrameThresholdMs": 25,
+      "durationMs": 62043.51216700001,
+      "streamHealth": {
+        "reconnects": 0,
+        "keyframeRecoveries": 1,
+        "serverProducedFrames": 7065,
+        "serverProducedFps": 113.87080136677197,
+        "serverDroppedFrames": 0,
+        "sequenceGaps": 0
+      },
+      "pass": true,
+      "failures": []
+    },
+    {
+      "instanceId": "387dc05c-aba5-4eb2-ada2-37e24546e6f0",
+      "receivedFrames": 7059,
+      "expectedFrames": 3722,
+      "displayedFps": {
+        "count": 7060,
+        "min": 18.09512607779124,
+        "max": 1154.2905557029108,
+        "average": 115.00372541508271,
+        "p50": 110.88216408279423,
+        "p95": 130.60867954759007,
+        "p99": 138.31099864271215
+      },
+      "frameIntervalMs": {
+        "count": 7060,
+        "min": 0.8663330000053975,
+        "max": 55.26349999999911,
+        "average": 8.788032884844215,
+        "p50": 9.018041999996058,
+        "p95": 9.390458999994735,
+        "p99": 10.403665999998339
+      },
+      "droppedOrLateFrames": 3,
+      "droppedOrLateFrameRatio": 0.0008060182697474476,
+      "lateFrameThresholdMs": 25,
+      "durationMs": 62043.51216700001,
+      "streamHealth": {
+        "reconnects": 0,
+        "keyframeRecoveries": 1,
+        "serverProducedFrames": 7065,
+        "serverProducedFps": 113.87080136677197,
+        "serverDroppedFrames": 0,
+        "sequenceGaps": 0
+      },
+      "pass": true,
+      "failures": []
+    },
+    {
+      "instanceId": "b001fe93-527a-43a4-b336-86866c8f78f8",
+      "receivedFrames": 7060,
+      "expectedFrames": 3722,
+      "displayedFps": {
+        "count": 7061,
+        "min": 20.285364363179415,
+        "max": 44692.737429237466,
+        "average": 121.27466644998654,
+        "p50": 111.00422637489602,
+        "p95": 130.6314397216736,
+        "p99": 138.3668231779815
+      },
+      "frameIntervalMs": {
+        "count": 7061,
+        "min": 0.02237500000046566,
+        "max": 49.29662499999904,
+        "average": 8.786788297266687,
+        "p50": 9.00866600000154,
+        "p95": 9.397582999998122,
+        "p99": 10.436582999995153
+      },
+      "droppedOrLateFrames": 2,
+      "droppedOrLateFrameRatio": 0.0005373455131649651,
+      "lateFrameThresholdMs": 25,
+      "durationMs": 62043.51216700001,
+      "streamHealth": {
+        "reconnects": 0,
+        "keyframeRecoveries": 1,
+        "serverProducedFrames": 7065,
+        "serverProducedFps": 113.87080136677197,
+        "serverDroppedFrames": 0,
+        "sequenceGaps": 0
+      },
+      "pass": true,
+      "failures": []
+    },
+    {
+      "instanceId": "889967c8-d6c0-4f80-967e-be33296bb599",
+      "receivedFrames": 7060,
+      "expectedFrames": 3722,
+      "displayedFps": {
+        "count": 7061,
+        "min": 21.373249215634328,
+        "max": 10642.940005974368,
+        "average": 116.34866732244132,
+        "p50": 111.05455966143106,
+        "p95": 130.71895424834113,
+        "p99": 138.51614578823228
+      },
+      "frameIntervalMs": {
+        "count": 7061,
+        "min": 0.0939589999979944,
+        "max": 46.78745799999888,
+        "average": 8.786788297266686,
+        "p50": 9.00458300000173,
+        "p95": 9.400415999996767,
+        "p99": 10.445083999999042
+      },
+      "droppedOrLateFrames": 2,
+      "droppedOrLateFrameRatio": 0.0005373455131649651,
+      "lateFrameThresholdMs": 25,
+      "durationMs": 62043.51216700001,
+      "streamHealth": {
+        "reconnects": 0,
+        "keyframeRecoveries": 1,
+        "serverProducedFrames": 7065,
+        "serverProducedFps": 113.87080136677197,
+        "serverDroppedFrames": 0,
+        "sequenceGaps": 0
+      },
+      "pass": true,
+      "failures": []
+    },
+    {
+      "instanceId": "3eeaa4e9-8a81-4ef3-8d8e-b279cea12aa8",
+      "receivedFrames": 7063,
+      "expectedFrames": 3722,
+      "displayedFps": {
+        "count": 7064,
+        "min": 34.95469644135335,
+        "max": 1715265.8635157652,
+        "average": 359.39142296108804,
+        "p50": 111.09157133800483,
+        "p95": 130.75884851670784,
+        "p99": 138.4921665369363
+      },
+      "frameIntervalMs": {
+        "count": 7064,
+        "min": 0.0005830000009154901,
+        "max": 28.608459000002767,
+        "average": 8.783056648782564,
+        "p50": 9.001499999998487,
+        "p95": 9.407500000001164,
+        "p99": 10.464082999998936
+      },
+      "droppedOrLateFrames": 1,
+      "droppedOrLateFrameRatio": 0.00026867275658248256,
+      "lateFrameThresholdMs": 25,
+      "durationMs": 62043.51216700001,
+      "streamHealth": {
+        "reconnects": 0,
+        "keyframeRecoveries": 1,
+        "serverProducedFrames": 7065,
+        "serverProducedFps": 113.87080136677197,
+        "serverDroppedFrames": 0,
+        "sequenceGaps": 0
+      },
+      "pass": true,
+      "failures": []
+    },
+    {
+      "instanceId": "23f43fbe-0256-4c47-85dd-67904b3825a7",
+      "receivedFrames": 7064,
+      "expectedFrames": 3722,
+      "displayedFps": {
+        "count": 7065,
+        "min": 34.95530736744361,
+        "max": 2183406.1027904395,
+        "average": 423.98184312814954,
+        "p50": 111.14249034090449,
+        "p95": 130.7887595431994,
+        "p99": 138.5041551246314
+      },
+      "frameIntervalMs": {
+        "count": 7065,
+        "min": 0.0004580000022542663,
+        "max": 28.60795899999357,
+        "average": 8.781813470205229,
+        "p50": 8.997458999998344,
+        "p95": 9.415667000001122,
+        "p99": 10.489666000001307
+      },
+      "droppedOrLateFrames": 1,
+      "droppedOrLateFrameRatio": 0.00026867275658248256,
+      "lateFrameThresholdMs": 25,
+      "durationMs": 62043.51216700001,
+      "streamHealth": {
+        "reconnects": 0,
+        "keyframeRecoveries": 1,
+        "serverProducedFrames": 7065,
+        "serverProducedFps": 113.87080136677197,
+        "serverDroppedFrames": 0,
+        "sequenceGaps": 0
+      },
+      "pass": true,
+      "failures": []
+    },
+    {
+      "instanceId": "95cdd788-0212-4e93-8d2d-0e9bd53936ba",
+      "receivedFrames": 7061,
+      "expectedFrames": 3722,
+      "displayedFps": {
+        "count": 7062,
+        "min": 27.1789596149743,
+        "max": 3003003.0362156313,
+        "average": 540.0766270366887,
+        "p50": 111.17802793081503,
+        "p95": 130.81798260614747,
+        "p99": 138.51296086554504
+      },
+      "frameIntervalMs": {
+        "count": 7062,
+        "min": 0.0003329999963170849,
+        "max": 36.79316699999981,
+        "average": 8.785544062163684,
+        "p50": 8.994542000000365,
+        "p95": 9.419207999999344,
+        "p99": 10.498375000002852
+      },
+      "droppedOrLateFrames": 2,
+      "droppedOrLateFrameRatio": 0.0005373455131649651,
+      "lateFrameThresholdMs": 25,
+      "durationMs": 62043.51216700001,
+      "streamHealth": {
+        "reconnects": 0,
+        "keyframeRecoveries": 1,
+        "serverProducedFrames": 7065,
+        "serverProducedFps": 113.87080136677197,
+        "serverDroppedFrames": 0,
+        "sequenceGaps": 0
+      },
+      "pass": true,
+      "failures": []
+    },
+    {
+      "instanceId": "aaacff7e-9464-4beb-aad9-218149157c85",
+      "receivedFrames": 7060,
+      "expectedFrames": 3722,
+      "displayedFps": {
+        "count": 7061,
+        "min": 21.135616684456533,
+        "max": 1599999.9985098839,
+        "average": 341.4801390445898,
+        "p50": 111.1425026935632,
+        "p95": 131.0000649761076,
+        "p99": 138.52255445016368
+      },
+      "frameIntervalMs": {
+        "count": 7061,
+        "min": 0.0006250000005820766,
+        "max": 47.313499999998385,
+        "average": 8.786788297266677,
+        "p50": 8.997457999998005,
+        "p95": 9.420750000004773,
+        "p99": 10.53758299999754
+      },
+      "droppedOrLateFrames": 2,
+      "droppedOrLateFrameRatio": 0.0005373455131649651,
+      "lateFrameThresholdMs": 25,
+      "durationMs": 62043.51216700001,
+      "streamHealth": {
+        "reconnects": 0,
+        "keyframeRecoveries": 1,
+        "serverProducedFrames": 7065,
+        "serverProducedFps": 113.87080136677197,
+        "serverDroppedFrames": 0,
+        "sequenceGaps": 0
+      },
+      "pass": true,
+      "failures": []
+    },
+    {
+      "instanceId": "ed4f2518-c6da-4d02-87dc-6b49d7c948c9",
+      "receivedFrames": 7060,
+      "expectedFrames": 3722,
+      "displayedFps": {
+        "count": 7061,
+        "min": 20.486065920842005,
+        "max": 1599999.9985098839,
+        "average": 344.50089877608093,
+        "p50": 111.20017009176883,
+        "p95": 131.02510768625888,
+        "p99": 138.54894366121013
+      },
+      "frameIntervalMs": {
+        "count": 7061,
+        "min": 0.0006250000005820766,
+        "max": 48.81366699999853,
+        "average": 8.786788297266662,
+        "p50": 8.992792000000918,
+        "p95": 9.427333999999973,
+        "p99": 10.571624999996857
+      },
+      "droppedOrLateFrames": 2,
+      "droppedOrLateFrameRatio": 0.0005373455131649651,
+      "lateFrameThresholdMs": 25,
+      "durationMs": 62043.51216700001,
+      "streamHealth": {
+        "reconnects": 0,
+        "keyframeRecoveries": 1,
+        "serverProducedFrames": 7065,
+        "serverProducedFps": 113.87080136677197,
+        "serverDroppedFrames": 0,
+        "sequenceGaps": 0
+      },
+      "pass": true,
+      "failures": []
+    },
+    {
+      "instanceId": "c3b8b629-9754-47ba-9b55-eb1e4c67270d",
+      "receivedFrames": 7060,
+      "expectedFrames": 3722,
+      "displayedFps": {
+        "count": 7061,
+        "min": 21.609707080420648,
+        "max": 1499250.3742536607,
+        "average": 327.18495071881966,
+        "p50": 111.23677158408178,
+        "p95": 131.15686387153136,
+        "p99": 138.566529255006
+      },
+      "frameIntervalMs": {
+        "count": 7061,
+        "min": 0.0006670000002486631,
+        "max": 46.27549999999974,
+        "average": 8.786788297266673,
+        "p50": 8.989832999999635,
+        "p95": 9.431582999997772,
+        "p99": 10.564000000005763
+      },
+      "droppedOrLateFrames": 2,
+      "droppedOrLateFrameRatio": 0.0005373455131649651,
+      "lateFrameThresholdMs": 25,
+      "durationMs": 62043.51216700001,
+      "streamHealth": {
+        "reconnects": 0,
+        "keyframeRecoveries": 1,
+        "serverProducedFrames": 7065,
+        "serverProducedFps": 113.87080136677197,
+        "serverDroppedFrames": 0,
+        "sequenceGaps": 0
+      },
+      "pass": true,
+      "failures": []
+    }
+  ],
+  "resources": {
+    "memoryCoverage": "complete",
+    "samples": [
+      {
+        "sampledAtMs": 1779728997129,
+        "totalMemoryBytes": 568295424,
+        "totalCpuPercent": 1244.7024371411314,
+        "containers": [
+          {
+            "id": "e456628376782c716295e4a4609acf307c050f9a31e623f822af817d227d3a8a",
+            "name": "pss-mgba-349da275-a5bc-4d3c-aab2-421e9a3ee89a",
+            "memoryBytes": 51879936,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 131.1638742783836
+          },
+          {
+            "id": "363f8c654d1d9cd3f96852b957ce13054cc6f400f5cad46af9c2ca03cd4d56d5",
+            "name": "pss-mgba-387dc05c-aba5-4eb2-ada2-37e24546e6f0",
+            "memoryBytes": 51818496,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 132.49360824742269
+          },
+          {
+            "id": "1206840d743ba376651ca7adb360009810835734da24f1f6aa7e858f997eb771",
+            "name": "pss-mgba-b001fe93-527a-43a4-b336-86866c8f78f8",
+            "memoryBytes": 50659328,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 114.06029506093648
+          },
+          {
+            "id": "7aa27e9d0521acc7f7e704d994111f3c57edd2d4ac9579e7296b037437e259d6",
+            "name": "pss-mgba-889967c8-d6c0-4f80-967e-be33296bb599",
+            "memoryBytes": 51646464,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 111.62341463414633
+          },
+          {
+            "id": "a788d7499494355ef8114be4d5d0ca17417e1b9bc0ecdb666aa04a488932b663",
+            "name": "pss-mgba-3eeaa4e9-8a81-4ef3-8d8e-b279cea12aa8",
+            "memoryBytes": 51589120,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 131.97557408595253
+          },
+          {
+            "id": "5514cd32f0b627d42f40a1d04ff5c14972232e0b83c0ce58f27bede177f08746",
+            "name": "pss-mgba-23f43fbe-0256-4c47-85dd-67904b3825a7",
+            "memoryBytes": 51269632,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 112.34339240506328
+          },
+          {
+            "id": "ad48176f79e126372c5e92bc9a9f9783bca5d8cc3e31fa013dd60093c370ca4e",
+            "name": "pss-mgba-95cdd788-0212-4e93-8d2d-0e9bd53936ba",
+            "memoryBytes": 50307072,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 128.04106194690266
+          },
+          {
+            "id": "ecc900a77f89b72c15c7e84ea085dfcaf3455162e29cb6400a7e5b6228523e0d",
+            "name": "pss-mgba-aaacff7e-9464-4beb-aad9-218149157c85",
+            "memoryBytes": 51589120,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 131.5726491340603
+          },
+          {
+            "id": "98d49d72498ea6b04e0bf9854d203b12706dea0228ccbd930e8a505e9f4c7bc9",
+            "name": "pss-mgba-ed4f2518-c6da-4d02-87dc-6b49d7c948c9",
+            "memoryBytes": 51273728,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 126.29174683544304
+          },
+          {
+            "id": "c4b2b31192dd501fd3cd431808a376d10812a446ecd5091fe7fc05512c57b565",
+            "name": "pss-mgba-c3b8b629-9754-47ba-9b55-eb1e4c67270d",
+            "memoryBytes": 51900416,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 125.1368205128205
+          }
+        ],
+        "processes": [
+          {
+            "pid": 43765,
+            "role": "gateway",
+            "rssBytes": 54362112
+          }
+        ]
+      },
+      {
+        "sampledAtMs": 1779729004166,
+        "totalMemoryBytes": 572817408,
+        "totalCpuPercent": 1236.8548107524418,
+        "containers": [
+          {
+            "id": "e456628376782c716295e4a4609acf307c050f9a31e623f822af817d227d3a8a",
+            "name": "pss-mgba-349da275-a5bc-4d3c-aab2-421e9a3ee89a",
+            "memoryBytes": 52252672,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 126.82090734824281
+          },
+          {
+            "id": "363f8c654d1d9cd3f96852b957ce13054cc6f400f5cad46af9c2ca03cd4d56d5",
+            "name": "pss-mgba-387dc05c-aba5-4eb2-ada2-37e24546e6f0",
+            "memoryBytes": 52264960,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 117.40229825693996
+          },
+          {
+            "id": "1206840d743ba376651ca7adb360009810835734da24f1f6aa7e858f997eb771",
+            "name": "pss-mgba-b001fe93-527a-43a4-b336-86866c8f78f8",
+            "memoryBytes": 51298304,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 123.74753512132824
+          },
+          {
+            "id": "7aa27e9d0521acc7f7e704d994111f3c57edd2d4ac9579e7296b037437e259d6",
+            "name": "pss-mgba-889967c8-d6c0-4f80-967e-be33296bb599",
+            "memoryBytes": 52224000,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 117.98172744721688
+          },
+          {
+            "id": "a788d7499494355ef8114be4d5d0ca17417e1b9bc0ecdb666aa04a488932b663",
+            "name": "pss-mgba-3eeaa4e9-8a81-4ef3-8d8e-b279cea12aa8",
+            "memoryBytes": 51728384,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 125.68971867007673
+          },
+          {
+            "id": "5514cd32f0b627d42f40a1d04ff5c14972232e0b83c0ce58f27bede177f08746",
+            "name": "pss-mgba-23f43fbe-0256-4c47-85dd-67904b3825a7",
+            "memoryBytes": 51953664,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 121.87004524886878
+          },
+          {
+            "id": "ad48176f79e126372c5e92bc9a9f9783bca5d8cc3e31fa013dd60093c370ca4e",
+            "name": "pss-mgba-95cdd788-0212-4e93-8d2d-0e9bd53936ba",
+            "memoryBytes": 51109888,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 116.64532309660909
+          },
+          {
+            "id": "ecc900a77f89b72c15c7e84ea085dfcaf3455162e29cb6400a7e5b6228523e0d",
+            "name": "pss-mgba-aaacff7e-9464-4beb-aad9-218149157c85",
+            "memoryBytes": 51847168,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 122.37779212395094
+          },
+          {
+            "id": "98d49d72498ea6b04e0bf9854d203b12706dea0228ccbd930e8a505e9f4c7bc9",
+            "name": "pss-mgba-ed4f2518-c6da-4d02-87dc-6b49d7c948c9",
+            "memoryBytes": 51838976,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 128.91141199226306
+          },
+          {
+            "id": "c4b2b31192dd501fd3cd431808a376d10812a446ecd5091fe7fc05512c57b565",
+            "name": "pss-mgba-c3b8b629-9754-47ba-9b55-eb1e4c67270d",
+            "memoryBytes": 51937280,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 135.40805144694534
+          }
+        ],
+        "processes": [
+          {
+            "pid": 43765,
+            "role": "gateway",
+            "rssBytes": 54362112
+          }
+        ]
+      },
+      {
+        "sampledAtMs": 1779729011199,
+        "totalMemoryBytes": 575385600,
+        "totalCpuPercent": 1245.8941980400011,
+        "containers": [
+          {
+            "id": "e456628376782c716295e4a4609acf307c050f9a31e623f822af817d227d3a8a",
+            "name": "pss-mgba-349da275-a5bc-4d3c-aab2-421e9a3ee89a",
+            "memoryBytes": 52371456,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 122.1382747603834
+          },
+          {
+            "id": "363f8c654d1d9cd3f96852b957ce13054cc6f400f5cad46af9c2ca03cd4d56d5",
+            "name": "pss-mgba-387dc05c-aba5-4eb2-ada2-37e24546e6f0",
+            "memoryBytes": 52412416,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 127.18609584664537
+          },
+          {
+            "id": "1206840d743ba376651ca7adb360009810835734da24f1f6aa7e858f997eb771",
+            "name": "pss-mgba-b001fe93-527a-43a4-b336-86866c8f78f8",
+            "memoryBytes": 51445760,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 125.48972275951
+          },
+          {
+            "id": "7aa27e9d0521acc7f7e704d994111f3c57edd2d4ac9579e7296b037437e259d6",
+            "name": "pss-mgba-889967c8-d6c0-4f80-967e-be33296bb599",
+            "memoryBytes": 52199424,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 128.8291933418694
+          },
+          {
+            "id": "a788d7499494355ef8114be4d5d0ca17417e1b9bc0ecdb666aa04a488932b663",
+            "name": "pss-mgba-3eeaa4e9-8a81-4ef3-8d8e-b279cea12aa8",
+            "memoryBytes": 51982336,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 127.95360824742268
+          },
+          {
+            "id": "5514cd32f0b627d42f40a1d04ff5c14972232e0b83c0ce58f27bede177f08746",
+            "name": "pss-mgba-23f43fbe-0256-4c47-85dd-67904b3825a7",
+            "memoryBytes": 52187136,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 113.14263665594855
+          },
+          {
+            "id": "ad48176f79e126372c5e92bc9a9f9783bca5d8cc3e31fa013dd60093c370ca4e",
+            "name": "pss-mgba-95cdd788-0212-4e93-8d2d-0e9bd53936ba",
+            "memoryBytes": 51142656,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 118.93312859884837
+          },
+          {
+            "id": "ecc900a77f89b72c15c7e84ea085dfcaf3455162e29cb6400a7e5b6228523e0d",
+            "name": "pss-mgba-aaacff7e-9464-4beb-aad9-218149157c85",
+            "memoryBytes": 52494336,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 131.94929073482427
+          },
+          {
+            "id": "98d49d72498ea6b04e0bf9854d203b12706dea0228ccbd930e8a505e9f4c7bc9",
+            "name": "pss-mgba-ed4f2518-c6da-4d02-87dc-6b49d7c948c9",
+            "memoryBytes": 52453376,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 129.56750957854405
+          },
+          {
+            "id": "c4b2b31192dd501fd3cd431808a376d10812a446ecd5091fe7fc05512c57b565",
+            "name": "pss-mgba-c3b8b629-9754-47ba-9b55-eb1e4c67270d",
+            "memoryBytes": 52334592,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 120.70473751600512
+          }
+        ],
+        "processes": [
+          {
+            "pid": 43765,
+            "role": "gateway",
+            "rssBytes": 54362112
+          }
+        ]
+      },
+      {
+        "sampledAtMs": 1779729018243,
+        "totalMemoryBytes": 576761856,
+        "totalCpuPercent": 1114.1617196766156,
+        "containers": [
+          {
+            "id": "e456628376782c716295e4a4609acf307c050f9a31e623f822af817d227d3a8a",
+            "name": "pss-mgba-349da275-a5bc-4d3c-aab2-421e9a3ee89a",
+            "memoryBytes": 52142080,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 103.6543596214511
+          },
+          {
+            "id": "363f8c654d1d9cd3f96852b957ce13054cc6f400f5cad46af9c2ca03cd4d56d5",
+            "name": "pss-mgba-387dc05c-aba5-4eb2-ada2-37e24546e6f0",
+            "memoryBytes": 52731904,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 115.51673885350317
+          },
+          {
+            "id": "1206840d743ba376651ca7adb360009810835734da24f1f6aa7e858f997eb771",
+            "name": "pss-mgba-b001fe93-527a-43a4-b336-86866c8f78f8",
+            "memoryBytes": 51585024,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 109.07207138304653
+          },
+          {
+            "id": "7aa27e9d0521acc7f7e704d994111f3c57edd2d4ac9579e7296b037437e259d6",
+            "name": "pss-mgba-889967c8-d6c0-4f80-967e-be33296bb599",
+            "memoryBytes": 52576256,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 114.75324410452517
+          },
+          {
+            "id": "a788d7499494355ef8114be4d5d0ca17417e1b9bc0ecdb666aa04a488932b663",
+            "name": "pss-mgba-3eeaa4e9-8a81-4ef3-8d8e-b279cea12aa8",
+            "memoryBytes": 52604928,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 114.23120766773162
+          },
+          {
+            "id": "5514cd32f0b627d42f40a1d04ff5c14972232e0b83c0ce58f27bede177f08746",
+            "name": "pss-mgba-23f43fbe-0256-4c47-85dd-67904b3825a7",
+            "memoryBytes": 52330496,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 109.5057982120051
+          },
+          {
+            "id": "ad48176f79e126372c5e92bc9a9f9783bca5d8cc3e31fa013dd60093c370ca4e",
+            "name": "pss-mgba-95cdd788-0212-4e93-8d2d-0e9bd53936ba",
+            "memoryBytes": 51236864,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 114.98399443284622
+          },
+          {
+            "id": "ecc900a77f89b72c15c7e84ea085dfcaf3455162e29cb6400a7e5b6228523e0d",
+            "name": "pss-mgba-aaacff7e-9464-4beb-aad9-218149157c85",
+            "memoryBytes": 52363264,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 110.89478648820905
+          },
+          {
+            "id": "98d49d72498ea6b04e0bf9854d203b12706dea0228ccbd930e8a505e9f4c7bc9",
+            "name": "pss-mgba-ed4f2518-c6da-4d02-87dc-6b49d7c948c9",
+            "memoryBytes": 52310016,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 112.4523469387755
+          },
+          {
+            "id": "c4b2b31192dd501fd3cd431808a376d10812a446ecd5091fe7fc05512c57b565",
+            "name": "pss-mgba-c3b8b629-9754-47ba-9b55-eb1e4c67270d",
+            "memoryBytes": 52518912,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 109.09717197452228
+          }
+        ],
+        "processes": [
+          {
+            "pid": 43765,
+            "role": "gateway",
+            "rssBytes": 54362112
+          }
+        ]
+      },
+      {
+        "sampledAtMs": 1779729025288,
+        "totalMemoryBytes": 577429504,
+        "totalCpuPercent": 1235.541777026537,
+        "containers": [
+          {
+            "id": "e456628376782c716295e4a4609acf307c050f9a31e623f822af817d227d3a8a",
+            "name": "pss-mgba-349da275-a5bc-4d3c-aab2-421e9a3ee89a",
+            "memoryBytes": 52539392,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 109.38958068614994
+          },
+          {
+            "id": "363f8c654d1d9cd3f96852b957ce13054cc6f400f5cad46af9c2ca03cd4d56d5",
+            "name": "pss-mgba-387dc05c-aba5-4eb2-ada2-37e24546e6f0",
+            "memoryBytes": 52805632,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 127.79710292249047
+          },
+          {
+            "id": "1206840d743ba376651ca7adb360009810835734da24f1f6aa7e858f997eb771",
+            "name": "pss-mgba-b001fe93-527a-43a4-b336-86866c8f78f8",
+            "memoryBytes": 51658752,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 119.67456061577934
+          },
+          {
+            "id": "7aa27e9d0521acc7f7e704d994111f3c57edd2d4ac9579e7296b037437e259d6",
+            "name": "pss-mgba-889967c8-d6c0-4f80-967e-be33296bb599",
+            "memoryBytes": 52420608,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 118.41180661577609
+          },
+          {
+            "id": "a788d7499494355ef8114be4d5d0ca17417e1b9bc0ecdb666aa04a488932b663",
+            "name": "pss-mgba-3eeaa4e9-8a81-4ef3-8d8e-b279cea12aa8",
+            "memoryBytes": 52441088,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 118.70624759461192
+          },
+          {
+            "id": "5514cd32f0b627d42f40a1d04ff5c14972232e0b83c0ce58f27bede177f08746",
+            "name": "pss-mgba-23f43fbe-0256-4c47-85dd-67904b3825a7",
+            "memoryBytes": 52375552,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 131.92497754971134
+          },
+          {
+            "id": "ad48176f79e126372c5e92bc9a9f9783bca5d8cc3e31fa013dd60093c370ca4e",
+            "name": "pss-mgba-95cdd788-0212-4e93-8d2d-0e9bd53936ba",
+            "memoryBytes": 51306496,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 119.4741976893453
+          },
+          {
+            "id": "ecc900a77f89b72c15c7e84ea085dfcaf3455162e29cb6400a7e5b6228523e0d",
+            "name": "pss-mgba-aaacff7e-9464-4beb-aad9-218149157c85",
+            "memoryBytes": 52154368,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 129.92041051956383
+          },
+          {
+            "id": "98d49d72498ea6b04e0bf9854d203b12706dea0228ccbd930e8a505e9f4c7bc9",
+            "name": "pss-mgba-ed4f2518-c6da-4d02-87dc-6b49d7c948c9",
+            "memoryBytes": 52436992,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 128.79521323997454
+          },
+          {
+            "id": "c4b2b31192dd501fd3cd431808a376d10812a446ecd5091fe7fc05512c57b565",
+            "name": "pss-mgba-c3b8b629-9754-47ba-9b55-eb1e4c67270d",
+            "memoryBytes": 52928512,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 131.44767959313415
+          }
+        ],
+        "processes": [
+          {
+            "pid": 43765,
+            "role": "gateway",
+            "rssBytes": 54362112
+          }
+        ]
+      },
+      {
+        "sampledAtMs": 1779729032335,
+        "totalMemoryBytes": 577970176,
+        "totalCpuPercent": 1231.0807918992691,
+        "containers": [
+          {
+            "id": "e456628376782c716295e4a4609acf307c050f9a31e623f822af817d227d3a8a",
+            "name": "pss-mgba-349da275-a5bc-4d3c-aab2-421e9a3ee89a",
+            "memoryBytes": 52342784,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 115.01693968253967
+          },
+          {
+            "id": "363f8c654d1d9cd3f96852b957ce13054cc6f400f5cad46af9c2ca03cd4d56d5",
+            "name": "pss-mgba-387dc05c-aba5-4eb2-ada2-37e24546e6f0",
+            "memoryBytes": 52637696,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 118.56680634920636
+          },
+          {
+            "id": "1206840d743ba376651ca7adb360009810835734da24f1f6aa7e858f997eb771",
+            "name": "pss-mgba-b001fe93-527a-43a4-b336-86866c8f78f8",
+            "memoryBytes": 51712000,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 128.53556701030928
+          },
+          {
+            "id": "7aa27e9d0521acc7f7e704d994111f3c57edd2d4ac9579e7296b037437e259d6",
+            "name": "pss-mgba-889967c8-d6c0-4f80-967e-be33296bb599",
+            "memoryBytes": 52731904,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 121.82153846153847
+          },
+          {
+            "id": "a788d7499494355ef8114be4d5d0ca17417e1b9bc0ecdb666aa04a488932b663",
+            "name": "pss-mgba-3eeaa4e9-8a81-4ef3-8d8e-b279cea12aa8",
+            "memoryBytes": 52232192,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 113.21443456162643
+          },
+          {
+            "id": "5514cd32f0b627d42f40a1d04ff5c14972232e0b83c0ce58f27bede177f08746",
+            "name": "pss-mgba-23f43fbe-0256-4c47-85dd-67904b3825a7",
+            "memoryBytes": 52736000,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 120.81167958656332
+          },
+          {
+            "id": "ad48176f79e126372c5e92bc9a9f9783bca5d8cc3e31fa013dd60093c370ca4e",
+            "name": "pss-mgba-95cdd788-0212-4e93-8d2d-0e9bd53936ba",
+            "memoryBytes": 51707904,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 130.3728417037508
+          },
+          {
+            "id": "ecc900a77f89b72c15c7e84ea085dfcaf3455162e29cb6400a7e5b6228523e0d",
+            "name": "pss-mgba-aaacff7e-9464-4beb-aad9-218149157c85",
+            "memoryBytes": 52527104,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 131.72706480304956
+          },
+          {
+            "id": "98d49d72498ea6b04e0bf9854d203b12706dea0228ccbd930e8a505e9f4c7bc9",
+            "name": "pss-mgba-ed4f2518-c6da-4d02-87dc-6b49d7c948c9",
+            "memoryBytes": 52248576,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 121.90993006993007
+          },
+          {
+            "id": "c4b2b31192dd501fd3cd431808a376d10812a446ecd5091fe7fc05512c57b565",
+            "name": "pss-mgba-c3b8b629-9754-47ba-9b55-eb1e4c67270d",
+            "memoryBytes": 52731904,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 129.10398967075534
+          }
+        ],
+        "processes": [
+          {
+            "pid": 43765,
+            "role": "gateway",
+            "rssBytes": 54362112
+          }
+        ]
+      },
+      {
+        "sampledAtMs": 1779729039378,
+        "totalMemoryBytes": 579252224,
+        "totalCpuPercent": 1230.6580273631937,
+        "containers": [
+          {
+            "id": "e456628376782c716295e4a4609acf307c050f9a31e623f822af817d227d3a8a",
+            "name": "pss-mgba-349da275-a5bc-4d3c-aab2-421e9a3ee89a",
+            "memoryBytes": 53190656,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 129.72538608806636
+          },
+          {
+            "id": "363f8c654d1d9cd3f96852b957ce13054cc6f400f5cad46af9c2ca03cd4d56d5",
+            "name": "pss-mgba-387dc05c-aba5-4eb2-ada2-37e24546e6f0",
+            "memoryBytes": 52695040,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 122.53560176433523
+          },
+          {
+            "id": "1206840d743ba376651ca7adb360009810835734da24f1f6aa7e858f997eb771",
+            "name": "pss-mgba-b001fe93-527a-43a4-b336-86866c8f78f8",
+            "memoryBytes": 51523584,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 116.1533503836317
+          },
+          {
+            "id": "7aa27e9d0521acc7f7e704d994111f3c57edd2d4ac9579e7296b037437e259d6",
+            "name": "pss-mgba-889967c8-d6c0-4f80-967e-be33296bb599",
+            "memoryBytes": 52555776,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 125.21792123950937
+          },
+          {
+            "id": "a788d7499494355ef8114be4d5d0ca17417e1b9bc0ecdb666aa04a488932b663",
+            "name": "pss-mgba-3eeaa4e9-8a81-4ef3-8d8e-b279cea12aa8",
+            "memoryBytes": 52568064,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 120.07586998087953
+          },
+          {
+            "id": "5514cd32f0b627d42f40a1d04ff5c14972232e0b83c0ce58f27bede177f08746",
+            "name": "pss-mgba-23f43fbe-0256-4c47-85dd-67904b3825a7",
+            "memoryBytes": 52551680,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 122.36655194391332
+          },
+          {
+            "id": "ad48176f79e126372c5e92bc9a9f9783bca5d8cc3e31fa013dd60093c370ca4e",
+            "name": "pss-mgba-95cdd788-0212-4e93-8d2d-0e9bd53936ba",
+            "memoryBytes": 51490816,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 122.83928753180662
+          },
+          {
+            "id": "ecc900a77f89b72c15c7e84ea085dfcaf3455162e29cb6400a7e5b6228523e0d",
+            "name": "pss-mgba-aaacff7e-9464-4beb-aad9-218149157c85",
+            "memoryBytes": 52604928,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 124.3697008274984
+          },
+          {
+            "id": "98d49d72498ea6b04e0bf9854d203b12706dea0228ccbd930e8a505e9f4c7bc9",
+            "name": "pss-mgba-ed4f2518-c6da-4d02-87dc-6b49d7c948c9",
+            "memoryBytes": 53133312,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 128.6811601513241
+          },
+          {
+            "id": "c4b2b31192dd501fd3cd431808a376d10812a446ecd5091fe7fc05512c57b565",
+            "name": "pss-mgba-c3b8b629-9754-47ba-9b55-eb1e4c67270d",
+            "memoryBytes": 52576256,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 118.6931974522293
+          }
+        ],
+        "processes": [
+          {
+            "pid": 43765,
+            "role": "gateway",
+            "rssBytes": 54362112
+          }
+        ]
+      },
+      {
+        "sampledAtMs": 1779729046420,
+        "totalMemoryBytes": 578707456,
+        "totalCpuPercent": 1189.123818593124,
+        "containers": [
+          {
+            "id": "e456628376782c716295e4a4609acf307c050f9a31e623f822af817d227d3a8a",
+            "name": "pss-mgba-349da275-a5bc-4d3c-aab2-421e9a3ee89a",
+            "memoryBytes": 52957184,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 118.37811612903226
+          },
+          {
+            "id": "363f8c654d1d9cd3f96852b957ce13054cc6f400f5cad46af9c2ca03cd4d56d5",
+            "name": "pss-mgba-387dc05c-aba5-4eb2-ada2-37e24546e6f0",
+            "memoryBytes": 52756480,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 113.6181980830671
+          },
+          {
+            "id": "1206840d743ba376651ca7adb360009810835734da24f1f6aa7e858f997eb771",
+            "name": "pss-mgba-b001fe93-527a-43a4-b336-86866c8f78f8",
+            "memoryBytes": 51847168,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 125.98034460753031
+          },
+          {
+            "id": "7aa27e9d0521acc7f7e704d994111f3c57edd2d4ac9579e7296b037437e259d6",
+            "name": "pss-mgba-889967c8-d6c0-4f80-967e-be33296bb599",
+            "memoryBytes": 52346880,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 118.26938144329897
+          },
+          {
+            "id": "a788d7499494355ef8114be4d5d0ca17417e1b9bc0ecdb666aa04a488932b663",
+            "name": "pss-mgba-3eeaa4e9-8a81-4ef3-8d8e-b279cea12aa8",
+            "memoryBytes": 52346880,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 125.6224
+          },
+          {
+            "id": "5514cd32f0b627d42f40a1d04ff5c14972232e0b83c0ce58f27bede177f08746",
+            "name": "pss-mgba-23f43fbe-0256-4c47-85dd-67904b3825a7",
+            "memoryBytes": 52592640,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 114.35394719896973
+          },
+          {
+            "id": "ad48176f79e126372c5e92bc9a9f9783bca5d8cc3e31fa013dd60093c370ca4e",
+            "name": "pss-mgba-95cdd788-0212-4e93-8d2d-0e9bd53936ba",
+            "memoryBytes": 51544064,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 117.00512556342564
+          },
+          {
+            "id": "ecc900a77f89b72c15c7e84ea085dfcaf3455162e29cb6400a7e5b6228523e0d",
+            "name": "pss-mgba-aaacff7e-9464-4beb-aad9-218149157c85",
+            "memoryBytes": 52662272,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 121.54072164948452
+          },
+          {
+            "id": "98d49d72498ea6b04e0bf9854d203b12706dea0228ccbd930e8a505e9f4c7bc9",
+            "name": "pss-mgba-ed4f2518-c6da-4d02-87dc-6b49d7c948c9",
+            "memoryBytes": 52649984,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 117.36913848117423
+          },
+          {
+            "id": "c4b2b31192dd501fd3cd431808a376d10812a446ecd5091fe7fc05512c57b565",
+            "name": "pss-mgba-c3b8b629-9754-47ba-9b55-eb1e4c67270d",
+            "memoryBytes": 52641792,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 116.98644543714103
+          }
+        ],
+        "processes": [
+          {
+            "pid": 43765,
+            "role": "gateway",
+            "rssBytes": 54362112
+          }
+        ]
+      },
+      {
+        "sampledAtMs": 1779729053463,
+        "totalMemoryBytes": 579837952,
+        "totalCpuPercent": 1153.377934271758,
+        "containers": [
+          {
+            "id": "e456628376782c716295e4a4609acf307c050f9a31e623f822af817d227d3a8a",
+            "name": "pss-mgba-349da275-a5bc-4d3c-aab2-421e9a3ee89a",
+            "memoryBytes": 52727808,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 115.32155513065648
+          },
+          {
+            "id": "363f8c654d1d9cd3f96852b957ce13054cc6f400f5cad46af9c2ca03cd4d56d5",
+            "name": "pss-mgba-387dc05c-aba5-4eb2-ada2-37e24546e6f0",
+            "memoryBytes": 52785152,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 113.16083385975995
+          },
+          {
+            "id": "1206840d743ba376651ca7adb360009810835734da24f1f6aa7e858f997eb771",
+            "name": "pss-mgba-b001fe93-527a-43a4-b336-86866c8f78f8",
+            "memoryBytes": 51879936,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 128.6497435897436
+          },
+          {
+            "id": "7aa27e9d0521acc7f7e704d994111f3c57edd2d4ac9579e7296b037437e259d6",
+            "name": "pss-mgba-889967c8-d6c0-4f80-967e-be33296bb599",
+            "memoryBytes": 52641792,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 115.8595918367347
+          },
+          {
+            "id": "a788d7499494355ef8114be4d5d0ca17417e1b9bc0ecdb666aa04a488932b663",
+            "name": "pss-mgba-3eeaa4e9-8a81-4ef3-8d8e-b279cea12aa8",
+            "memoryBytes": 52645888,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 116.67236758136568
+          },
+          {
+            "id": "5514cd32f0b627d42f40a1d04ff5c14972232e0b83c0ce58f27bede177f08746",
+            "name": "pss-mgba-23f43fbe-0256-4c47-85dd-67904b3825a7",
+            "memoryBytes": 52625408,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 111.83969620253164
+          },
+          {
+            "id": "ad48176f79e126372c5e92bc9a9f9783bca5d8cc3e31fa013dd60093c370ca4e",
+            "name": "pss-mgba-95cdd788-0212-4e93-8d2d-0e9bd53936ba",
+            "memoryBytes": 51838976,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 115.80638569604088
+          },
+          {
+            "id": "ecc900a77f89b72c15c7e84ea085dfcaf3455162e29cb6400a7e5b6228523e0d",
+            "name": "pss-mgba-aaacff7e-9464-4beb-aad9-218149157c85",
+            "memoryBytes": 52690944,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 113.21448979591837
+          },
+          {
+            "id": "98d49d72498ea6b04e0bf9854d203b12706dea0228ccbd930e8a505e9f4c7bc9",
+            "name": "pss-mgba-ed4f2518-c6da-4d02-87dc-6b49d7c948c9",
+            "memoryBytes": 52699136,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 107.35794871794873
+          },
+          {
+            "id": "c4b2b31192dd501fd3cd431808a376d10812a446ecd5091fe7fc05512c57b565",
+            "name": "pss-mgba-c3b8b629-9754-47ba-9b55-eb1e4c67270d",
+            "memoryBytes": 52940800,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 115.495321861058
+          }
+        ],
+        "processes": [
+          {
+            "pid": 43765,
+            "role": "gateway",
+            "rssBytes": 54362112
+          }
+        ]
+      },
+      {
+        "sampledAtMs": 1779729057114,
+        "totalMemoryBytes": 580763648,
+        "totalCpuPercent": 1188.4910657711662,
+        "containers": [
+          {
+            "id": "e456628376782c716295e4a4609acf307c050f9a31e623f822af817d227d3a8a",
+            "name": "pss-mgba-349da275-a5bc-4d3c-aab2-421e9a3ee89a",
+            "memoryBytes": 52740096,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 118.33231165486156
+          },
+          {
+            "id": "363f8c654d1d9cd3f96852b957ce13054cc6f400f5cad46af9c2ca03cd4d56d5",
+            "name": "pss-mgba-387dc05c-aba5-4eb2-ada2-37e24546e6f0",
+            "memoryBytes": 53092352,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 119.90755784061697
+          },
+          {
+            "id": "1206840d743ba376651ca7adb360009810835734da24f1f6aa7e858f997eb771",
+            "name": "pss-mgba-b001fe93-527a-43a4-b336-86866c8f78f8",
+            "memoryBytes": 51941376,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 114.6181633945535
+          },
+          {
+            "id": "7aa27e9d0521acc7f7e704d994111f3c57edd2d4ac9579e7296b037437e259d6",
+            "name": "pss-mgba-889967c8-d6c0-4f80-967e-be33296bb599",
+            "memoryBytes": 52686848,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 121.37105196451203
+          },
+          {
+            "id": "a788d7499494355ef8114be4d5d0ca17417e1b9bc0ecdb666aa04a488932b663",
+            "name": "pss-mgba-3eeaa4e9-8a81-4ef3-8d8e-b279cea12aa8",
+            "memoryBytes": 53190656,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 124.69929351316635
+          },
+          {
+            "id": "5514cd32f0b627d42f40a1d04ff5c14972232e0b83c0ce58f27bede177f08746",
+            "name": "pss-mgba-23f43fbe-0256-4c47-85dd-67904b3825a7",
+            "memoryBytes": 52920320,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 118.60043174603175
+          },
+          {
+            "id": "ad48176f79e126372c5e92bc9a9f9783bca5d8cc3e31fa013dd60093c370ca4e",
+            "name": "pss-mgba-95cdd788-0212-4e93-8d2d-0e9bd53936ba",
+            "memoryBytes": 51318784,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 120.40220654265555
+          },
+          {
+            "id": "ecc900a77f89b72c15c7e84ea085dfcaf3455162e29cb6400a7e5b6228523e0d",
+            "name": "pss-mgba-aaacff7e-9464-4beb-aad9-218149157c85",
+            "memoryBytes": 52994048,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 124.3631794871795
+          },
+          {
+            "id": "98d49d72498ea6b04e0bf9854d203b12706dea0228ccbd930e8a505e9f4c7bc9",
+            "name": "pss-mgba-ed4f2518-c6da-4d02-87dc-6b49d7c948c9",
+            "memoryBytes": 52494336,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 118.38866709594333
+          },
+          {
+            "id": "c4b2b31192dd501fd3cd431808a376d10812a446ecd5091fe7fc05512c57b565",
+            "name": "pss-mgba-c3b8b629-9754-47ba-9b55-eb1e4c67270d",
+            "memoryBytes": 53022720,
+            "memoryLimitBytes": 805306368,
+            "cpuPercent": 107.80820253164558
+          }
+        ],
+        "processes": [
+          {
+            "pid": 43765,
+            "role": "gateway",
+            "rssBytes": 54362112
+          }
+        ]
+      }
+    ],
+    "peakTotalMemoryBytes": 580763648,
+    "averageTotalMemoryBytes": 576722124.8,
+    "peakTotalCpuPercent": 1245.8941980400011,
+    "averageTotalCpuPercent": 1206.9886580535235
+  },
+  "serverStreamMetrics": {
+    "start": {
+      "generatedAtMs": 1779728995069,
+      "instances": [
+        {
+          "instanceId": "349da275-a5bc-4d3c-aab2-421e9a3ee89a",
+          "instanceIndex": 0,
+          "producedFrames": 1662,
+          "firstProducedAtMs": 1779728980551,
+          "lastProducedAtMs": 1779728995062,
+          "producedFps": 114.46488870512026,
+          "rawBytes": 381222912,
+          "compressedBytes": 9063,
+          "compressionRatio": 0.000023773492397015215,
+          "keyframesProduced": 1,
+          "deltaFrames": 1661,
+          "sequenceGaps": 0,
+          "lastSequence": 1662,
+          "dashboardFramesSent": 0,
+          "dashboardFramesDropped": 0,
+          "instanceFramesSent": 569,
+          "instanceFramesDropped": 0,
+          "clientDecodedFrames": 0,
+          "clientDroppedFrames": 0,
+          "clientKeyframeRecoveries": 0,
+          "clientReconnects": 0,
+          "clientRenderedFrames": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "387dc05c-aba5-4eb2-ada2-37e24546e6f0",
+          "instanceIndex": 1,
+          "producedFrames": 1528,
+          "firstProducedAtMs": 1779728981712,
+          "lastProducedAtMs": 1779728995062,
+          "producedFps": 114.38202247191012,
+          "rawBytes": 350486528,
+          "compressedBytes": 8527,
+          "compressionRatio": 0.00002432903783394493,
+          "keyframesProduced": 1,
+          "deltaFrames": 1527,
+          "sequenceGaps": 0,
+          "lastSequence": 1528,
+          "dashboardFramesSent": 0,
+          "dashboardFramesDropped": 0,
+          "instanceFramesSent": 569,
+          "instanceFramesDropped": 0,
+          "clientDecodedFrames": 0,
+          "clientDroppedFrames": 0,
+          "clientKeyframeRecoveries": 0,
+          "clientReconnects": 0,
+          "clientRenderedFrames": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "b001fe93-527a-43a4-b336-86866c8f78f8",
+          "instanceIndex": 2,
+          "producedFrames": 1395,
+          "firstProducedAtMs": 1779728982871,
+          "lastProducedAtMs": 1779728995062,
+          "producedFps": 114.34664916741858,
+          "rawBytes": 319979520,
+          "compressedBytes": 7995,
+          "compressionRatio": 0.00002498597410234255,
+          "keyframesProduced": 1,
+          "deltaFrames": 1394,
+          "sequenceGaps": 0,
+          "lastSequence": 1395,
+          "dashboardFramesSent": 0,
+          "dashboardFramesDropped": 0,
+          "instanceFramesSent": 569,
+          "instanceFramesDropped": 0,
+          "clientDecodedFrames": 0,
+          "clientDroppedFrames": 0,
+          "clientKeyframeRecoveries": 0,
+          "clientReconnects": 0,
+          "clientRenderedFrames": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "889967c8-d6c0-4f80-967e-be33296bb599",
+          "instanceIndex": 3,
+          "producedFrames": 1264,
+          "firstProducedAtMs": 1779728984018,
+          "lastProducedAtMs": 1779728995062,
+          "producedFps": 114.36073886273088,
+          "rawBytes": 289931264,
+          "compressedBytes": 7471,
+          "compressionRatio": 0.000025768176556495818,
+          "keyframesProduced": 1,
+          "deltaFrames": 1263,
+          "sequenceGaps": 0,
+          "lastSequence": 1264,
+          "dashboardFramesSent": 0,
+          "dashboardFramesDropped": 0,
+          "instanceFramesSent": 569,
+          "instanceFramesDropped": 0,
+          "clientDecodedFrames": 0,
+          "clientDroppedFrames": 0,
+          "clientKeyframeRecoveries": 0,
+          "clientReconnects": 0,
+          "clientRenderedFrames": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "3eeaa4e9-8a81-4ef3-8d8e-b279cea12aa8",
+          "instanceIndex": 4,
+          "producedFrames": 1188,
+          "firstProducedAtMs": 1779728984675,
+          "lastProducedAtMs": 1779728995062,
+          "producedFps": 114.27746221238085,
+          "rawBytes": 272498688,
+          "compressedBytes": 7167,
+          "compressionRatio": 0.00002630104406227453,
+          "keyframesProduced": 1,
+          "deltaFrames": 1187,
+          "sequenceGaps": 0,
+          "lastSequence": 1188,
+          "dashboardFramesSent": 0,
+          "dashboardFramesDropped": 0,
+          "instanceFramesSent": 569,
+          "instanceFramesDropped": 0,
+          "clientDecodedFrames": 0,
+          "clientDroppedFrames": 0,
+          "clientKeyframeRecoveries": 0,
+          "clientReconnects": 0,
+          "clientRenderedFrames": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "23f43fbe-0256-4c47-85dd-67904b3825a7",
+          "instanceIndex": 5,
+          "producedFrames": 1111,
+          "firstProducedAtMs": 1779728985335,
+          "lastProducedAtMs": 1779728995062,
+          "producedFps": 114.11534902847743,
+          "rawBytes": 254836736,
+          "compressedBytes": 6859,
+          "compressionRatio": 0.00002691527174480841,
+          "keyframesProduced": 1,
+          "deltaFrames": 1110,
+          "sequenceGaps": 0,
+          "lastSequence": 1111,
+          "dashboardFramesSent": 0,
+          "dashboardFramesDropped": 0,
+          "instanceFramesSent": 569,
+          "instanceFramesDropped": 0,
+          "clientDecodedFrames": 0,
+          "clientDroppedFrames": 0,
+          "clientKeyframeRecoveries": 0,
+          "clientReconnects": 0,
+          "clientRenderedFrames": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "95cdd788-0212-4e93-8d2d-0e9bd53936ba",
+          "instanceIndex": 6,
+          "producedFrames": 976,
+          "firstProducedAtMs": 1779728986503,
+          "lastProducedAtMs": 1779728995062,
+          "producedFps": 113.91517700665966,
+          "rawBytes": 223870976,
+          "compressedBytes": 6319,
+          "compressionRatio": 0.000028226079650450088,
+          "keyframesProduced": 1,
+          "deltaFrames": 975,
+          "sequenceGaps": 0,
+          "lastSequence": 976,
+          "dashboardFramesSent": 0,
+          "dashboardFramesDropped": 0,
+          "instanceFramesSent": 569,
+          "instanceFramesDropped": 0,
+          "clientDecodedFrames": 0,
+          "clientDroppedFrames": 0,
+          "clientKeyframeRecoveries": 0,
+          "clientReconnects": 0,
+          "clientRenderedFrames": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "aaacff7e-9464-4beb-aad9-218149157c85",
+          "instanceIndex": 7,
+          "producedFrames": 840,
+          "firstProducedAtMs": 1779728987707,
+          "lastProducedAtMs": 1779728995062,
+          "producedFps": 114.07205982324949,
+          "rawBytes": 192675840,
+          "compressedBytes": 5775,
+          "compressionRatio": 0.000029972621372767856,
+          "keyframesProduced": 1,
+          "deltaFrames": 839,
+          "sequenceGaps": 0,
+          "lastSequence": 840,
+          "dashboardFramesSent": 0,
+          "dashboardFramesDropped": 0,
+          "instanceFramesSent": 569,
+          "instanceFramesDropped": 0,
+          "clientDecodedFrames": 0,
+          "clientDroppedFrames": 0,
+          "clientKeyframeRecoveries": 0,
+          "clientReconnects": 0,
+          "clientRenderedFrames": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "ed4f2518-c6da-4d02-87dc-6b49d7c948c9",
+          "instanceIndex": 8,
+          "producedFrames": 698,
+          "firstProducedAtMs": 1779728988940,
+          "lastProducedAtMs": 1779728995062,
+          "producedFps": 113.85168245671349,
+          "rawBytes": 160104448,
+          "compressedBytes": 5207,
+          "compressionRatio": 0.00003252251929940135,
+          "keyframesProduced": 1,
+          "deltaFrames": 697,
+          "sequenceGaps": 0,
+          "lastSequence": 698,
+          "dashboardFramesSent": 0,
+          "dashboardFramesDropped": 0,
+          "instanceFramesSent": 569,
+          "instanceFramesDropped": 0,
+          "clientDecodedFrames": 0,
+          "clientDroppedFrames": 0,
+          "clientKeyframeRecoveries": 0,
+          "clientReconnects": 0,
+          "clientRenderedFrames": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "c3b8b629-9754-47ba-9b55-eb1e4c67270d",
+          "instanceIndex": 9,
+          "producedFrames": 568,
+          "firstProducedAtMs": 1779728990088,
+          "lastProducedAtMs": 1779728995062,
+          "producedFps": 113.99276236429432,
+          "rawBytes": 130285568,
+          "compressedBytes": 4687,
+          "compressionRatio": 0.00003597482109453597,
+          "keyframesProduced": 1,
+          "deltaFrames": 567,
+          "sequenceGaps": 0,
+          "lastSequence": 568,
+          "dashboardFramesSent": 0,
+          "dashboardFramesDropped": 0,
+          "instanceFramesSent": 568,
+          "instanceFramesDropped": 0,
+          "clientDecodedFrames": 0,
+          "clientDroppedFrames": 0,
+          "clientKeyframeRecoveries": 0,
+          "clientReconnects": 0,
+          "clientRenderedFrames": 0,
+          "clientSequenceGaps": 0
+        }
+      ],
+      "aggregate": {
+        "clientDroppedFrames": 0,
+        "clientRenderedFrames": 0,
+        "clientSequenceGaps": 0,
+        "compressedBytes": 69070,
+        "producedFrames": 11230,
+        "rawBytes": 2575892480,
+        "keyframesProduced": 10,
+        "deltaFrames": 11220,
+        "sequenceGaps": 0,
+        "dashboardFramesSent": 0,
+        "dashboardFramesDropped": 0,
+        "instanceFramesSent": 5689,
+        "instanceFramesDropped": 0
+      }
+    },
+    "end": {
+      "generatedAtMs": 1779729057115,
+      "instances": [
+        {
+          "instanceId": "349da275-a5bc-4d3c-aab2-421e9a3ee89a",
+          "instanceIndex": 0,
+          "producedFrames": 8727,
+          "firstProducedAtMs": 1779728980551,
+          "lastProducedAtMs": 1779729057109,
+          "producedFps": 113.97894406854932,
+          "rawBytes": 2001764352,
+          "compressedBytes": 52430,
+          "compressionRatio": 0.000026191894139595508,
+          "keyframesProduced": 2,
+          "deltaFrames": 8725,
+          "sequenceGaps": 0,
+          "lastSequence": 8727,
+          "dashboardFramesSent": 0,
+          "dashboardFramesDropped": 0,
+          "instanceFramesSent": 7634,
+          "instanceFramesDropped": 0,
+          "clientDecodedFrames": 0,
+          "clientDroppedFrames": 0,
+          "clientKeyframeRecoveries": 0,
+          "clientReconnects": 0,
+          "clientRenderedFrames": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "387dc05c-aba5-4eb2-ada2-37e24546e6f0",
+          "instanceIndex": 1,
+          "producedFrames": 8593,
+          "firstProducedAtMs": 1779728981712,
+          "lastProducedAtMs": 1779729057109,
+          "producedFps": 113.95678873164714,
+          "rawBytes": 1971027968,
+          "compressedBytes": 51181,
+          "compressionRatio": 0.000025966653355981196,
+          "keyframesProduced": 2,
+          "deltaFrames": 8591,
+          "sequenceGaps": 0,
+          "lastSequence": 8593,
+          "dashboardFramesSent": 0,
+          "dashboardFramesDropped": 0,
+          "instanceFramesSent": 7634,
+          "instanceFramesDropped": 0,
+          "clientDecodedFrames": 0,
+          "clientDroppedFrames": 0,
+          "clientKeyframeRecoveries": 0,
+          "clientReconnects": 0,
+          "clientRenderedFrames": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "b001fe93-527a-43a4-b336-86866c8f78f8",
+          "instanceIndex": 2,
+          "producedFrames": 8460,
+          "firstProducedAtMs": 1779728982871,
+          "lastProducedAtMs": 1779729057109,
+          "producedFps": 113.94434117298418,
+          "rawBytes": 1940520960,
+          "compressedBytes": 51213,
+          "compressionRatio": 0.000026391366574056485,
+          "keyframesProduced": 2,
+          "deltaFrames": 8458,
+          "sequenceGaps": 0,
+          "lastSequence": 8460,
+          "dashboardFramesSent": 0,
+          "dashboardFramesDropped": 0,
+          "instanceFramesSent": 7634,
+          "instanceFramesDropped": 0,
+          "clientDecodedFrames": 0,
+          "clientDroppedFrames": 0,
+          "clientKeyframeRecoveries": 0,
+          "clientReconnects": 0,
+          "clientRenderedFrames": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "889967c8-d6c0-4f80-967e-be33296bb599",
+          "instanceIndex": 3,
+          "producedFrames": 8329,
+          "firstProducedAtMs": 1779728984018,
+          "lastProducedAtMs": 1779729057109,
+          "producedFps": 113.94015679084977,
+          "rawBytes": 1910472704,
+          "compressedBytes": 49665,
+          "compressionRatio": 0.000025996184031321286,
+          "keyframesProduced": 2,
+          "deltaFrames": 8327,
+          "sequenceGaps": 0,
+          "lastSequence": 8329,
+          "dashboardFramesSent": 0,
+          "dashboardFramesDropped": 0,
+          "instanceFramesSent": 7634,
+          "instanceFramesDropped": 0,
+          "clientDecodedFrames": 0,
+          "clientDroppedFrames": 0,
+          "clientKeyframeRecoveries": 0,
+          "clientReconnects": 0,
+          "clientRenderedFrames": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "3eeaa4e9-8a81-4ef3-8d8e-b279cea12aa8",
+          "instanceIndex": 4,
+          "producedFrames": 8253,
+          "firstProducedAtMs": 1779728984675,
+          "lastProducedAtMs": 1779729057109,
+          "producedFps": 113.92440014357899,
+          "rawBytes": 1893040128,
+          "compressedBytes": 49443,
+          "compressionRatio": 0.00002611830529563925,
+          "keyframesProduced": 2,
+          "deltaFrames": 8251,
+          "sequenceGaps": 0,
+          "lastSequence": 8253,
+          "dashboardFramesSent": 0,
+          "dashboardFramesDropped": 0,
+          "instanceFramesSent": 7634,
+          "instanceFramesDropped": 0,
+          "clientDecodedFrames": 0,
+          "clientDroppedFrames": 0,
+          "clientKeyframeRecoveries": 0,
+          "clientReconnects": 0,
+          "clientRenderedFrames": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "23f43fbe-0256-4c47-85dd-67904b3825a7",
+          "instanceIndex": 5,
+          "producedFrames": 8176,
+          "firstProducedAtMs": 1779728985335,
+          "lastProducedAtMs": 1779729057109,
+          "producedFps": 113.89918354836013,
+          "rawBytes": 1875378176,
+          "compressedBytes": 49294,
+          "compressionRatio": 0.00002628483184396404,
+          "keyframesProduced": 2,
+          "deltaFrames": 8174,
+          "sequenceGaps": 0,
+          "lastSequence": 8176,
+          "dashboardFramesSent": 0,
+          "dashboardFramesDropped": 0,
+          "instanceFramesSent": 7634,
+          "instanceFramesDropped": 0,
+          "clientDecodedFrames": 0,
+          "clientDroppedFrames": 0,
+          "clientKeyframeRecoveries": 0,
+          "clientReconnects": 0,
+          "clientRenderedFrames": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "95cdd788-0212-4e93-8d2d-0e9bd53936ba",
+          "instanceIndex": 6,
+          "producedFrames": 8041,
+          "firstProducedAtMs": 1779728986503,
+          "lastProducedAtMs": 1779729057109,
+          "producedFps": 113.87134237883467,
+          "rawBytes": 1844412416,
+          "compressedBytes": 48612,
+          "compressionRatio": 0.000026356361287908397,
+          "keyframesProduced": 2,
+          "deltaFrames": 8039,
+          "sequenceGaps": 0,
+          "lastSequence": 8041,
+          "dashboardFramesSent": 0,
+          "dashboardFramesDropped": 0,
+          "instanceFramesSent": 7634,
+          "instanceFramesDropped": 0,
+          "clientDecodedFrames": 0,
+          "clientDroppedFrames": 0,
+          "clientKeyframeRecoveries": 0,
+          "clientReconnects": 0,
+          "clientRenderedFrames": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "aaacff7e-9464-4beb-aad9-218149157c85",
+          "instanceIndex": 7,
+          "producedFrames": 7905,
+          "firstProducedAtMs": 1779728987707,
+          "lastProducedAtMs": 1779729057109,
+          "producedFps": 113.8872078614449,
+          "rawBytes": 1813217280,
+          "compressedBytes": 47921,
+          "compressionRatio": 0.000026428713496487304,
+          "keyframesProduced": 2,
+          "deltaFrames": 7903,
+          "sequenceGaps": 0,
+          "lastSequence": 7905,
+          "dashboardFramesSent": 0,
+          "dashboardFramesDropped": 0,
+          "instanceFramesSent": 7634,
+          "instanceFramesDropped": 0,
+          "clientDecodedFrames": 0,
+          "clientDroppedFrames": 0,
+          "clientKeyframeRecoveries": 0,
+          "clientReconnects": 0,
+          "clientRenderedFrames": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "ed4f2518-c6da-4d02-87dc-6b49d7c948c9",
+          "instanceIndex": 8,
+          "producedFrames": 7763,
+          "firstProducedAtMs": 1779728988940,
+          "lastProducedAtMs": 1779729057109,
+          "producedFps": 113.8640731124118,
+          "rawBytes": 1780645888,
+          "compressedBytes": 46727,
+          "compressionRatio": 0.000026241601609224618,
+          "keyframesProduced": 2,
+          "deltaFrames": 7761,
+          "sequenceGaps": 0,
+          "lastSequence": 7763,
+          "dashboardFramesSent": 0,
+          "dashboardFramesDropped": 0,
+          "instanceFramesSent": 7634,
+          "instanceFramesDropped": 0,
+          "clientDecodedFrames": 0,
+          "clientDroppedFrames": 0,
+          "clientKeyframeRecoveries": 0,
+          "clientReconnects": 0,
+          "clientRenderedFrames": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "c3b8b629-9754-47ba-9b55-eb1e4c67270d",
+          "instanceIndex": 9,
+          "producedFrames": 7633,
+          "firstProducedAtMs": 1779728990088,
+          "lastProducedAtMs": 1779729057109,
+          "producedFps": 113.87475567359485,
+          "rawBytes": 1750827008,
+          "compressedBytes": 47018,
+          "compressionRatio": 0.000026854737666920888,
+          "keyframesProduced": 2,
+          "deltaFrames": 7631,
+          "sequenceGaps": 0,
+          "lastSequence": 7633,
+          "dashboardFramesSent": 0,
+          "dashboardFramesDropped": 0,
+          "instanceFramesSent": 7633,
+          "instanceFramesDropped": 0,
+          "clientDecodedFrames": 0,
+          "clientDroppedFrames": 0,
+          "clientKeyframeRecoveries": 0,
+          "clientReconnects": 0,
+          "clientRenderedFrames": 0,
+          "clientSequenceGaps": 0
+        }
+      ],
+      "aggregate": {
+        "clientDroppedFrames": 0,
+        "clientRenderedFrames": 0,
+        "clientSequenceGaps": 0,
+        "compressedBytes": 493504,
+        "producedFrames": 81880,
+        "rawBytes": 18781306880,
+        "keyframesProduced": 20,
+        "deltaFrames": 81860,
+        "sequenceGaps": 0,
+        "dashboardFramesSent": 0,
+        "dashboardFramesDropped": 0,
+        "instanceFramesSent": 76339,
+        "instanceFramesDropped": 0
+      }
+    },
+    "delta": {
+      "instances": [
+        {
+          "instanceId": "349da275-a5bc-4d3c-aab2-421e9a3ee89a",
+          "producedFrames": 7065,
+          "producedFps": 113.87080136677197,
+          "dashboardFramesDropped": 0,
+          "instanceFramesDropped": 0,
+          "sequenceGaps": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "387dc05c-aba5-4eb2-ada2-37e24546e6f0",
+          "producedFrames": 7065,
+          "producedFps": 113.87080136677197,
+          "dashboardFramesDropped": 0,
+          "instanceFramesDropped": 0,
+          "sequenceGaps": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "b001fe93-527a-43a4-b336-86866c8f78f8",
+          "producedFrames": 7065,
+          "producedFps": 113.87080136677197,
+          "dashboardFramesDropped": 0,
+          "instanceFramesDropped": 0,
+          "sequenceGaps": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "889967c8-d6c0-4f80-967e-be33296bb599",
+          "producedFrames": 7065,
+          "producedFps": 113.87080136677197,
+          "dashboardFramesDropped": 0,
+          "instanceFramesDropped": 0,
+          "sequenceGaps": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "3eeaa4e9-8a81-4ef3-8d8e-b279cea12aa8",
+          "producedFrames": 7065,
+          "producedFps": 113.87080136677197,
+          "dashboardFramesDropped": 0,
+          "instanceFramesDropped": 0,
+          "sequenceGaps": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "23f43fbe-0256-4c47-85dd-67904b3825a7",
+          "producedFrames": 7065,
+          "producedFps": 113.87080136677197,
+          "dashboardFramesDropped": 0,
+          "instanceFramesDropped": 0,
+          "sequenceGaps": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "95cdd788-0212-4e93-8d2d-0e9bd53936ba",
+          "producedFrames": 7065,
+          "producedFps": 113.87080136677197,
+          "dashboardFramesDropped": 0,
+          "instanceFramesDropped": 0,
+          "sequenceGaps": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "aaacff7e-9464-4beb-aad9-218149157c85",
+          "producedFrames": 7065,
+          "producedFps": 113.87080136677197,
+          "dashboardFramesDropped": 0,
+          "instanceFramesDropped": 0,
+          "sequenceGaps": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "ed4f2518-c6da-4d02-87dc-6b49d7c948c9",
+          "producedFrames": 7065,
+          "producedFps": 113.87080136677197,
+          "dashboardFramesDropped": 0,
+          "instanceFramesDropped": 0,
+          "sequenceGaps": 0,
+          "clientSequenceGaps": 0
+        },
+        {
+          "instanceId": "c3b8b629-9754-47ba-9b55-eb1e4c67270d",
+          "producedFrames": 7065,
+          "producedFps": 113.87080136677197,
+          "dashboardFramesDropped": 0,
+          "instanceFramesDropped": 0,
+          "sequenceGaps": 0,
+          "clientSequenceGaps": 0
+        }
+      ]
+    }
+  },
+  "verdict": {
+    "pass": true,
+    "failures": []
+  }
+}
