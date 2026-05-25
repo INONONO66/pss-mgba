@@ -115,6 +115,23 @@ describe("headless benchmark report", () => {
     );
   });
 
+
+  it("counts explicit stream sequence gaps as dropped frames", () => {
+    const report = buildInstanceReport({
+      instanceId: "gappy-stream",
+      receivedAtMs: Array.from({ length: 60 }, (_value, frame) => frame * (1000 / 60)),
+      durationMs: 1000,
+      lateFrameThresholdMs: 25,
+      minP95Fps: 60,
+      maxDroppedOrLateRatio: 0.01,
+      sequenceGaps: 4,
+    });
+
+    expect(report.pass).toBe(false);
+    expect(report.droppedOrLateFrames).toBe(4);
+    expect(report.streamHealth.sequenceGaps).toBe(4);
+  });
+
   it("prevents strict acceptance pass for reduced targets and incomplete RAM coverage", () => {
     const instance = buildInstanceReport({
       instanceId: "instance-a",

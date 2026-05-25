@@ -10,6 +10,7 @@ import type { InstanceRegistry } from "../src/gateway/ApiRouter.js";
 import type { InstanceInfo } from "../src/instances/types.js";
 import { StreamMetrics } from "../src/streaming/StreamMetrics.js";
 import type { CapturedFrame } from "../src/streaming/FrameCapture.js";
+import { StreamFrameType } from "../src/streaming/StreamProtocol.js";
 import { MgbaSocketClient } from "../src/mgba/MgbaSocketClient.js";
 
 describe("createAdminRouter", () => {
@@ -99,8 +100,9 @@ function createFixture(options: FixtureOptions = {}) {
         maxInstances: options.maxInstances ?? 10,
         emulatorImage: "pss-mgba-emulator",
         emulatorPort: 8888,
-        captureIntervalMs: 100,
-        jpegQuality: 60,
+        captureIntervalMs: 16,
+        streamKeyframeInterval: 60,
+        streamTileSize: 16,
         wsBackpressureLimit: 262_144,
         networkName: "pss-mgba-net",
       } satisfies Config,
@@ -129,8 +131,16 @@ function createFrame(overrides: Partial<CapturedFrame> = {}): CapturedFrame {
     instanceIndex: 0,
     instanceId: "instance-a",
     token: "token-instance-a",
-    jpegBuffer: Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
+    changedTiles: 0,
+    frameType: StreamFrameType.Keyframe,
+    height: 1,
+    payload: Buffer.from([1, 2, 3]),
+    payloadBytes: 3,
+    rawBytes: 4,
+    sequence: 1,
+    tileSize: 16,
     timestampMs: 1000,
+    width: 1,
     ...overrides,
   };
 }

@@ -26,6 +26,7 @@ export interface InstanceBenchmarkReport {
     serverProducedFrames?: number;
     serverProducedFps?: number;
     serverDroppedFrames?: number;
+    sequenceGaps?: number;
   };
   token?: string;
 }
@@ -120,6 +121,7 @@ export function buildInstanceReport(opts: {
   serverDroppedFrames?: number;
   reconnects?: number;
   keyframeRecoveries?: number;
+  sequenceGaps?: number;
 }): InstanceBenchmarkReport {
   const measuredDurationMs =
     opts.windowStartedAtMs !== undefined && opts.windowEndedAtMs !== undefined
@@ -144,7 +146,8 @@ export function buildInstanceReport(opts: {
     Math.floor((measuredDurationMs * opts.minP95Fps) / 1000)
   );
   const missingFrames = Math.max(0, expectedFrames - opts.receivedAtMs.length);
-  const droppedOrLateFrames = Math.max(lateFrameEquivalents, missingFrames);
+  const protocolDroppedFrames = Math.max(opts.serverDroppedFrames ?? 0, opts.sequenceGaps ?? 0);
+  const droppedOrLateFrames = Math.max(lateFrameEquivalents, missingFrames, protocolDroppedFrames);
   const droppedOrLateFrameRatio = droppedOrLateFrames / expectedFrames;
   const displayedFps = summarize(fpsSamples);
   const frameIntervalMs = summarize(intervals);
@@ -186,6 +189,7 @@ export function buildInstanceReport(opts: {
       serverProducedFrames: opts.serverProducedFrames,
       serverProducedFps: opts.serverProducedFps,
       serverDroppedFrames: opts.serverDroppedFrames,
+      sequenceGaps: opts.sequenceGaps,
     },
     pass: failures.length === 0,
     failures,

@@ -20,13 +20,15 @@ describe("loadConfig", () => {
   it("coerces benchmark-relevant numeric settings", () => {
     process.env.MAX_INSTANCES = "4";
     process.env.CAPTURE_INTERVAL_MS = "16";
-    process.env.JPEG_QUALITY = "70";
+    process.env.STREAM_KEYFRAME_INTERVAL = "120";
+    process.env.STREAM_TILE_SIZE = "32";
     process.env.WS_BACKPRESSURE_LIMIT = "1024";
 
     expect(loadConfig()).toMatchObject({
       captureIntervalMs: 16,
-      jpegQuality: 70,
       maxInstances: 4,
+      streamKeyframeInterval: 120,
+      streamTileSize: 32,
       wsBackpressureLimit: 1024,
     });
   });

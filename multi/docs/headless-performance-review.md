@@ -16,24 +16,23 @@ A passing benchmark run must prove all of the following in a standalone report:
 - Missing gateway RSS or partial container/process memory samples fail strict acceptance.
 - JSON and human-readable summaries are emitted without opening the dashboard UI.
 
-## Current baseline risks
+## Baseline risks tracked by the benchmark
 
-The current gateway remains useful as a REST/WebSocket skeleton, but the inspected
-baseline is not sufficient by itself as proof of the strict performance target:
+The benchmark infrastructure is strict, but these runtime risks remain relevant
+when deciding whether a live run proves the 10-instance target:
 
-- `src/streaming/FrameCapture.ts` uses a single timer that captures one instance
-  per interval. With the default 100 ms interval and ten instances, that is about
-  one capture per instance per second, not 60 fps per instance.
-- `src/streaming/FrameCapture.ts` still uses the high-overhead
-  screenshot-to-container-file-to-`docker exec cat`-to-`sharp` JPEG path. This is
-  the path most likely to bottleneck the target and should not be the only
-  measured transport for a pass verdict.
-- The capture loop has no explicit in-flight guard. If capture/encode work takes
-  longer than the timer interval, overlapping captures can race on the shared
-  `/tmp/frame.png` capture path.
-- `src/streaming/DashboardBroadcast.ts` frames include an instance index and
-  timestamp, but no sequence number, frame type, reconnect counter, or recovery
-  marker. That limits dropped-frame and stream-health accounting.
+- `src/streaming/FrameCapture.ts` schedules every registered instance each
+  interval with per-instance in-flight guards. The default
+  `CAPTURE_INTERVAL_MS=16` is intended to exercise a 60fps cadence, but it must
+  still be validated under load before a strict pass is accepted.
+- The gateway still obtains source pixels through mGBA screenshot plus
+  container-file readback. The WebSocket transport no longer sends JPEG images,
+  but the capture source remains a likely runtime bottleneck for the later
+  container/runtime optimization PR.
+- `src/streaming/DashboardBroadcast.ts` now sends typed keyframe/delta frames
+  with sequence numbers, keyframe replay, and client metric ingestion. The
+  benchmark must continue treating sequence gaps and server/client drop counters
+  as dropped-frame evidence.
 - The gateway root route still serves a placeholder dashboard, so live per-tile
   FPS/drop instrumentation is not yet visible through the gateway page.
 - `src/instances/DockerDriver.ts` and `src/instances/InstanceManager.ts` provide
