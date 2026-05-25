@@ -5,52 +5,32 @@ import { createApiRouter, type InstanceRegistry } from '../src/gateway/ApiRouter
 import { MgbaSocketClient } from '../src/mgba/MgbaSocketClient.js'
 import { formatMessage, SUCCESS_MARKER } from '../src/mgba/protocol.js'
 
-interface ExecFileCall {
-  file: string
-  args: string[]
-  encoding: 'buffer'
-  timeout: number
-}
-
-type ExecFileCallback = (error: Error | null, stdout: Buffer, stderr: Buffer) => void
-type ExecFileMock = (
-  file: string,
-  args: string[],
-  options: { encoding: 'buffer'; timeout: number },
-  callback: ExecFileCallback,
-) => void
-
-const execFileMock = vi.hoisted(() => {
-  const calls: ExecFileCall[] = []
-  const empty = Buffer.from([])
-  let implementation: ExecFileMock = (_file, _args, _options, callback) => {
-    callback(null, empty, empty)
-  }
+const readFileMock = vi.hoisted(() => {
+  const calls: string[] = []
+  let implementation: (path: string) => Promise<Buffer> = () => Promise.resolve(Buffer.from([]))
 
   return {
     calls,
-    execFile(file: string, args: string[], options: { encoding: 'buffer'; timeout: number }, callback: ExecFileCallback) {
-      calls.push({ file, args, encoding: options.encoding, timeout: options.timeout })
-      implementation(file, args, options, callback)
+    readFile(path: string) {
+      calls.push(path)
+      return implementation(path)
     },
     reset() {
       calls.length = 0
-      implementation = (_file, _args, _options, callback) => {
-        callback(null, empty, empty)
-      }
+      implementation = () => Promise.resolve(Buffer.from([]))
     },
-    setImplementation(next: ExecFileMock) {
+    setImplementation(next: (path: string) => Promise<Buffer>) {
       implementation = next
     },
   }
 })
 
-vi.mock('node:child_process', () => ({
-  execFile: execFileMock.execFile,
+vi.mock('node:fs/promises', () => ({
+  readFile: readFileMock.readFile,
 }))
 
 const TOKEN = '0123456789abcdef0123456789abcdef'
-const CONTAINER_ID = 'container-123'
+const FRAME_PATH = '/tmp/frames/instance-1'
 
 type HttpMethod = 'GET' | 'POST'
 
@@ -70,7 +50,7 @@ interface Fixture {
 
 describe('createApiRouter', () => {
   beforeEach(() => {
-    execFileMock.reset()
+    readFileMock.reset()
   })
 
   const textCases: TextEndpointCase[] = [
@@ -171,13 +151,12 @@ describe('createApiRouter', () => {
     expect(fixture.messages).toEqual([])
   })
 
-  it('returns PNG bytes for /core/screenshot after docker exec reads the capture file', async () => {
+  it('returns PNG bytes for /core/screenshot after reading the capture file', async () => {
     const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a])
-    execFileMock.setImplementation((_file, _args, _options, callback) => {
-      callback(null, pngBytes, Buffer.from([]))
-    })
+    readFileMock.setImplementation(() => Promise.resolve(pngBytes))
 
-    const socketMessage = formatMessage('core.screenshot', '/tmp/capture.png')
+    const capturePath = `${FRAME_PATH}/capture.png`
+    const socketMessage = formatMessage('core.screenshot', capturePath)
     const fixture = createFixture(new Map([[socketMessage, SUCCESS_MARKER]]))
 
     const response = await fixture.app.request(
@@ -189,22 +168,14 @@ describe('createApiRouter', () => {
     expect(response.headers.get('content-type')).toBe('image/png')
     expect(Buffer.from(await response.arrayBuffer())).toEqual(pngBytes)
     expect(fixture.messages).toEqual([socketMessage])
-    expect(execFileMock.calls).toEqual([
-      {
-        file: 'docker',
-        args: ['exec', CONTAINER_ID, 'cat', '/tmp/capture.png'],
-        encoding: 'buffer',
-        timeout: 10_000,
-      },
-    ])
+    expect(readFileMock.calls).toEqual([capturePath])
   })
 
-  it('returns 500 when docker exec cannot read /tmp/capture.png', async () => {
-    execFileMock.setImplementation((_file, _args, _options, callback) => {
-      callback(new Error('docker failed'), Buffer.from([]), Buffer.from([]))
-    })
+  it('returns 500 when capture.png cannot be read', async () => {
+    readFileMock.setImplementation(() => Promise.reject(new Error('read failed')))
 
-    const socketMessage = formatMessage('core.screenshot', '/tmp/capture.png')
+    const capturePath = `${FRAME_PATH}/capture.png`
+    const socketMessage = formatMessage('core.screenshot', capturePath)
     const fixture = createFixture(new Map([[socketMessage, SUCCESS_MARKER]]))
 
     const response = await fixture.app.request(
@@ -239,8 +210,9 @@ function createFixture(responses: Map<string, string>): Fixture {
         info: {
           id: 'instance-1',
           token: TOKEN,
-          containerId: CONTAINER_ID,
-          containerHost: '127.0.0.1',
+          pid: 12_345,
+          port: 8888,
+          framePath: FRAME_PATH,
           status: 'running',
           createdAt: new Date('2026-05-25T00:00:00Z'),
         },

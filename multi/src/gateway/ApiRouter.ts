@@ -1,4 +1,5 @@
-import { execFile } from 'node:child_process'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 
 import { Hono } from 'hono'
 
@@ -20,8 +21,6 @@ interface ApiVariables {
 interface ApiEnv {
   Variables: ApiVariables
 }
-
-const CAPTURE_PATH = '/tmp/capture.png'
 
 export function createApiRouter(registry: InstanceRegistry): Hono<ApiEnv> {
   const app = new Hono<ApiEnv>()
@@ -96,13 +95,13 @@ export function createApiRouter(registry: InstanceRegistry): Hono<ApiEnv> {
 
   app.post('/core/screenshot', async (c) => {
     const entry = c.get('entry')
-    const response = await send(entry, 'core.screenshot', CAPTURE_PATH)
+    const response = await send(entry, 'core.screenshot', join(entry.info.framePath, 'capture.png'))
     if (response !== SUCCESS_MARKER) {
       return c.text(response, 500)
     }
 
     try {
-      const pngBytes = await readCapture(entry.info.containerId)
+      const pngBytes = await readCapture(entry.info.framePath)
       return c.body(new Uint8Array(pngBytes), 200, { 'content-type': 'image/png' })
     } catch {
       return c.text('Failed to read screenshot', 500)
@@ -146,20 +145,6 @@ function queryParam(value: string | undefined, name: string): QueryParamResult {
   return { ok: true, value }
 }
 
-function readCapture(containerId: string): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      'docker',
-      ['exec', containerId, 'cat', CAPTURE_PATH],
-      { encoding: 'buffer', timeout: 10_000 },
-      (error, stdout) => {
-        if (error) {
-          reject(error)
-          return
-        }
-
-        resolve(stdout)
-      },
-    )
-  })
+function readCapture(framePath: string): Promise<Buffer> {
+  return readFile(join(framePath, 'capture.png'))
 }

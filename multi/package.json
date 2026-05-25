@@ -11,14 +11,12 @@
   },
   "dependencies": {
     "@hono/node-server": "^1",
-    "dockerode": "^4",
     "hono": "^4",
     "sharp": "^0.34.5",
     "ws": "^8",
     "zod": "^3"
   },
   "devDependencies": {
-    "@types/dockerode": "^4.0.1",
     "@types/ws": "^8.18.1",
     "@types/node": "^25.9.1",
     "tsx": "^4.22.3",

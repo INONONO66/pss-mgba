@@ -1,11 +1,10 @@
-import { execFile } from 'node:child_process'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 
 import sharp from 'sharp'
 
 import type { InstanceRegistry } from '../gateway/ApiRouter.js'
 import { formatMessage, SUCCESS_MARKER } from '../mgba/protocol.js'
-
-const CAPTURE_PATH = '/tmp/frame.png'
 
 export interface CapturedFrame {
   instanceIndex: number
@@ -79,12 +78,13 @@ export class FrameCapture {
     }
 
     try {
-      const response = await entry.client.send(formatMessage('core.screenshot', CAPTURE_PATH))
+      const path = join(entry.info.framePath, 'frame.png')
+      const response = await entry.client.send(formatMessage('core.screenshot', path))
       if (response !== SUCCESS_MARKER) {
         return
       }
 
-      const pngBuffer = await readFromContainer(entry.info.containerId, CAPTURE_PATH)
+      const pngBuffer = await readFile(path)
       const jpegBuffer = await sharp(pngBuffer).jpeg({ quality: this.jpegQuality }).toBuffer()
       const frame: CapturedFrame = {
         instanceIndex: this.instanceKeys.indexOf(token),
@@ -101,17 +101,4 @@ export class FrameCapture {
       return
     }
   }
-}
-
-function readFromContainer(containerId: string, path: string): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    execFile('docker', ['exec', containerId, 'cat', path], { encoding: 'buffer' }, (error, stdout) => {
-      if (error) {
-        reject(error)
-        return
-      }
-
-      resolve(stdout)
-    })
-  })
 }

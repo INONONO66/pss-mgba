@@ -1,33 +1,42 @@
 # pss-mgba Multi-Instance Gateway
 
-A gateway server that manages up to 10 mGBA emulator instances via Docker, providing a mGBA-http-compatible REST API and a real-time dashboard.
+A single-container gateway server that manages up to 10 mGBA emulator processes, providing a mGBA-http-compatible REST API and a real-time dashboard.
 
 ## Architecture
 
-- **Gateway** (Node.js/TypeScript): REST API + WebSocket dashboard, manages emulator containers via Docker API
-- **Emulator containers** (Debian + Xvfb + mGBA): each runs headlessly with Lua socket server on port 8888
-- **Protocol**: the gateway speaks directly to mGBA's Lua socket; no .NET mGBA-http binary is needed
+```text
+Single Docker Container:
+  Gateway (Node.js) HTTP :8787
+    ├── child_process.spawn('mgba-sdl', ...) × N
+    ├── TCP connections to localhost:888N
+    └── fs.readFile('/tmp/frames/<id>/*.png')
+
+  Xvfb :99
+  /tmp/frames tmpfs
+```
+
+- **Gateway**: Node.js/TypeScript REST API + WebSocket dashboard.
+- **mGBA processes**: spawned directly by the gateway with per-instance Lua loader files.
+- **Lua sockets**: one localhost port per instance, starting at `BASE_LUA_PORT`.
+- **Screenshots**: written by mGBA into `/tmp/frames/<instance-id>/` and read directly by Node.js.
+
+No Docker socket, Docker API, `docker exec`, or sidecar emulator containers are required at runtime.
 
 ## Quick Start
 
 ### Prerequisites
 
-- Docker with the Docker socket accessible
-- mGBA emulator image built: `docker build -t pss-mgba-emulator docker/emulator/`
-- A legal Pokemon ROM file
+- Docker
+- A legal Game Boy ROM file
 
-### Start the gateway
+### Build and start
 
 ```bash
-# Build emulator image first
-docker build -t pss-mgba-emulator docker/emulator/
-
-# Build and start the gateway
-docker compose -f docker/docker-compose.yml up -d --build
-
-# Verify
+ROM_PATH=/absolute/path/to/roms docker compose -f docker/docker-compose.yml up -d --build
 curl http://localhost:8787/health
 ```
+
+The compose file mounts `${ROM_PATH:-.}/roms` at `/rom`. By default new instances load `/rom/game.gb`; override `ROM_PATH` in the service environment if your mounted filename differs.
 
 ### Create an emulator instance
 
@@ -61,12 +70,15 @@ Open `http://localhost:8787/` in your browser.
 |----------|---------|-------------|
 | `PORT` | `8787` | Gateway HTTP port |
 | `ADMIN_TOKEN` | `dev-admin-token` | Admin API secret |
-| `MAX_INSTANCES` | `10` | Maximum emulator instances |
-| `EMULATOR_IMAGE` | `pss-mgba-emulator` | Docker image for emulators |
-| `NETWORK_NAME` | `pss-mgba-net` | Docker network name |
+| `MAX_INSTANCES` | `10` | Maximum emulator processes |
+| `BASE_LUA_PORT` | `8888` | First localhost Lua socket port |
+| `MGBA_BINARY` | `mgba-sdl` | mGBA executable used by the gateway |
+| `LUA_SCRIPT_PATH` | `/app/mGBASocketServer.lua` | Main Lua socket server script path |
+| `FRAME_DIR` | `/tmp/frames` | Per-instance screenshot root |
 | `ROM_PATH` | _(none)_ | Default ROM path for new instances |
-| `CAPTURE_INTERVAL_MS` | `100` | Screenshot interval (ms) |
+| `CAPTURE_INTERVAL_MS` | `100` | Dashboard screenshot interval (ms) |
 | `JPEG_QUALITY` | `60` | Dashboard JPEG quality (1-100) |
+| `WS_BACKPRESSURE_LIMIT` | `262144` | WebSocket buffered-byte cutoff |
 
 ## API Reference
 
@@ -101,3 +113,11 @@ Open `http://localhost:8787/` in your browser.
 | `/ws/instance/:token` | Single instance binary JPEG frames |
 
 Binary frame format: `[1 byte: instance_index][4 bytes: timestamp_ms LE][rest: JPEG bytes]`
+
+## Verification
+
+```bash
+pnpm install
+pnpm typecheck
+pnpm test
+```

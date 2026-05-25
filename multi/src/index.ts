@@ -11,9 +11,6 @@ if (config.adminToken === 'dev-admin-token') {
 const registry: InstanceRegistry = new Map()
 const instanceManager = new InstanceManager(config, registry)
 
-await instanceManager.reconstruct().catch((err: unknown) => {
-  console.warn('Could not reconstruct instances from Docker (Docker may be unavailable):', err instanceof Error ? err.message : String(err))
-})
 instanceManager.startHealthChecks()
 
 const gateway = createGatewayServer(config, registry, instanceManager)

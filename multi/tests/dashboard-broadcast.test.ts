@@ -121,8 +121,9 @@ function createRegistryEntry(token: string, id: string) {
     info: {
       id,
       token,
-      containerId: `container-${id}`,
-      containerHost: '127.0.0.1',
+      pid: 12_345,
+      port: 8888,
+      framePath: `/tmp/frames/${id}`,
       status: 'running' as const,
       createdAt: new Date('2026-05-25T00:00:00Z'),
     },
