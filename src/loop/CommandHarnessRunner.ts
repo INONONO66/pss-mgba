@@ -25,6 +25,7 @@ export interface CommandRunnerOptions {
   readGameState: () => Promise<CommandRunnerGameState>;
   updateMapMemory: () => Promise<void>;
   updateMapGraph: () => void;
+  adviserHintProvider?: () => Promise<string | undefined>;
   sleep?: (ms: number) => Promise<void>;
   now?: () => Date;
   onStep?: (step: number, command: Command, result: CommandResult) => Promise<void>;
@@ -130,7 +131,17 @@ export class CommandHarnessRunner {
 
   private async chooseAndExecute(state: CommandRunnerGameState): Promise<HarnessStatus> {
     for (let retry = 0; retry <= MAX_GUARD_RETRIES; retry += 1) {
-      const decision = await this.options.policy.chooseAction(this.buildPolicyInput(state));
+      let adviserHint: string | undefined;
+      if (this.options.adviserHintProvider) {
+        try {
+          const hint = await this.options.adviserHintProvider();
+          adviserHint = hint !== undefined ? hint.slice(0, 500) : undefined;
+        } catch (err) {
+          console.warn("[adviser] provider threw, continuing without hint:", err);
+        }
+      }
+
+      const decision = await this.options.policy.chooseAction(this.buildPolicyInput(state, adviserHint));
       this.llmCalls += 1;
       const result = await executeCommand(decision.command, this.options.executionContext);
       this.lastResult = result;
@@ -153,7 +164,7 @@ export class CommandHarnessRunner {
     return "failed_llm";
   }
 
-  private buildPolicyInput(state: CommandRunnerGameState): PolicyInput {
+  private buildPolicyInput(state: CommandRunnerGameState, adviserHint?: string): PolicyInput {
     return {
       mode: state.mode,
       lastResult: this.lastResult,
@@ -172,6 +183,7 @@ export class CommandHarnessRunner {
       fullState: state.fullState,
       step: this.step,
       detectorStatus: this.detectorStatus(),
+      ...(adviserHint !== undefined ? { adviserHint } : {}),
     };
   }
 

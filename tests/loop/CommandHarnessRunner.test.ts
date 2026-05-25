@@ -40,6 +40,70 @@ describe("CommandHarnessRunner", () => {
     expect(policyInputs[0]).toMatchObject({ mode: "overworld", step: 0 });
   });
 
+  it("passes a truncated adviser hint when the provider returns a string", async () => {
+    const policyInputs: PolicyInput[] = [];
+    const runner = createRunner({
+      policy: policyReturning(navigateCommand, policyInputs),
+      adviserHintProvider: async () => "x".repeat(600),
+      states: [gameState(), gameState()],
+      detector: new FakeDetector(2),
+    });
+
+    const result = await runner.run();
+
+    expect(result.status).toBe("completed");
+    expect(policyInputs[0]?.adviserHint).toHaveLength(500);
+    expect(policyInputs[0]?.adviserHint).toBe("x".repeat(500));
+  });
+
+  it("omits adviserHint when the provider returns undefined", async () => {
+    const policyInputs: PolicyInput[] = [];
+    const runner = createRunner({
+      policy: policyReturning(navigateCommand, policyInputs),
+      adviserHintProvider: async () => undefined,
+      states: [gameState(), gameState()],
+      detector: new FakeDetector(2),
+    });
+
+    await runner.run();
+
+    expect(policyInputs[0]).not.toHaveProperty("adviserHint");
+  });
+
+  it("omits adviserHint when no provider is configured", async () => {
+    const policyInputs: PolicyInput[] = [];
+    const runner = createRunner({
+      policy: policyReturning(navigateCommand, policyInputs),
+      states: [gameState(), gameState()],
+      detector: new FakeDetector(2),
+    });
+
+    await runner.run();
+
+    expect(policyInputs[0]).not.toHaveProperty("adviserHint");
+  });
+
+  it("omits adviserHint and keeps running when the provider throws", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const policyInputs: PolicyInput[] = [];
+    const runner = createRunner({
+      policy: policyReturning(navigateCommand, policyInputs),
+      adviserHintProvider: async () => {
+        await Promise.resolve();
+        throw new Error("no hint");
+      },
+      states: [gameState(), gameState()],
+      detector: new FakeDetector(2),
+    });
+
+    const result = await runner.run();
+
+    expect(result.status).toBe("completed");
+    expect(policyInputs[0]).not.toHaveProperty("adviserHint");
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
   it("auto-advances dialog without consuming an LLM call or step", async () => {
     const controller = new FakeController();
     const policy = policyReturning(navigateCommand);
@@ -138,6 +202,7 @@ function createRunner(options: {
   states?: CommandRunnerGameState[];
   controller?: FakeController;
   detector?: FakeDetector;
+  adviserHintProvider?: () => Promise<string | undefined>;
 } = {}): CommandHarnessRunner {
   const states = [...(options.states ?? [gameState()])];
   const controller = options.controller ?? new FakeController();
@@ -164,6 +229,7 @@ function createRunner(options: {
     mapGraph: { renderForLLM: () => "graph" } as never,
     detector: options.detector ?? new FakeDetector(),
     stepDelayMs: 0,
+    adviserHintProvider: options.adviserHintProvider,
     sleep: async () => {},
     now: () => new Date("2026-05-25T00:00:00.000Z"),
     readGameState: async () => states.shift() ?? gameState(),
