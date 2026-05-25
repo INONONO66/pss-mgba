@@ -62,6 +62,7 @@ export interface PolicyInput {
   visionImages?: readonly VisionImageInput[];
   step?: number;
   objective?: string;
+  adviserHint?: string;
   detectorStatus?: unknown;
   fullState?: FullGameState;
   fullStateSummary?: string;
