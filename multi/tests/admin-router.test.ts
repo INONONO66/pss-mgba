@@ -128,8 +128,6 @@ function createFrame(overrides: Partial<CapturedFrame> = {}): CapturedFrame {
   return {
     instanceIndex: 0,
     instanceId: "instance-a",
-    isKeyframe: true,
-    sequence: 0,
     token: "token-instance-a",
     jpegBuffer: Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
     timestampMs: 1000,
