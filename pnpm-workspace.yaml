@@ -1,9 +1,12 @@
 packages:
   - .
   - viewer
-
+  - multi
 allowBuilds:
+  cpu-features: true
   esbuild: true
+  protobufjs: true
   sharp: true
+  ssh2: true
 minimumReleaseAgeExclude:
   - '@minpeter/pss-runtime@0.0.6'

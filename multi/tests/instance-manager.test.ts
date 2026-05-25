@@ -4,24 +4,42 @@ import type { Config } from '../src/config.js'
 import type { InstanceRegistry } from '../src/gateway/ApiRouter.js'
 import { InstanceManager } from '../src/instances/InstanceManager.js'
 
+const fsMock = vi.hoisted(() => ({
+  lstat: vi.fn((value: string) => Promise.resolve({
+    isDirectory: () => value.startsWith('/tmp/pss-mgba-captures-test/') && value !== '/tmp/pss-mgba-captures-test/',
+  })),
+  realpath: vi.fn((value: string) => Promise.resolve(value)),
+  rm: vi.fn(() => Promise.resolve()),
+}))
+
+vi.mock('node:fs/promises', () => ({
+  lstat: fsMock.lstat,
+  realpath: fsMock.realpath,
+  rm: fsMock.rm,
+}))
+
 interface CreateContainerOptions {
   image: string
   instanceId: string
   romPath?: string
   networkName: string
   emulatorPort: number
+  emulatorMemoryBytes: number
+  captureRoot: string
 }
 
 interface ContainerInfo {
   id: string
   host: string
   port: number
+  captureDirectory: string
 }
 
 interface ManagedContainer {
   id: string
   instanceId: string
   host: string
+  captureDirectory?: string
 }
 
 interface MgbaClientMock {
@@ -50,6 +68,7 @@ const dockerMock = vi.hoisted(() => {
           id: `container-${opts.instanceId}`,
           host: `pss-mgba-${opts.instanceId}`,
           port: opts.emulatorPort,
+          captureDirectory: `${opts.captureRoot}/${opts.instanceId}`,
         },
       )
     }
@@ -142,6 +161,9 @@ vi.mock('../src/mgba/MgbaSocketClient.js', () => ({
 describe('InstanceManager', () => {
   beforeEach(() => {
     dockerMock.reset()
+    fsMock.lstat.mockClear()
+    fsMock.realpath.mockClear()
+    fsMock.rm.mockClear()
     mgbaMock.reset()
     vi.useRealTimers()
   })
@@ -161,11 +183,30 @@ describe('InstanceManager', () => {
         romPath: '/rom/custom.gb',
         networkName: 'pss-mgba-net',
         emulatorPort: 8888,
+        emulatorMemoryBytes: 805_306_368,
+        captureRoot: '/tmp/pss-mgba-captures-test',
       },
     ])
     expect(mgbaMock.clients[0]?.connectCalls).toEqual([{ host: info.containerHost, port: 8888 }])
     expect(registry.get(info.token)?.info).toBe(info)
     expect(manager.getByToken(info.token)).toBe(info)
+  })
+
+  it('cleans up the container and capture directory when socket readiness fails', async () => {
+    vi.useFakeTimers()
+    mgbaMock.defaultPingResponses.length = 0
+    mgbaMock.defaultPingResponses.push(...Array.from({ length: 100 }, () => false))
+    const registry: InstanceRegistry = new Map()
+    const manager = new InstanceManager(createConfig(), registry)
+
+    const createPromise = manager.create()
+    const rejection = expect(createPromise).rejects.toThrow('Lua socket not ready')
+    await vi.advanceTimersByTimeAsync(31_000)
+
+    await rejection
+    expect(dockerMock.stoppedContainers).toHaveLength(1)
+    expect(fsMock.rm).toHaveBeenCalledWith(expect.stringContaining('/tmp/pss-mgba-captures-test/'), { force: true, recursive: true })
+    expect(registry.size).toBe(0)
   })
 
   it('destroy() stops the container, disconnects the client, and removes the registry entry', async () => {
@@ -178,6 +219,7 @@ describe('InstanceManager', () => {
     expect(dockerMock.stoppedContainers).toEqual([info.containerId])
     expect(mgbaMock.clients[0]?.disconnectCalls).toBe(1)
     expect(registry.has(info.token)).toBe(false)
+    expect(fsMock.rm).toHaveBeenCalledWith(info.captureDirectory, { force: true, recursive: true })
     expect(manager.get(info.id)).toBeUndefined()
   })
 
@@ -208,11 +250,49 @@ describe('InstanceManager', () => {
     manager.stopHealthChecks()
   })
 
+  it('skips reconstructed containers with capture directories outside captureRoot', async () => {
+    dockerMock.listedContainers.push({
+      id: 'container-escaped',
+      instanceId: 'instance-escaped',
+      host: 'pss-mgba-instance-escaped',
+      captureDirectory: '/tmp/outside/instance-escaped',
+    })
+    dockerMock.runningContainers.set('container-escaped', true)
+    const registry: InstanceRegistry = new Map()
+    const manager = new InstanceManager(createConfig(), registry)
+
+    await manager.reconstruct()
+
+    expect(manager.get('instance-escaped')).toBeUndefined()
+    expect(dockerMock.stoppedContainers).toEqual(['container-escaped'])
+    expect(registry.size).toBe(0)
+    expect(mgbaMock.clients).toHaveLength(0)
+  })
+
+
+  it('stops legacy managed containers that do not have a capture directory label', async () => {
+    dockerMock.listedContainers.push({
+      id: 'container-legacy',
+      instanceId: 'instance-legacy',
+      host: 'pss-mgba-instance-legacy',
+    })
+    dockerMock.runningContainers.set('container-legacy', true)
+    const registry: InstanceRegistry = new Map()
+    const manager = new InstanceManager(createConfig(), registry)
+
+    await manager.reconstruct()
+
+    expect(manager.get('instance-legacy')).toBeUndefined()
+    expect(dockerMock.stoppedContainers).toEqual(['container-legacy'])
+    expect(registry.size).toBe(0)
+  })
+
   it('reconstructs running managed containers from Docker on startup', async () => {
     dockerMock.listedContainers.push({
       id: 'container-existing',
       instanceId: 'instance-existing',
       host: 'pss-mgba-instance-existing',
+      captureDirectory: '/tmp/pss-mgba-captures-test/instance-existing',
     })
     dockerMock.runningContainers.set('container-existing', true)
     const registry: InstanceRegistry = new Map()
@@ -223,6 +303,7 @@ describe('InstanceManager', () => {
     const info = manager.get('instance-existing')
     expect(info?.containerId).toBe('container-existing')
     expect(info?.containerHost).toBe('pss-mgba-instance-existing')
+    expect(info?.captureDirectory).toBe('/tmp/pss-mgba-captures-test/instance-existing')
     expect(info?.status).toBe('running')
     expect(registry.size).toBe(1)
     expect(mgbaMock.clients[0]?.connectCalls).toEqual([{ host: 'pss-mgba-instance-existing', port: 8888 }])
@@ -236,8 +317,12 @@ function createConfig(): Config {
     maxInstances: 10,
     emulatorImage: 'pss-mgba-emulator',
     emulatorPort: 8888,
-    captureIntervalMs: 100,
-    jpegQuality: 60,
+    emulatorMemoryBytes: 805_306_368,
+    captureIntervalMs: 16,
+    sourceCaptureIntervalMs: 250,
+    captureRoot: '/tmp/pss-mgba-captures-test',
+    streamKeyframeInterval: 60,
+    streamTileSize: 16,
     wsBackpressureLimit: 262_144,
     networkName: 'pss-mgba-net',
     romPath: '/rom/default.gb',

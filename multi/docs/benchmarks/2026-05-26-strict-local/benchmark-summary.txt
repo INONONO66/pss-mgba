@@ -1,0 +1,13 @@
+Headless mGBA benchmark: PASS
+Target: 10 instances, 60000ms, p95 FPS >= 60, dropped/late <= 1%
+PASS 349da275-a5bc-4d3c-aab2-421e9a3ee89a: fps_p95=130.56fps interval_p95=9.38ms avg=149.94fps late=1/3722 ratio=0.00
+PASS 387dc05c-aba5-4eb2-ada2-37e24546e6f0: fps_p95=130.61fps interval_p95=9.39ms avg=115.00fps late=3/3722 ratio=0.00
+PASS b001fe93-527a-43a4-b336-86866c8f78f8: fps_p95=130.63fps interval_p95=9.40ms avg=121.27fps late=2/3722 ratio=0.00
+PASS 889967c8-d6c0-4f80-967e-be33296bb599: fps_p95=130.72fps interval_p95=9.40ms avg=116.35fps late=2/3722 ratio=0.00
+PASS 3eeaa4e9-8a81-4ef3-8d8e-b279cea12aa8: fps_p95=130.76fps interval_p95=9.41ms avg=359.39fps late=1/3722 ratio=0.00
+PASS 23f43fbe-0256-4c47-85dd-67904b3825a7: fps_p95=130.79fps interval_p95=9.42ms avg=423.98fps late=1/3722 ratio=0.00
+PASS 95cdd788-0212-4e93-8d2d-0e9bd53936ba: fps_p95=130.82fps interval_p95=9.42ms avg=540.08fps late=2/3722 ratio=0.00
+PASS aaacff7e-9464-4beb-aad9-218149157c85: fps_p95=131.00fps interval_p95=9.42ms avg=341.48fps late=2/3722 ratio=0.00
+PASS ed4f2518-c6da-4d02-87dc-6b49d7c948c9: fps_p95=131.03fps interval_p95=9.43ms avg=344.50fps late=2/3722 ratio=0.00
+PASS c3b8b629-9754-47ba-9b55-eb1e4c67270d: fps_p95=131.16fps interval_p95=9.43ms avg=327.18fps late=2/3722 ratio=0.00
+Peak RAM: 0.54 GiB
