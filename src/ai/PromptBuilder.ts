@@ -1,91 +1,28 @@
 import type { BattleAction, Command, CommandHistoryEntry, CommandResult, DialogAction, GameMode } from "../control/CommandTypes.js";
 import type { FullGameState } from "../pokemon/PokemonTypes.js";
 import type { PolicyInput, PokemonStateSnapshot } from "./Policy.js";
-
-const IDENTITY_PROMPT = `You are a Pokemon Red/Blue game controller AI.
-You observe game state and issue high-level commands.
-The harness handles pathfinding and button execution for you.
-
-Rules:
-- Only use the provided command types
-- No memory writes, no emulator manipulation
-- Base decisions on observed state only
-- Output exactly one JSON object per turn`;
-
-const OVERWORLD_PROMPT = `=== AVAILABLE COMMANDS ===
-
-navigate(x, y)
-  Walk to target coordinate on current map via A* pathfinding.
-  If path enters unexplored territory, walks as far as possible and reports partial progress.
-  Retry same target to continue as new tiles are discovered.
-  Use warp tile coordinates (W on map) to travel between maps.
-  Stops on: arrival, partial (unexplored), battle, dialog, blocked, map change.
-
-interact(direction?)
-  Face direction and press A. Talks to NPCs, reads signs, picks up items.
-  Optional: "up", "down", "left", "right". Default: current facing.
-
-wait(frames)
-  Do nothing for N frames (1-120).
-
-raw(inputs[], reason)
-  Manual button sequence. Max 8 inputs. ONLY when other commands fail.
-  Buttons: A, B, Start, Select, Up, Down, Left, Right
-
-Strategy:
-- Navigate to warp tiles (W) to move between maps
-- Talk to NPCs with interact when needed
-- If partial: retry same target or try alternate path
-- Heal at Pokecenter when HP low
-- Progress toward next badge/story milestone
-- Use map graph to plan multi-map routes
-
-Output: {"command": {"type": "...", ...}, "rationale": "..."}`;
-
-const BATTLE_PROMPT = `=== AVAILABLE COMMANDS ===
-
-battle(action)
-  Actions:
-    fight(move) - Attack using move by name. Must have PP > 0.
-    item(item) - Use item from bag by name.
-    switch(pokemon) - Switch to pokemon by nickname. Must not be fainted.
-    run - Flee. Only works in wild battles.
-
-raw(inputs[], reason)
-  Manual button sequence. ONLY if battle menu is stuck.
-
-Strategy:
-- Prefer super-effective damaging moves
-- Prefer high-power moves over status moves
-- Use potions if HP < 25%
-- Wild: run if dangerous, fight for exp if safe
-- Trainer: must win, cannot run
-- Check PP before selecting (0 PP = unusable)
-
-Output: {"command": {"type": "...", ...}, "rationale": "..."}`;
-
-const DIALOG_PROMPT = `=== AVAILABLE COMMANDS ===
-
-dialog(action)
-  Actions:
-    choose(index) - Select option by 0-based index.
-    input_name(name) - Type name on naming screen.
-    advance - Continue pressing A (use if no choice visible).
-
-raw(inputs[], reason)
-  Manual button sequence. ONLY if dialog is stuck.
-
-Strategy:
-- Yes/No: choose what progresses the game
-- Name entry: use short name (e.g. "RED")
-- Move learning: keep high-power damaging moves
-- Shop: buy potions if supplies low
-
-Output: {"command": {"type": "...", ...}, "rationale": "..."}`;
+import { buildBattleContext } from "./prompts/battle.js";
+import { buildDialogContext } from "./prompts/dialog.js";
+import { buildGameKnowledge } from "./prompts/game-knowledge.js";
+import { buildOverworldContext } from "./prompts/overworld.js";
 
 export function buildSystemPrompt(mode: GameMode): string {
-  const modePrompt = mode === "overworld" ? OVERWORLD_PROMPT : mode === "battle" ? BATTLE_PROMPT : DIALOG_PROMPT;
-  return `${IDENTITY_PROMPT}\n\n${modePrompt}`;
+  return buildGameKnowledge() + "\n\n" + buildModeContext(mode);
+}
+
+function buildModeContext(mode: GameMode): string {
+  switch (mode) {
+    case "overworld":
+      return buildOverworldContext();
+    case "battle":
+      return buildBattleContext();
+    case "dialog":
+      return buildDialogContext();
+    default: {
+      const exhaustiveMode: never = mode;
+      return exhaustiveMode;
+    }
+  }
 }
 
 export function buildUserMessage(input: PolicyInput): string {

@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import { buildSystemPrompt, buildUserMessage } from "../../src/ai/PromptBuilder.js";
 import type { FullGameState } from "../../src/pokemon/PokemonTypes.js";
 
-const identityLines = [
-  "You are a Pokemon Red/Blue game controller AI.",
-  "You observe game state and issue high-level commands.",
-  "The harness handles pathfinding and button execution for you.",
-  "- Output exactly one JSON object per turn"
+const gameKnowledgeLines = [
+  "World Rules",
+  "Progression Model",
+  "NPC Rules",
+  "Stuck Patterns",
+  "Output Rules"
 ];
 
 describe("PromptBuilder", () => {
@@ -31,12 +32,13 @@ describe("PromptBuilder", () => {
     expect(prompt).not.toContain("navigate(x, y)");
   });
 
-  it("all system prompts contain the identity block", () => {
+  it("all system prompts contain game knowledge instead of legacy identity", () => {
     for (const mode of ["overworld", "battle", "dialog"] as const) {
       const prompt = buildSystemPrompt(mode);
-      for (const line of identityLines) {
+      for (const line of gameKnowledgeLines) {
         expect(prompt).toContain(line);
       }
+      expect(prompt).not.toContain("You are a Pokemon Red/Blue game controller AI");
     }
   });
 

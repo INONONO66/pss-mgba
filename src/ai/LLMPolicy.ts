@@ -439,6 +439,7 @@ function createOpenAIClient(options: OpenAIClientOptions): ChatCompletionsClient
 }
 
 async function buildMessages(input: PolicyInput, harnessMode: HarnessMode, defaultVisionDetail: LlmVisionDetail): Promise<ChatCompletionRequest["messages"]> {
+  // NOTE: legacy LLMPolicy has its own inline prompts — see src/ai/prompts/ for command-path prompts
   const userText = harnessMode === "full-game" ? buildFullGameUserText(input) : buildStage1UserText(input);
   const userContent = await buildUserContent(userText, input.visionImages, defaultVisionDetail);
 
