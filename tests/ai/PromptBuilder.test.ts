@@ -129,6 +129,24 @@ describe("PromptBuilder", () => {
     expect(message).toContain("navigate(4,0) → partial: reached edge (unexplored ahead)");
   });
 
+  it("buildUserMessage includes adviser hint section when present", () => {
+    const message = buildUserMessage({ adviserHint: "Try going north" });
+
+    expect(message).toContain("[ADVISER HINT]\nTry going north");
+  });
+
+  it("buildUserMessage omits adviser hint section when absent", () => {
+    const message = buildUserMessage({});
+
+    expect(message).not.toContain("[ADVISER HINT]");
+  });
+
+  it("buildUserMessage omits adviser hint section when empty", () => {
+    const message = buildUserMessage({ adviserHint: "" });
+
+    expect(message).not.toContain("[ADVISER HINT]");
+  });
+
   it("buildUserMessage handles empty optional fields gracefully", () => {
     const message = buildUserMessage({ mode: "overworld" });
 

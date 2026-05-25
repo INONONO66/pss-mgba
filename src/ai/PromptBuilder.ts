@@ -29,6 +29,7 @@ export function buildUserMessage(input: PolicyInput): string {
   const mode = input.mode ?? inferMode(input);
   const sections = [
     buildProgressSection(input),
+    buildAdviserHintSection(input),
     buildLastResultSection(input),
     buildStateSection(input, mode),
     ...(mode === "overworld" ? buildMapSections(input) : []),
@@ -42,6 +43,11 @@ function buildProgressSection(input: PolicyInput): string {
   const badges = getBadgeProgress(input);
   const names = badges.names.length > 0 ? ` (${badges.names.join(", ")})` : "";
   return `[PROGRESS]\nBadges: ${badges.count}/8${names}. Step ${input.step ?? 0}.`;
+}
+
+function buildAdviserHintSection(input: PolicyInput): string | undefined {
+  if (input.adviserHint === undefined || input.adviserHint.trim().length === 0) return undefined;
+  return `[ADVISER HINT]\n${input.adviserHint}`;
 }
 
 function buildLastResultSection(input: PolicyInput): string | undefined {
