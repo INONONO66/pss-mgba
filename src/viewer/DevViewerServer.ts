@@ -193,13 +193,13 @@ export function createDevViewerServer(options: DevViewerServerOptions): Server {
   });
 }
 
-function renderPage(runId: string, visionImageLimit: number, llmConversationsPath: string): string {
+function renderPage(runId: string, _visionImageLimit: number, llmConversationsPath: string): string {
   return `<!doctype html>
-<html>
+<html lang="ko">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pokemon Harness Dev Viewer</title>
+  <title>포켓몬 하네스 대시보드</title>
   <style>
     :root {
       --bg: #070b08;
@@ -262,6 +262,7 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       background: var(--panel);
       border: 1px solid var(--line);
       box-shadow: var(--shadow);
+      border-radius: 6px;
     }
     .card {
       min-height: 64px;
@@ -327,6 +328,7 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       font: 11px/1.35 var(--mono);
       background: rgba(7, 11, 8, 0.72);
       border: 1px solid var(--line);
+      border-radius: 6px;
       pointer-events: none;
     }
     .status-line { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -348,10 +350,15 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     .llm-panel { grid-row: 1 / span 2; grid-column: 3; }
     .context-panel { grid-row: 2; grid-column: 1 / span 2; }
     .scroll { min-height: 0; overflow: auto; }
-    .state-body, .context-body, .event-list, .vision-grid, .llm-detail, .raw-log { padding: 10px; }
+    .state-body, .context-body, .event-list, .llm-detail, .raw-log { padding: 10px; }
     .state-block { display: grid; gap: 8px; }
     .kv-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-    .kv { padding: 9px; background: var(--panel-soft); border: 1px solid rgba(196, 255, 166, 0.12); }
+    .kv {
+      padding: 9px;
+      background: var(--panel-soft);
+      border: 1px solid rgba(196, 255, 166, 0.12);
+      border-radius: 4px;
+    }
     .kv b { display: block; margin-bottom: 5px; color: var(--muted); font: 10px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.1em; }
     .kv span { color: var(--ink); font: 12px/1.35 var(--mono); overflow-wrap: anywhere; }
     .pretty-text, .mono-block {
@@ -374,9 +381,11 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       background: rgba(0,0,0,0.22);
       border: 1px solid rgba(196, 255, 166, 0.12);
       border-bottom-color: var(--line);
+      border-radius: 4px 4px 0 0;
       font: 700 10px/1 var(--mono);
       letter-spacing: 0.08em;
       text-transform: uppercase;
+      transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
     }
     .tab.active { color: var(--ink); border-color: var(--line-strong); background: rgba(140, 255, 113, 0.10); }
     .llm-layout { min-height: 0; display: grid; grid-template-columns: 170px minmax(0, 1fr); }
@@ -393,18 +402,117 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       border-bottom: 1px solid rgba(196, 255, 166, 0.12);
       font: 11px/1.35 var(--mono);
       white-space: pre-wrap;
+      transition: color 0.15s ease, background 0.15s ease;
     }
     .history-button:hover, .history-button.active { color: var(--ink); background: rgba(140, 255, 113, 0.08); }
     .decision-card { display: grid; gap: 8px; margin-bottom: 10px; padding: 10px; color: var(--ink); background: rgba(140,255,113,0.08); border: 1px solid var(--line-strong); }
     .injection-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-bottom: 10px; }
     .injection-summary .kv { min-height: 64px; }
-    .vision-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; }
-    .vision-cell { position: relative; min-width: 0; background: var(--panel-soft); border: 1px solid rgba(196, 255, 166, 0.12); }
-    .vision-cell img { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: contain; image-rendering: pixelated; background: #020302; }
-    .vision-cell .meta { position: absolute; left: 0; right: 0; bottom: 0; padding: 6px; color: var(--muted); font: 10px/1.25 var(--mono); background: rgba(7,11,8,0.78); overflow-wrap: anywhere; }
     .event-list { display: grid; gap: 8px; }
-    .event-item { padding: 9px; color: var(--muted); background: var(--panel-soft); border: 1px solid rgba(196, 255, 166, 0.12); font: 10px/1.35 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .event-item { padding: 0; color: var(--muted); background: var(--panel-soft); border: 1px solid rgba(196, 255, 166, 0.12); font: 11px/1.35 var(--mono); overflow-wrap: anywhere; }
+    .event-header { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: rgba(0,0,0,0.18); border-bottom: 1px solid rgba(196, 255, 166, 0.10); }
+    .event-badge { padding: 3px 7px; border-radius: 999px; font: 700 9px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
+    .event-badge.action { color: var(--green); background: rgba(140, 255, 113, 0.12); border: 1px solid rgba(140, 255, 113, 0.22); }
+    .event-badge.error { color: var(--red); background: rgba(255, 118, 92, 0.12); border: 1px solid rgba(255, 118, 92, 0.22); }
+    .event-badge.state { color: #7ec8e3; background: rgba(126, 200, 227, 0.12); border: 1px solid rgba(126, 200, 227, 0.22); }
+    .event-badge.decision { color: var(--amber); background: rgba(255, 200, 87, 0.12); border: 1px solid rgba(255, 200, 87, 0.22); }
+    .event-badge.screenshot { color: var(--muted); background: rgba(145, 164, 135, 0.10); border: 1px solid rgba(145, 164, 135, 0.20); }
+    .event-body { padding: 8px 10px; }
+    .kv-mini { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; padding: 6px 0; }
+    .kv-mini + .kv-mini { border-top: 1px solid rgba(196, 255, 166, 0.08); }
+    .kv-mini b { color: var(--muted-2); font: 10px/1.3 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; }
+    .kv-mini span { color: var(--ink); font: 11px/1.35 var(--mono); overflow-wrap: anywhere; }
+    .event-payload { margin: 8px 0 0; padding: 8px; background: rgba(0,0,0,0.22); border: 1px solid rgba(196, 255, 166, 0.10); border-radius: 4px; }
+    .event-payload pre { margin: 0; color: var(--muted-2); font: 10px/1.4 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
     .empty { display: grid; min-height: 100%; place-items: center; padding: 18px; color: var(--muted-2); text-align: center; font: 12px/1.4 var(--mono); }
+    .action-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font: 700 11px/1 var(--mono); }
+    .action-badge .btn { padding: 2px 7px; border-radius: 4px; color: #2a1f00; background: var(--amber); font: 800 11px/1 var(--mono); }
+    .rationale-block { padding: 8px 10px; border-left: 3px solid var(--green); background: rgba(140, 255, 113, 0.06); color: var(--muted); font: 11px/1.45 var(--mono); }
+    .confidence-bar { height: 6px; border-radius: 999px; background: rgba(0,0,0,0.35); border: 1px solid rgba(196, 255, 166, 0.12); overflow: hidden; }
+    .confidence-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--red), var(--amber), var(--green)); }
+    .citations-row { display: flex; flex-wrap: wrap; gap: 6px; }
+    .citation-chip { padding: 3px 8px; border-radius: 999px; color: var(--ink); background: rgba(140, 255, 113, 0.10); border: 1px solid rgba(140, 255, 113, 0.22); font: 10px/1 var(--mono); }
+    .thinking-panel { margin-top: 10px; padding: 10px; background: rgba(0,0,0,0.22); border: 1px solid rgba(196, 255, 166, 0.12); }
+    .thinking-panel pre { margin: 0; color: var(--muted-2); font: 10px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .map-section { margin-top: 10px; }
+    .map-section h3 { margin-bottom: 8px; color: var(--green); font: 700 10px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; }
+    .map-grid {
+      display: inline-grid;
+      gap: 1px;
+      padding: 8px;
+      background: rgba(0,0,0,0.35);
+      border: 1px solid rgba(196, 255, 166, 0.14);
+      border-radius: 6px;
+    }
+    .map-cell {
+      width: 16px;
+      height: 16px;
+      display: grid;
+      place-items: center;
+      font: 700 9px/1 var(--mono);
+      border-radius: 2px;
+    }
+    .map-cell.walk { background: rgba(140, 255, 113, 0.10); color: var(--muted); }
+    .map-cell.wall { background: rgba(100, 114, 95, 0.35); color: var(--muted-2); }
+    .map-cell.grass { background: rgba(140, 255, 113, 0.22); color: var(--green); }
+    .map-cell.player { background: #8cff71; color: #0a1f06; animation: pulse 1.6s ease-in-out infinite; }
+    .map-cell.npc { background: rgba(255, 200, 87, 0.35); color: var(--amber); }
+    .map-cell.warp { background: rgba(180, 140, 255, 0.22); color: #d4b8ff; }
+    .map-cell.unknown { background: rgba(145, 164, 135, 0.06); color: var(--muted-2); }
+    @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(140, 255, 113, 0.55); } 50% { box-shadow: 0 0 6px 2px rgba(140, 255, 113, 0.25); } }
+    .map-legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 8px; }
+    .map-legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; }
+    .map-legend .swatch.player { background: #8cff71; }
+    .map-legend .swatch.wall { background: rgba(100, 114, 95, 0.55); }
+    .map-legend .swatch.walk { background: rgba(140, 255, 113, 0.25); }
+    .map-legend .swatch.grass { background: rgba(140, 255, 113, 0.35); }
+    .map-legend .swatch.npc { background: rgba(255, 200, 87, 0.45); }
+    .map-legend .swatch.warp { background: rgba(180, 140, 255, 0.35); }
+    .map-legend .swatch.unknown { background: rgba(145, 164, 135, 0.15); }
+    .map-legend span { font: 10px/1 var(--mono); color: var(--muted); }
+    .timeline { display: grid; gap: 0; }
+    .timeline-step { position: relative; padding: 12px; padding-left: 28px; border-left: 2px solid var(--line); }
+    .timeline-step:last-child { border-left-color: transparent; }
+    .timeline-step::before {
+      content: attr(data-step);
+      position: absolute;
+      left: -9px;
+      top: 12px;
+      width: 18px;
+      height: 18px;
+      display: grid;
+      place-items: center;
+      font: 700 9px/1 var(--mono);
+      color: var(--bg);
+      background: var(--green);
+      border-radius: 50%;
+    }
+    .timeline-step.thinking::before { background: var(--amber); }
+    .timeline-step.deciding::before { background: #7ec8e3; }
+    .step-title { margin-bottom: 8px; color: var(--green); font: 700 11px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
+    .step-title.thinking { color: var(--amber); }
+    .step-title.deciding { color: #7ec8e3; }
+    .rule-chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0; }
+    .rule-chip { padding: 3px 7px; border-radius: 999px; font: 600 9px/1 var(--mono); letter-spacing: 0.04em; }
+    .rule-chip.mode { color: var(--green); background: rgba(140, 255, 113, 0.12); border: 1px solid rgba(140, 255, 113, 0.25); }
+    .rule-chip.rule { color: var(--muted); background: rgba(145, 164, 135, 0.12); border: 1px solid rgba(145, 164, 135, 0.22); }
+    .rule-chip.hint { color: var(--amber); background: rgba(255, 200, 87, 0.12); border: 1px solid rgba(255, 200, 87, 0.25); }
+    .state-summary { display: grid; gap: 4px; margin-top: 8px; }
+    .state-summary-item { padding: 6px 8px; background: rgba(0,0,0,0.18); border-left: 2px solid var(--line); font: 11px/1.35 var(--mono); color: var(--muted); }
+    .state-summary-item b { color: var(--green); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; display: block; margin-bottom: 3px; }
+    .reasoning-block { padding: 10px; background: rgba(255, 200, 87, 0.06); border: 1px solid rgba(255, 200, 87, 0.18); border-radius: 4px; color: var(--ink); font: 11px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .reasoning-block.muted { color: var(--muted-2); font-style: italic; }
+    details { margin-top: 6px; }
+    details summary { cursor: pointer; color: var(--muted); font: 10px/1.35 var(--mono); padding: 4px 0; }
+    details summary:hover { color: var(--ink); }
+    details .collapsed-content { margin-top: 6px; padding: 8px; background: rgba(0,0,0,0.22); border: 1px solid rgba(196, 255, 166, 0.10); border-radius: 4px; font: 10px/1.4 var(--mono); color: var(--muted-2); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow: auto; }
+    .prompt-section { margin-bottom: 10px; padding: 10px; background: var(--panel-soft); border: 1px solid rgba(196, 255, 166, 0.12); border-radius: 4px; }
+    .prompt-section-title { margin-bottom: 8px; color: var(--green); font: 700 10px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; }
+    .prompt-section-body .mono-block { margin: 0; }
+    .history-entry { padding: 6px 8px; margin-bottom: 4px; border-radius: 4px; font: 11px/1.35 var(--mono); }
+    .history-entry:last-child { margin-bottom: 0; }
+    .history-success { color: var(--green); background: rgba(140, 255, 113, 0.08); border: 1px solid rgba(140, 255, 113, 0.18); }
+    .history-failed { color: var(--red); background: rgba(255, 118, 92, 0.08); border: 1px solid rgba(255, 118, 92, 0.18); }
     @media (max-width: 1320px) {
       body { overflow: auto; }
       .shell { min-height: 100svh; height: auto; }
@@ -431,79 +539,73 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
 </head>
 <body>
   <main class="shell">
-    <section class="topbar" aria-label="Run summary">
-      <article class="card"><div class="label">Run</div><div id="summary-run" class="value">${escapeHtml(runId)}</div></article>
-      <article class="card"><div class="label">Status</div><div id="summary-status" class="value muted">Loading...</div></article>
-      <article class="card"><div class="label">Progress</div><div id="summary-progress" class="value muted">Waiting...</div></article>
-      <article class="card"><div class="label">Map</div><div id="summary-map" class="value muted">Waiting...</div></article>
-      <article class="card"><div class="label">Party</div><div id="summary-party" class="value muted">Waiting...</div></article>
-      <article class="card"><div class="label">Player action</div><div id="summary-player" class="value muted">Waiting...</div></article>
-      <article class="card"><div class="label">Refresh</div><div id="summary-refresh" class="value muted">Starting...</div></article>
+    <section class="topbar" aria-label="런 요약">
+      <article class="card"><div class="label">런 ID</div><div id="summary-run" class="value">${escapeHtml(runId)}</div></article>
+      <article class="card"><div class="label">상태</div><div id="summary-status" class="value muted">로딩 중...</div></article>
+      <article class="card"><div class="label">진행</div><div id="summary-progress" class="value muted">대기 중...</div></article>
+      <article class="card"><div class="label">맵</div><div id="summary-map" class="value muted">대기 중...</div></article>
+      <article class="card"><div class="label">파티</div><div id="summary-party" class="value muted">대기 중...</div></article>
+      <article class="card"><div class="label">플레이어 행동</div><div id="summary-player" class="value muted">대기 중...</div></article>
+      <article class="card"><div class="label">갱신</div><div id="summary-refresh" class="value muted">시작 중...</div></article>
     </section>
 
-    <section class="grid" aria-label="Live observability dashboard">
+    <section class="grid" aria-label="실시간 관측 대시보드">
       <article class="panel screen-panel">
-        <div class="panel-header"><h1>Live game screen</h1><p>mGBA frame · <code>${escapeHtml(runId)}</code></p></div>
+        <div class="panel-header"><h1>실시간 게임 화면</h1><p>mGBA 프레임 · <code>${escapeHtml(runId)}</code></p></div>
         <div class="screen-wrap">
-          <img id="live-frame" src="/api/live-frame" alt="Live mGBA screen">
+          <img id="live-frame" src="/api/live-frame" alt="실시간 mGBA 화면">
           <div class="screen-hud">
-            <div id="screen-location" class="status-line"><span class="chip">waiting for state</span></div>
-            <div id="screen-dialog" class="muted">Dialog/text will appear here.</div>
+            <div id="screen-location" class="status-line"><span class="chip">상태 대기 중</span></div>
+            <div id="screen-dialog" class="muted">대화/텍스트가 여기에 표시됩니다.</div>
           </div>
         </div>
       </article>
 
       <article class="panel state-panel">
-        <div class="panel-header"><h2>Current state</h2><p id="state-status">Waiting for RAM snapshots...</p></div>
+        <div class="panel-header"><h2>현재 상태</h2><p id="state-status">RAM 스냅샷 대기 중...</p></div>
         <div class="state-body scroll">
-          <div id="state-pretty" class="state-block"></div>
-          <pre id="game-state" class="mono-block" style="margin-top:10px">No game state recorded yet.</pre>
+          <div id="game-state" class="state-block"></div>
         </div>
       </article>
 
       <article class="panel llm-panel">
-        <div class="panel-header"><h2>LLM prompt + decision</h2><p id="llm-status">Waiting...</p></div>
+        <div class="panel-header"><h2>LLM 프롬프트 + 판단</h2><p id="llm-status">대기 중...</p></div>
         <div class="llm-layout">
           <div class="llm-rail"><div id="llm-history"></div></div>
           <div class="panel" style="border:0; box-shadow:none; background:transparent">
             <div class="llm-tabs">
-              <button class="tab active" data-llm-tab="overview">Decision</button>
-              <button class="tab" data-llm-tab="system">System</button>
-              <button class="tab" data-llm-tab="state">State</button>
-              <button class="tab" data-llm-tab="user">Injected</button>
-              <button class="tab" data-llm-tab="raw">Raw</button>
+              <button class="tab active" data-llm-tab="overview">판단</button>
+              <button class="tab" data-llm-tab="system">시스템</button>
+              <button class="tab" data-llm-tab="state">상태</button>
+              <button class="tab" data-llm-tab="user">주입</button>
+              <button class="tab" data-llm-tab="raw">원본</button>
             </div>
-            <div class="llm-detail scroll"><div id="llm-conversation" class="pretty-text">No LLM conversation recorded yet.</div></div>
+            <div class="llm-detail scroll"><div id="llm-conversation" class="pretty-text">LLM 대화 기록이 없습니다.</div></div>
           </div>
         </div>
       </article>
 
       <article class="panel context-panel">
-        <div class="panel-header"><h2>Input context + run logs</h2><p id="vision-status">Loading latest ${visionImageLimit} processed input(s)...</p></div>
+        <div class="panel-header"><h2>런 로그</h2><p id="context-status">이벤트 로딩 중...</p></div>
         <div class="context-tabs">
-          <button class="tab active" data-context-tab="vision">Images</button>
-          <button class="tab" data-context-tab="events">Events</button>
-          <button class="tab" data-context-tab="raw">Raw logs</button>
+          <button class="tab active" data-context-tab="events">이벤트</button>
+          <button class="tab" data-context-tab="raw">원본 로그</button>
         </div>
         <div class="context-body scroll">
-          <div id="vision-grid" class="vision-grid"></div>
-          <div id="event-list" class="event-list" hidden></div>
-          <pre id="raw-log" class="raw-log mono-block" hidden>No raw run log recorded yet.</pre>
+          <div id="event-list" class="event-list"></div>
+          <pre id="raw-log" class="raw-log mono-block" hidden>런 로그가 없습니다.</pre>
         </div>
       </article>
     </section>
   </main>
   <script>
     const liveFrame = document.getElementById('live-frame');
-    const visionGrid = document.getElementById('vision-grid');
-    const visionStatus = document.getElementById('vision-status');
     const llmStatus = document.getElementById('llm-status');
     const llmConversation = document.getElementById('llm-conversation');
     const llmHistory = document.getElementById('llm-history');
     const eventList = document.getElementById('event-list');
     const rawLog = document.getElementById('raw-log');
     const stateStatus = document.getElementById('state-status');
-    const statePretty = document.getElementById('state-pretty');
     const gameState = document.getElementById('game-state');
     const summaryStatus = document.getElementById('summary-status');
     const summaryProgress = document.getElementById('summary-progress');
@@ -513,14 +615,15 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     const summaryRefresh = document.getElementById('summary-refresh');
     const screenLocation = document.getElementById('screen-location');
     const screenDialog = document.getElementById('screen-dialog');
+    const contextStatus = document.getElementById('context-status');
     let selectedConversationFile = null;
     let selectedLlmTab = 'overview';
-    let selectedContextTab = 'vision';
+    let selectedContextTab = 'events';
     let latestConversation = null;
 
     function text(node, value) { node.appendChild(document.createTextNode(value)); }
     function value(value, fallback = '?') { return value === undefined || value === null || value === '' ? fallback : String(value); }
-    function boolText(value) { return value ? 'yes' : 'no'; }
+    function boolText(value) { return value ? '예' : '아니오'; }
     function compactJson(input) { return JSON.stringify(input ?? {}, null, 2); }
     function setRefreshLabel() { summaryRefresh.textContent = new Date().toLocaleTimeString(); }
 
@@ -535,7 +638,6 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       tab.addEventListener('click', () => {
         selectedContextTab = tab.getAttribute('data-context-tab');
         document.querySelectorAll('[data-context-tab]').forEach((node) => node.classList.toggle('active', node === tab));
-        visionGrid.hidden = selectedContextTab !== 'vision';
         eventList.hidden = selectedContextTab !== 'events';
         rawLog.hidden = selectedContextTab !== 'raw';
       });
@@ -545,37 +647,10 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       liveFrame.src = '/api/live-frame?nonce=' + Date.now();
     }
 
-    async function refreshVisionImages() {
-      const payload = await fetch('/api/vision-images', { cache: 'no-store' }).then((response) => response.json());
-      visionStatus.textContent = payload.count + '/' + payload.limit + ' image(s) sent as visual context';
-      visionGrid.textContent = '';
-      if (!payload.images || payload.images.length === 0) {
-        const empty = document.createElement('div');
-        empty.className = 'empty';
-        empty.textContent = 'No processed visual inputs yet. They appear after the first vision snapshot.';
-        visionGrid.appendChild(empty);
-        return;
-      }
-
-      for (const image of payload.images) {
-        const card = document.createElement('article');
-        card.className = 'vision-cell';
-        const img = document.createElement('img');
-        img.src = image.url;
-        img.alt = 'LLM context image ' + image.fileName;
-        card.appendChild(img);
-        const meta = document.createElement('div');
-        meta.className = 'meta';
-        text(meta, image.fileName + '\\nstep ' + value(image.step) + ' · frame ' + value(image.frame));
-        card.appendChild(meta);
-        visionGrid.appendChild(card);
-      }
-    }
-
     async function refreshLlmConversation() {
       const payload = await fetch('/api/llm-conversations?limit=20', { cache: 'no-store' }).then((response) => response.json());
       if (!payload.conversations || payload.conversations.length === 0) {
-        llmStatus.textContent = 'No LLM request recorded yet';
+        llmStatus.textContent = 'LLM 요청 기록 없음';
         llmHistory.textContent = '';
         latestConversation = null;
         renderSelectedConversation();
@@ -588,7 +663,7 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       for (const conversation of payload.conversations) {
         const button = document.createElement('button');
         button.className = 'history-button' + (conversation.fileName === selectedConversationFile ? ' active' : '');
-        button.textContent = conversation.fileName + '\\ncall ' + value(conversation.call) + ' · ' + summarizeAction(conversation) + '\\n' + conversationStatus(conversation);
+        button.textContent = conversation.fileName + '\\n호출 ' + value(conversation.call) + ' · ' + summarizeAction(conversation) + '\\n' + conversationStatus(conversation);
         button.onclick = () => {
           selectedConversationFile = conversation.fileName;
           latestConversation = conversation;
@@ -599,31 +674,29 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
         llmHistory.appendChild(button);
       }
       latestConversation = payload.conversations.find((item) => item.fileName === selectedConversationFile) ?? payload.conversations[0];
-      llmStatus.textContent = payload.count + ' stored · latest ' + payload.conversations[0].fileName + ' · ' + conversationStatus(payload.conversations[0]);
+      llmStatus.textContent = payload.count + ' 저장됨 · 최신 ' + payload.conversations[0].fileName + ' · ' + conversationStatus(payload.conversations[0]);
       renderSelectedConversation();
     }
 
     async function refreshGameState() {
       const payload = await fetch('/api/game-state?limit=8', { cache: 'no-store' }).then((response) => response.json());
       if (!payload.latest) {
-        stateStatus.textContent = 'No game state snapshot recorded yet';
-        statePretty.textContent = '';
-        gameState.textContent = 'No game state recorded yet.';
-        summaryMap.textContent = 'No state';
-        summaryParty.textContent = 'No state';
+        stateStatus.textContent = '게임 상태 스냅샷 없음';
+        gameState.textContent = '';
+        summaryMap.textContent = '상태 없음';
+        summaryParty.textContent = '상태 없음';
         screenLocation.textContent = '';
         const chip = document.createElement('span');
         chip.className = 'chip warn';
-        chip.textContent = 'waiting for state';
+        chip.textContent = '상태 대기 중';
         screenLocation.appendChild(chip);
-        screenDialog.textContent = 'Dialog/text will appear here.';
+        screenDialog.textContent = '대화/텍스트가 여기에 표시됩니다.';
         return;
       }
       const latest = payload.latest;
       const state = unwrapState(latest);
-      stateStatus.textContent = payload.count + '/' + payload.limit + ' snapshot(s) · latest ' + latest.fileName;
-      gameState.textContent = formatStateSnapshot(latest);
-      renderPrettyState(latest, state);
+      stateStatus.textContent = payload.count + '/' + payload.limit + ' 스냅샷 · 최신 ' + latest.fileName;
+      renderStructuredState(latest, state);
       updateStateCards(latest, state);
     }
 
@@ -636,56 +709,31 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
         count: payload.count,
         events: payload.events ?? []
       });
+      contextStatus.textContent = (payload.events ? payload.events.length : 0) + '개 이벤트';
       if (!payload.events || payload.events.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'empty';
-        empty.textContent = 'No run events recorded yet.';
+        empty.textContent = '런 이벤트가 없습니다.';
         eventList.appendChild(empty);
         return;
       }
       for (const event of payload.events) {
         const item = document.createElement('article');
         item.className = 'event-item';
-        item.textContent = formatEvent(event);
+        item.innerHTML = renderEventCard(event);
         eventList.appendChild(item);
       }
     }
 
     async function refreshRunSummary() {
       const summary = await fetch('/api/run-summary', { cache: 'no-store' }).then((response) => response.json());
-      summaryStatus.textContent = summary.status ?? 'unknown';
+      summaryStatus.textContent = summary.status ?? '알 수 없음';
       summaryStatus.className = 'value ' + ((summary.status ?? '').startsWith('failed') ? 'bad' : '');
       const counts = summary.counts ?? {};
-      summaryProgress.textContent = 'steps ' + value(summary.totalSteps) + ' · decisions ' + (counts.decisions ?? 0) + ' · errors ' + (counts.errors ?? 0);
+      summaryProgress.textContent = '스텝 ' + value(summary.totalSteps) + ' · 판단 ' + (counts.decisions ?? 0) + ' · 오류 ' + (counts.errors ?? 0);
       summaryPlayer.textContent = summary.lastAction
-        ? summarizeAction({ parsedDecision: { action: summary.lastAction.action } }) + ' · ' + (summary.lastAction.rationale ?? 'no rationale')
-        : 'No player action yet';
-    }
-
-    function renderPrettyState(snapshot, state) {
-      statePretty.textContent = '';
-      const block = document.createElement('div');
-      block.className = 'kv-grid';
-      const entries = stateEntries(snapshot, state);
-      for (const entry of entries) {
-        const item = document.createElement('div');
-        item.className = 'kv';
-        const label = document.createElement('b');
-        label.textContent = entry[0];
-        const span = document.createElement('span');
-        span.textContent = entry[1];
-        item.appendChild(label);
-        item.appendChild(span);
-        block.appendChild(item);
-      }
-      statePretty.appendChild(block);
-      const dialog = dialogText(state);
-      if (dialog) {
-        const pre = document.createElement('pre');
-        pre.className = 'mono-block';
-        pre.textContent = 'Dialog/text\\n' + dialog;
-        statePretty.appendChild(pre);
-      }
+        ? summarizeAction({ parsedDecision: { command: summary.lastAction.command, action: summary.lastAction.action } }) + ' · ' + (summary.lastAction.rationale ?? '근거 없음')
+        : '플레이어 행동 없음';
     }
 
     function updateStateCards(snapshot, state) {
@@ -700,24 +748,24 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       const badgeCount = state?.player?.badges?.count ?? state?.badges?.count ?? state?.badgeCount;
       const battle = state?.battle?.inBattle ?? state?.battle?.kind ?? state?.wIsInBattle;
       const dialog = dialogText(state);
-      summaryMap.textContent = (mapName ? mapName + ' ' : '') + 'map ' + value(mapId) + ' · y' + value(y) + ' x' + value(x);
+      summaryMap.textContent = (mapName ? mapName + ' ' : '') + '맵 ' + value(mapId) + ' · y' + value(y) + ' x' + value(x);
       summaryParty.textContent = lead
         ? partyCount + '/6 · ' + lead.nickname + ' Lv' + lead.level + ' HP ' + lead.hp + '/' + lead.maxHp
-        : value(partyCount, 0) + '/6 · lead HP ' + value(hp.current ?? state?.wPartyMon1HP) + '/' + value(hp.max ?? state?.wPartyMon1MaxHP);
+        : value(partyCount, 0) + '/6 · 선두 HP ' + value(hp.current ?? state?.wPartyMon1HP) + '/' + value(hp.max ?? state?.wPartyMon1MaxHP);
       screenLocation.textContent = '';
       for (const chip of [
-        'map ' + value(mapId),
+        '맵 ' + value(mapId),
         'y' + value(y) + ' x' + value(x),
-        'facing ' + value(facing),
-        'badges ' + value(badgeCount, 0),
-        'battle ' + value(battle)
+        '방향 ' + value(facing),
+        '배지 ' + value(badgeCount, 0),
+        '배틀 ' + value(battle)
       ]) {
         const node = document.createElement('span');
         node.className = 'chip';
         node.textContent = chip;
         screenLocation.appendChild(node);
       }
-      screenDialog.textContent = dialog || 'No active dialog/text detected.';
+      screenDialog.textContent = dialog || '활성 대화/텍스트 없음';
     }
 
     function stateEntries(snapshot, state) {
@@ -726,20 +774,20 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       const y = state?.player?.position?.y ?? state?.coordinates?.y ?? state?.wYCoord ?? state?.y;
       const x = state?.player?.position?.x ?? state?.coordinates?.x ?? state?.wXCoord ?? state?.x;
       const facing = state?.player?.facing?.direction ?? state?.playerFacing?.direction ?? state?.playerFacingDirection;
-      const badges = state?.player?.badges?.names?.join(', ') || state?.badges?.names?.join(', ') || 'none';
+      const badges = state?.player?.badges?.names?.join(', ') || state?.badges?.names?.join(', ') || '없음';
       const badgeCount = state?.player?.badges?.count ?? state?.badges?.count ?? state?.badgeCount ?? 0;
-      const battleKind = state?.battle?.type ?? state?.battle?.kind ?? state?.battleState?.flag?.kind ?? (state?.wIsInBattle ? 'battle' : 'none');
+      const battleKind = state?.battle?.type ?? state?.battle?.kind ?? state?.battleState?.flag?.kind ?? (state?.wIsInBattle ? '배틀' : '없음');
       const partyCount = state?.party?.count ?? state?.wPartyCount ?? state?.partyCount;
       const hp = state?.party?.firstPokemonHp ?? {};
       const lead = Array.isArray(state?.party?.members) ? state.party.members[0] : undefined;
       const dialog = state?.dialog?.active ?? state?.textActive ?? Boolean(dialogText(state));
       return [
-        ['Snapshot', 'step ' + value(snapshot.state?.step ?? snapshot.step) + ' · frame ' + value(snapshot.state?.frame ?? snapshot.frame)],
-        ['Location', (mapName ? mapName + ' · ' : '') + 'map ' + value(mapId) + ' · y=' + value(y) + ' x=' + value(x) + ' · ' + value(facing)],
-        ['Progress', 'badges ' + badgeCount + ' (' + badges + ') · Hall of Fame ' + boolText(Boolean(state?.hallOfFameComplete))],
-        ['Party', lead ? lead.nickname + ' ' + lead.species + ' Lv' + lead.level + ' HP ' + lead.hp + '/' + lead.maxHp : value(partyCount, 0) + '/6 · lead HP ' + value(hp.current ?? state?.wPartyMon1HP) + '/' + value(hp.max ?? state?.wPartyMon1MaxHP)],
-        ['Battle', battleKind + (state?.battle?.enemy ? ' · enemy ' + state.battle.enemy.species + ' Lv' + state.battle.enemy.level : '')],
-        ['Dialog/menu', 'active ' + boolText(Boolean(dialog)) + ' · textBox ' + value(state?.dialog?.textBoxId ?? state?.textBoxId ?? state?.wTextBoxID) + ' · menu ' + value(state?.menuText?.currentMenuItem ?? state?.menuItem)]
+        ['스냅샷', '스텝 ' + value(snapshot.state?.step ?? snapshot.step) + ' · 프레임 ' + value(snapshot.state?.frame ?? snapshot.frame)],
+        ['위치', (mapName ? mapName + ' · ' : '') + '맵 ' + value(mapId) + ' · y=' + value(y) + ' x=' + value(x) + ' · ' + value(facing)],
+        ['진행도', '배지 ' + badgeCount + ' (' + badges + ') · 명예의 전당 ' + boolText(Boolean(state?.hallOfFameComplete))],
+        ['파티', lead ? lead.nickname + ' ' + lead.species + ' Lv' + lead.level + ' HP ' + lead.hp + '/' + lead.maxHp : value(partyCount, 0) + '/6 · 선두 HP ' + value(hp.current ?? state?.wPartyMon1HP) + '/' + value(hp.max ?? state?.wPartyMon1MaxHP)],
+        ['배틀', battleKind + (state?.battle?.enemy ? ' · 적 ' + state.battle.enemy.species + ' Lv' + state.battle.enemy.level : '')],
+        ['대화/메뉴', '활성 ' + boolText(Boolean(dialog)) + ' · 텍스트박스 ' + value(state?.dialog?.textBoxId ?? state?.textBoxId ?? state?.wTextBoxID) + ' · 메뉴 ' + value(state?.menuText?.currentMenuItem ?? state?.menuItem)]
       ];
     }
 
@@ -756,34 +804,206 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       return header + '\\n' + compactJson(event.payload ?? {});
     }
 
+    function eventTypeClass(type) {
+      if (type === 'action') return 'action';
+      if (type === 'error') return 'error';
+      if (type === 'state') return 'state';
+      if (type === 'decision') return 'decision';
+      return 'screenshot';
+    }
+
+    function eventBodyRows(event) {
+      const rows = [];
+      const p = event.payload ?? {};
+      if (p.command) rows.push(['명령', compactJson(p.command)]);
+      if (p.action) rows.push(['행동', String(p.action)]);
+      if (p.result) rows.push(['결과', compactJson(p.result)]);
+      if (p.rationale) rows.push(['근거', String(p.rationale)]);
+      if (p.frame !== undefined) rows.push(['프레임', String(p.frame)]);
+      if (p.step !== undefined) rows.push(['스텝', String(p.step)]);
+      if (event.sequence !== undefined) rows.push(['시퀀스', String(event.sequence)]);
+      return rows;
+    }
+
+    function renderEventCard(event) {
+      const typeClass = eventTypeClass(event.type);
+      const rows = eventBodyRows(event);
+      let body = '<div class="event-header"><span class="event-badge ' + typeClass + '">' + escapeHtml(event.type) + '</span><span class="muted">' + escapeHtml(event.timestamp ?? '') + '</span></div>';
+      body += '<div class="event-body">';
+      if (rows.length > 0) {
+        body += '<div class="kv-mini">';
+        for (const row of rows) {
+          body += '<b>' + escapeHtml(row[0]) + '</b><span>' + escapeHtml(row[1]) + '</span>';
+        }
+        body += '</div>';
+      }
+      body += '<div class="event-payload"><pre>' + escapeHtml(compactJson(event.payload ?? {})) + '</pre></div>';
+      body += '</div>';
+      return body;
+    }
+
     function renderSelectedConversation() {
       if (!latestConversation) {
-        llmConversation.textContent = 'No LLM conversation recorded yet.';
+        llmConversation.textContent = 'LLM 대화 기록이 없습니다.';
         return;
       }
       if (selectedLlmTab === 'overview') llmConversation.innerHTML = formatConversationOverview(latestConversation);
+      else if (selectedLlmTab === 'state' || selectedLlmTab === 'user') llmConversation.innerHTML = formatConversationTab(latestConversation, selectedLlmTab);
       else llmConversation.textContent = formatConversationTab(latestConversation, selectedLlmTab);
+    }
+
+    function extractReasoning(conversation) {
+      const raw = conversation.responseContent ?? '';
+      const thinkMatch = raw.match(/<think>([\s\S]*?)<\/think>/);
+      const thinkContent = thinkMatch ? thinkMatch[1].trim() : null;
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      const nonJsonPart = jsonMatch ? raw.slice(0, jsonMatch.index).trim() : null;
+      const reasoning = thinkContent || (nonJsonPart && nonJsonPart.length > 10 ? nonJsonPart : null);
+      const rationale = conversation.parsedDecision?.rationale;
+      return {
+        thinking: reasoning,
+        rationale: rationale,
+        hasExplicitThinking: !!reasoning,
+        rawThinkTag: thinkContent,
+      };
+    }
+
+    function extractSystemChips(conversation) {
+      const system = (conversation.messages ?? []).filter((m) => m.role === 'system').map(messageText).join('\n');
+      const mode = conversation.mode ?? conversation.harnessMode ?? 'unknown';
+      const chips = [];
+      chips.push({ label: mode, type: 'mode' });
+      if (system.includes('World Rules') || system.includes('월드 규칙')) chips.push({ label: '월드 규칙', type: 'rule' });
+      if (system.includes('Progression')) chips.push({ label: '진행 모델', type: 'rule' });
+      if (system.includes('NPC Rules') || system.includes('NPC')) chips.push({ label: 'NPC 규칙', type: 'rule' });
+      if (system.includes('Stuck Patterns') || system.includes('막힘')) chips.push({ label: '막힘 패턴', type: 'rule' });
+      if (system.includes('navigate')) chips.push({ label: '이동', type: 'rule' });
+      if (system.includes('interact')) chips.push({ label: '상호작용', type: 'rule' });
+      if (system.includes('battle')) chips.push({ label: '전투', type: 'rule' });
+      if (system.includes('dialog')) chips.push({ label: '대화', type: 'rule' });
+      const user = (conversation.messages ?? []).filter((m) => m.role === 'user').map(messageText).join('\n');
+      if (user.includes('[ADVISER HINT]')) chips.push({ label: '조언자 힌트', type: 'hint' });
+      return { chips, systemText: system };
     }
 
     function formatConversationOverview(conversation) {
       const decision = conversation.parsedDecision;
       const error = conversation.error;
+      const reasoning = extractReasoning(conversation);
+      const { chips, systemText } = extractSystemChips(conversation);
       const lines = [];
-      lines.push('<div class="decision-card">');
-      lines.push('<div><span class="label">Model</span><div class="value">' + escapeHtml(value(conversation.model)) + ' · call ' + escapeHtml(value(conversation.call)) + ' · ' + escapeHtml(value(conversation.harnessMode)) + '</div></div>');
-      if (decision) {
-        lines.push('<div><span class="label">Action</span><div class="value">' + escapeHtml(summarizeAction({ parsedDecision: decision })) + '</div></div>');
-        lines.push('<div><span class="label">Rationale</span><div class="value muted">' + escapeHtml(value(decision.rationale)) + '</div></div>');
-        lines.push('<div><span class="label">Confidence</span><div class="value">' + escapeHtml(value(decision.confidence)) + '</div></div>');
-      } else if (error) {
-        lines.push('<div><span class="label">Error</span><div class="value bad">' + escapeHtml(error.code + ': ' + error.message) + '</div></div>');
+
+      const mode = conversation.mode ?? conversation.harnessMode ?? 'unknown';
+      const cmd = decision?.command;
+      const action = decision?.action;
+      let actionText = '없음';
+      if (cmd) {
+        if (cmd.type === 'navigate') actionText = 'navigate(' + value(cmd.x) + ',' + value(cmd.y) + ')';
+        else if (cmd.type === 'interact') actionText = 'interact(' + value(cmd.direction, '현재') + ')';
+        else if (cmd.type === 'wait') actionText = '대기 ' + value(cmd.frames) + 'f';
+        else if (cmd.type === 'raw') actionText = 'raw [' + (cmd.inputs ?? []).join(',') + ']';
+        else actionText = cmd.type;
+      } else if (action) {
+        actionText = action.type + ' ' + value(action.button) + ' ' + value(action.frames);
+      }
+      lines.push('<div class="decision-card" style="padding:8px 10px; margin-bottom:0; display:flex; align-items:center; justify-content:space-between; gap:8px">');
+      lines.push('<div style="display:flex; align-items:center; gap:8px">');
+      lines.push('<span class="chip">MODEL</span>');
+      lines.push('<span style="font:600 12px/1 var(--mono)">CALL #' + escapeHtml(value(conversation.call)) + '</span>');
+      lines.push('<span class="chip">' + escapeHtml(String(mode).toUpperCase()) + '</span>');
+      lines.push('</div>');
+      if (error) {
+        lines.push('<span class="action-badge" style="color:var(--red); background:rgba(255,118,92,0.12); border:1px solid rgba(255,118,92,0.22)">' + escapeHtml(error.code) + '</span>');
+      } else if (decision) {
+        lines.push('<span class="action-badge"><span class="btn">' + escapeHtml(value(cmd?.type ?? action?.type)) + '</span> ' + escapeHtml(actionText) + '</span>');
       } else {
-        lines.push('<div><span class="label">Status</span><div class="value muted">No parsed decision yet</div></div>');
+        lines.push('<span class="action-badge" style="color:var(--muted); background:rgba(145,164,135,0.10); border:1px solid rgba(145,164,135,0.20)">대기 중</span>');
       }
       lines.push('</div>');
-      const injectedState = formatConversationTab(conversation, 'state');
-      lines.push(formatInjectedSummaryHtml(injectedState));
-      lines.push('<pre class="mono-block">' + escapeHtml(injectedState) + '</pre>');
+
+      lines.push('<div class="timeline">');
+
+      lines.push('<div class="timeline-step" data-step="1">');
+      lines.push('<div class="step-title">1. 본 것</div>');
+      lines.push('<div class="rule-chips">');
+      for (const chip of chips) {
+        lines.push('<span class="rule-chip ' + chip.type + '">' + escapeHtml(chip.label) + '</span>');
+      }
+      lines.push('</div>');
+      if (systemText) {
+        lines.push('<details><summary>시스템 프롬프트 보기</summary>');
+        lines.push('<div class="collapsed-content">' + escapeHtml(systemText) + '</div>');
+        lines.push('</details>');
+      }
+      const userText = formatConversationTab(conversation, 'user');
+      const sections = parsePromptSections(userText);
+      if (sections.length > 0) {
+        lines.push('<div class="state-summary">');
+        for (const section of sections) {
+          const summary = section.content.split('\n').slice(0, 3).join('\n');
+          const title = section.title;
+          let label;
+          if (title === 'PROGRESS') label = '진행';
+          else if (title === 'LAST RESULT') label = '직전 결과';
+          else if (title.startsWith('STATE:')) label = '현재 상태';
+          else if (title === 'MAP GRAPH') label = '맵 연결';
+          else if (title === 'CURRENT MAP') label = '현재 맵';
+          else if (title === 'HISTORY') label = '최근 행동';
+          else if (title === 'ADVISER HINT') label = '조언자 힌트';
+          else label = title;
+          lines.push('<div class="state-summary-item"><b>' + escapeHtml(label) + '</b>' + escapeHtml(summary) + '</div>');
+        }
+        lines.push('</div>');
+      }
+      lines.push('</div>');
+
+      lines.push('<div class="timeline-step thinking" data-step="2">');
+      lines.push('<div class="step-title thinking">2. 생각한 것</div>');
+      if (reasoning.hasExplicitThinking) {
+        lines.push('<div class="reasoning-block">' + escapeHtml(reasoning.thinking) + '</div>');
+        if (reasoning.rawThinkTag) {
+          lines.push('<details><summary>모델 내부 추론 원문 보기</summary>');
+          lines.push('<div class="collapsed-content">' + escapeHtml(reasoning.rawThinkTag) + '</div>');
+          lines.push('</details>');
+        }
+      } else {
+        lines.push('<div class="reasoning-block muted">명시적 추론 없음</div>');
+      }
+      lines.push('</div>');
+
+      lines.push('<div class="timeline-step deciding" data-step="3">');
+      lines.push('<div class="step-title deciding">3. 결정한 것</div>');
+      if (decision) {
+        lines.push('<div><span class="action-badge"><span class="btn">' + escapeHtml(value(cmd?.type ?? action?.type)) + '</span> ' + escapeHtml(actionText) + '</span></div>');
+        if (cmd && (cmd.x !== undefined || cmd.y !== undefined || cmd.direction !== undefined || cmd.frames !== undefined || cmd.inputs !== undefined)) {
+          lines.push('<div class="rule-chips" style="margin-top:6px">');
+          if (cmd.x !== undefined) lines.push('<span class="rule-chip rule">x=' + escapeHtml(String(cmd.x)) + '</span>');
+          if (cmd.y !== undefined) lines.push('<span class="rule-chip rule">y=' + escapeHtml(String(cmd.y)) + '</span>');
+          if (cmd.direction !== undefined) lines.push('<span class="rule-chip rule">dir=' + escapeHtml(String(cmd.direction)) + '</span>');
+          if (cmd.frames !== undefined) lines.push('<span class="rule-chip rule">frames=' + escapeHtml(String(cmd.frames)) + '</span>');
+          if (cmd.inputs !== undefined) lines.push('<span class="rule-chip rule">inputs=[' + escapeHtml((cmd.inputs ?? []).join(',')) + ']</span>');
+          lines.push('</div>');
+        }
+        if (decision.rationale) {
+          lines.push('<div class="rationale-block" style="margin-top:8px">' + escapeHtml(decision.rationale) + '</div>');
+        }
+        if (decision.confidence !== undefined) {
+          const conf = Number(decision.confidence ?? 0);
+          const confPct = Math.max(0, Math.min(100, Math.round(conf * 100)));
+          lines.push('<div style="margin-top:8px"><span class="label">확신도</span><div class="confidence-bar"><div class="confidence-fill" style="width:' + confPct + '%"></div></div><div class="value" style="margin-top:4px">' + confPct + '%</div></div>');
+        }
+        const citations = decision.observedStateCitations ?? [];
+        if (citations.length > 0) {
+          lines.push('<div style="margin-top:8px"><span class="label">근거 출처</span><div class="citations-row">' + citations.map((c) => '<span class="citation-chip">' + escapeHtml(String(c)) + '</span>').join('') + '</div></div>');
+        }
+      } else if (error) {
+        lines.push('<div><span class="label">오류</span><div class="value bad">' + escapeHtml(error.code + ': ' + error.message) + '</div></div>');
+      } else {
+        lines.push('<div><span class="label">상태</span><div class="value muted">판단 대기 중</div></div>');
+      }
+      lines.push('</div>');
+
+      lines.push('</div>');
       return lines.join('');
     }
 
@@ -791,16 +1011,22 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       const messages = conversation.messages ?? [];
       const system = messages.filter((message) => message.role === 'system').map(messageText).join('\\n\\n');
       const user = messages.filter((message) => message.role === 'user').map(messageText).join('\\n\\n');
-      if (tab === 'system') return system || 'No system prompt recorded.';
-      if (tab === 'state') return extractStateContext(user);
-      if (tab === 'user') return user || 'No user prompt recorded.';
+      if (tab === 'system') return system || '시스템 프롬프트 없음';
+      if (tab === 'state') {
+        const sections = parsePromptSections(user);
+        return renderPromptSections(sections);
+      }
+      if (tab === 'user') {
+        const sections = parsePromptSections(user);
+        return renderPromptSections(sections);
+      }
       if (tab === 'raw') {
         return [
-          '[RAW RESPONSE]', conversation.responseContent ?? 'No raw response recorded.',
+          '[원본 응답]', conversation.responseContent ?? '원본 응답 없음',
           '',
-          '[ERROR]', conversation.error ? compactJson(conversation.error) : 'none',
+          '[오류]', conversation.error ? compactJson(conversation.error) : '없음',
           '',
-          '[FULL TRACE]', compactJson(conversation)
+          '[전체 추적]', compactJson(conversation)
         ].join('\\n');
       }
       return formatConversation(conversation);
@@ -811,76 +1037,81 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
       const chunks = [];
       for (const part of message.content ?? []) {
         if (part.type === 'text') chunks.push(part.text);
-        if (part.type === 'image_url') chunks.push('[image input omitted from dashboard log' + (part.image_url?.detail ? ' detail=' + part.image_url.detail : '') + ']');
+        if (part.type === 'image_url') chunks.push('[이미지 입력 생략' + (part.image_url?.detail ? ' detail=' + part.image_url.detail : '') + ']');
       }
       return chunks.join('\\n');
     }
 
-    function extractStateContext(userText) {
-      if (!userText) return 'No state context recorded.';
-      const start = userText.indexOf('Objective:');
-      const fallbackStart = userText.indexOf('Progress:');
-      const actualStart = start >= 0 ? start : Math.max(0, fallbackStart);
-      const markers = ['Recent actions summary:', 'Current map (ASCII grid', 'Rules:', 'Output schema:'];
-      let end = userText.length;
-      for (const marker of markers) {
-        const index = userText.indexOf(marker, actualStart);
-        if (index >= 0) end = Math.min(end, index);
+    function parsePromptSections(userText) {
+      if (!userText) return [];
+      const sectionRegex = new RegExp('^\\\\[(PROGRESS|LAST RESULT|ADVISER HINT|STATE:[^\\\\]]+|MAP GRAPH|CURRENT MAP|HISTORY)\\\\]', 'gm');
+      const sections = [];
+      let match;
+      const indices = [];
+      while ((match = sectionRegex.exec(userText)) !== null) {
+        indices.push({ index: match.index, title: match[0].slice(1, -1) });
       }
-      return userText.slice(actualStart, end).trim() || userText;
+      for (let i = 0; i < indices.length; i++) {
+        const start = indices[i].index;
+        const end = i + 1 < indices.length ? indices[i + 1].index : userText.length;
+        const block = userText.slice(start, end).trim();
+        const content = block.slice(block.indexOf(']') + 1).trim();
+        sections.push({ title: indices[i].title, content });
+      }
+      if (sections.length === 0) return [{ title: '프롬프트', content: userText }];
+      return sections;
     }
 
-    function formatInjectedSummaryHtml(stateContext) {
-      const items = injectedSummaryItems(stateContext);
-      if (items.length === 0) return '';
-      return '<div class="injection-summary">' + items.map((item) => (
-        '<div class="kv"><b>' + escapeHtml(item.label) + '</b><span>' + escapeHtml(item.value) + '</span></div>'
-      )).join('') + '</div>';
-    }
-
-    function injectedSummaryItems(stateContext) {
-      if (!stateContext || stateContext === 'No state context recorded.') return [];
-      const lines = stateContext.split('\\n').map((line) => line.trim()).filter(Boolean);
-      const specs = [
-        ['Objective', /^Objective:/i],
-        ['Progress', /^Progress:/i],
-        ['Location', /^(Location|Map|Position):/i],
-        ['Loop', /^Loop signal:/i],
-        ['Adjacent', /^Adjacent tiles:/i],
-        ['Battle', /^Battle:/i],
-        ['Party', /^Party:/i],
-        ['Dialog', /^(Dialog|Text|Menu):/i]
-      ];
-      const seen = new Set();
-      const items = [];
-      for (const [label, pattern] of specs) {
-        const line = lines.find((candidate) => pattern.test(candidate));
-        if (line && !seen.has(label)) {
-          const textValue = line.replace(/^[^:]+:\\s*/, '').slice(0, 220);
-          items.push({ label, value: textValue || line.slice(0, 220) });
-          seen.add(label);
+    function renderPromptSections(sections) {
+      if (!sections || sections.length === 0) return '';
+      const parts = [];
+      for (const section of sections) {
+        const title = escapeHtml(section.title);
+        let bodyHtml;
+        if (section.title === 'CURRENT MAP') {
+          const mapMatch = section.content.match(/^(.*?)\\n([\\s\\S]*?)\\n\\s*Legend:/);
+          if (mapMatch) {
+            const header = escapeHtml(mapMatch[1].trim());
+            const mapBlock = mapMatch[2].trim();
+            bodyHtml = '<div style="margin-bottom:6px">' + escapeHtml(header) + '</div>' + renderAsciiMap(mapBlock);
+          } else {
+            bodyHtml = '<pre class="mono-block">' + escapeHtml(section.content) + '</pre>';
+          }
+        } else if (section.title === 'HISTORY') {
+          const entries = section.content.split('\\n').map((l) => l.trim()).filter(Boolean);
+          const entryHtmls = [];
+          for (const entry of entries) {
+            const isFailed = entry.toLowerCase().includes('failed');
+            const cls = isFailed ? 'history-failed' : 'history-success';
+            entryHtmls.push('<div class="history-entry ' + cls + '">' + escapeHtml(entry) + '</div>');
+          }
+          bodyHtml = entryHtmls.join('');
+        } else if (section.title === 'MAP GRAPH') {
+          bodyHtml = '<pre class="mono-block">' + escapeHtml(section.content) + '</pre>';
+        } else {
+          bodyHtml = '<pre class="mono-block">' + escapeHtml(section.content) + '</pre>';
         }
+        parts.push('<div class="prompt-section"><div class="prompt-section-title">' + title + '</div><div class="prompt-section-body">' + bodyHtml + '</div></div>');
       }
-      if (items.length > 0) return items.slice(0, 6);
-      return lines.slice(0, 6).map((line, index) => ({ label: 'Context ' + (index + 1), value: line.slice(0, 220) }));
+      return parts.join('');
     }
 
     function formatConversation(conversation) {
       const sections = [];
-      sections.push('MODEL: ' + value(conversation.model) + ' | MODE: ' + value(conversation.harnessMode) + ' | CALL: ' + value(conversation.call));
+      sections.push('모델: ' + value(conversation.model) + ' | 모드: ' + value(conversation.mode ?? conversation.harnessMode) + ' | 호출: ' + value(conversation.call));
       if (conversation.parsedDecision !== undefined) {
-        sections.push('\\n[DECISION]');
+        sections.push('\\n[판단]');
         sections.push(formatDecision(conversation.parsedDecision));
       }
       if (conversation.error !== undefined && conversation.error !== null) {
-        sections.push('\\n[ERROR]');
+        sections.push('\\n[오류]');
         sections.push(compactJson(conversation.error));
       }
       if (conversation.responseContent !== undefined) {
-        sections.push('\\n[RAW RESPONSE]');
+        sections.push('\\n[원본 응답]');
         sections.push(conversation.responseContent);
       }
-      sections.push('\\n[PROMPT / INJECTED LLM CONTEXT]');
+      sections.push('\\n[프롬프트 / 주입된 LLM 컨텍스트]');
       for (const message of conversation.messages ?? []) {
         sections.push('\\n[' + String(message.role).toUpperCase() + ']');
         sections.push(messageText(message));
@@ -891,40 +1122,162 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     function formatStateSnapshot(snapshot) {
       const state = unwrapState(snapshot);
       const lines = [
-        'file: ' + snapshot.fileName,
-        'step: ' + value(snapshot.state?.step ?? snapshot.step),
-        'frame: ' + value(snapshot.state?.frame ?? snapshot.frame),
-        'stateHash: ' + value(snapshot.state?.stateHash ?? snapshot.stateHash),
+        '파일: ' + snapshot.fileName,
+        '스텝: ' + value(snapshot.state?.step ?? snapshot.step),
+        '프레임: ' + value(snapshot.state?.frame ?? snapshot.frame),
+        '상태해시: ' + value(snapshot.state?.stateHash ?? snapshot.stateHash),
         '',
         compactJson(state ?? snapshot)
       ];
       return lines.join('\\n');
     }
 
-    function summarizeAction(conversation) {
-      const action = conversation.parsedDecision?.action;
-      if (!action) return conversation.error ? 'error' : 'pending';
-      if (action.type === 'wait') return 'wait ' + action.frames;
-      if (action.type === 'sequence') {
-        const childActions = (action.actions ?? []).map((child) => summarizeAction({ parsedDecision: { action: child } }));
-        return 'sequence (' + childActions.join(' → ') + ')';
+    function buildStateSections(snapshot, state) {
+      return stateEntries(snapshot, state).map((entry) => ({ label: entry[0], value: entry[1] }));
+    }
+
+    function renderStructuredState(snapshot, state) {
+      gameState.textContent = '';
+      const sections = buildStateSections(snapshot, state);
+      const grid = document.createElement('div');
+      grid.className = 'kv-grid';
+      for (const section of sections) {
+        const item = document.createElement('div');
+        item.className = 'kv';
+        const label = document.createElement('b');
+        label.textContent = section.label;
+        const span = document.createElement('span');
+        span.textContent = section.value;
+        item.appendChild(label);
+        item.appendChild(span);
+        grid.appendChild(item);
       }
-      return action.type + ' ' + action.button + ' ' + action.frames;
+      gameState.appendChild(grid);
+      const mapAscii = extractMapAsciiFromState(state);
+      if (mapAscii) {
+        const mapSection = document.createElement('div');
+        mapSection.className = 'map-section';
+        mapSection.innerHTML = '<h3>맵</h3>' + renderAsciiMap(mapAscii);
+        gameState.appendChild(mapSection);
+      }
+      const dialog = dialogText(state);
+      if (dialog) {
+        const pre = document.createElement('pre');
+        pre.className = 'mono-block';
+        pre.textContent = '대화/텍스트\\n' + dialog;
+        gameState.appendChild(pre);
+      }
+    }
+
+    function extractMapAsciiFromState(state) {
+      return state?.mapAscii ?? state?.map?.ascii ?? state?.asciiMap;
+    }
+
+    function extractMapAsciiFromConversation(conversation) {
+      const user = (conversation.messages ?? []).filter((m) => m.role === 'user').map(messageText).join('\\n');
+      if (!user) return null;
+      const mapBlockRe = new RegExp('Current map \\\\(ASCII grid[^\\\\n]*\\\\n([\\\\s\\\\S]*?)\\\\n(?:Rules|Output schema|Recent actions)');
+      const tileRowRe = new RegExp('^\\\\s*\\\\d+\\\\s+[.#"?@NW]+\\\\s*$');
+      const match = user.match(mapBlockRe);
+      if (match) {
+        const block = match[1].trim().split('\\n').filter((l) => tileRowRe.test(l)).join('\\n');
+        if (block) return block;
+      }
+      const lines = user.split('\\n');
+      const start = lines.findIndex((l) => tileRowRe.test(l));
+      if (start >= 0) {
+        const end = lines.slice(start).findIndex((l) => !tileRowRe.test(l));
+        const slice = end >= 0 ? lines.slice(start, start + end) : lines.slice(start);
+        return slice.join('\\n');
+      }
+      return null;
+    }
+
+    function mapCellClass(char) {
+      if (char === '@') return 'player';
+      if (char === '#') return 'wall';
+      if (char === '.') return 'walk';
+      if (char === '"') return 'grass';
+      if (char === 'N') return 'npc';
+      if (char === 'W') return 'warp';
+      return 'unknown';
+    }
+
+    function renderAsciiMap(mapAscii) {
+      const rows = mapAscii.split('\\n').filter((line) => /^\\s*\\d+\\s+[.#"?@NW]+\\s*$/.test(line));
+      if (rows.length === 0) return '<pre class="mono-block">' + escapeHtml(mapAscii) + '</pre>';
+      const cells = rows.map((line) => {
+        const m = line.match(/^\\s*\\d+\\s+([.#"?@NW]+)\\s*$/);
+        return m ? m[1].split('') : [];
+      });
+      const maxCols = Math.max(...cells.map((r) => r.length));
+      const grid = document.createElement('div');
+      grid.className = 'map-grid';
+      grid.style.gridTemplateColumns = 'repeat(' + maxCols + ', 16px)';
+      for (const row of cells) {
+        for (let c = 0; c < maxCols; c++) {
+          const cell = document.createElement('div');
+          cell.className = 'map-cell ' + mapCellClass(row[c]);
+          cell.textContent = row[c] ?? ' ';
+          grid.appendChild(cell);
+        }
+      }
+      const legend = document.createElement('div');
+      legend.className = 'map-legend';
+      const legendItems = [
+        ['player', '@ 플레이어'],
+        ['wall', '# 벽'],
+        ['walk', '. 이동가능'],
+        ['grass', '" 풀'],
+        ['npc', 'N NPC'],
+        ['warp', 'W 워프'],
+        ['unknown', '? 미확인']
+      ];
+      for (const item of legendItems) {
+        const span = document.createElement('span');
+        span.innerHTML = '<span class="swatch ' + item[0] + '"></span>' + escapeHtml(item[1]);
+        legend.appendChild(span);
+      }
+      const wrap = document.createElement('div');
+      wrap.appendChild(grid);
+      wrap.appendChild(legend);
+      return wrap.outerHTML;
+    }
+
+    function summarizeAction(conversation) {
+      const decision = conversation.parsedDecision;
+      const cmd = decision?.command;
+      const action = decision?.action;
+      if (cmd) {
+        if (cmd.type === 'navigate') return 'navigate(' + value(cmd.x) + ',' + value(cmd.y) + ')';
+        if (cmd.type === 'interact') return 'interact(' + value(cmd.direction, '현재') + ')';
+        if (cmd.type === 'wait') return '대기 ' + value(cmd.frames) + 'f';
+        if (cmd.type === 'raw') return 'raw [' + (cmd.inputs ?? []).join(',') + ']';
+        return cmd.type;
+      }
+      if (action) {
+        if (action.type === 'wait') return '대기 ' + action.frames;
+        if (action.type === 'sequence') {
+          return '시퀀스 (' + (action.actions ?? []).map((c) => summarizeAction({parsedDecision:{action:c}})).join(' → ') + ')';
+        }
+        return action.type + ' ' + action.button + ' ' + action.frames;
+      }
+      return conversation.error ? '오류' : '대기 중';
     }
 
     function conversationStatus(conversation) {
-      if (conversation.error) return 'error ' + conversation.error.code;
-      if (conversation.parsedDecision) return 'decision ok';
-      return 'pending';
+      if (conversation.error) return '오류 ' + conversation.error.code;
+      if (conversation.parsedDecision) return '판단 완료';
+      return '대기 중';
     }
 
     function formatDecision(decision) {
-      return [
-        'action: ' + summarizeAction({ parsedDecision: decision }),
-        'confidence: ' + decision.confidence,
-        'rationale: ' + decision.rationale,
-        'citations: ' + (decision.observedStateCitations ?? []).join(', ')
-      ].join('\\n');
+      const parts = ['행동: ' + summarizeAction({ parsedDecision: decision })];
+      if (decision.confidence !== undefined) parts.push('확신도: ' + decision.confidence);
+      parts.push('근거: ' + decision.rationale);
+      const citations = decision.observedStateCitations ?? [];
+      if (citations.length > 0) parts.push('근거 출처: ' + citations.join(', '));
+      return parts.join('\\n');
     }
 
     function escapeHtml(input) {
@@ -938,7 +1291,6 @@ function renderPage(runId: string, visionImageLimit: number, llmConversationsPat
     async function tick() {
       await Promise.allSettled([
         refreshLiveFrame(),
-        refreshVisionImages(),
         refreshLlmConversation(),
         refreshGameState(),
         refreshEvents(),
