@@ -81,7 +81,6 @@ When benchmark code changes are present, add focused tests for:
 - report serialization compatibility
 - unavailable Docker/container metrics fallback behavior
 - WebSocket backpressure/reconnect accounting
-- versioned stream protocol parsing, sequence gaps, keyframe replay, and viewer metrics
 
 Optional live verification requires Docker, the emulator image, and a legal ROM
 path. Do not run live ROM/emulator checks in default tests.

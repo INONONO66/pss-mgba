@@ -10,7 +10,6 @@ import {
   DashboardBroadcast,
   encodeFrame,
 } from "../src/streaming/DashboardBroadcast.js";
-import { decodeStreamFrame } from "../src/streaming/StreamProtocol.js";
 import type { CapturedFrame } from "../src/streaming/FrameCapture.js";
 
 const HOST = "127.0.0.1";
@@ -24,28 +23,17 @@ describe("DashboardBroadcast", () => {
     await Promise.all(fixtures.splice(0).map((fixture) => fixture.close()));
   });
 
-  it("encodes versioned stream frames with sequence, timestamp, and JPEG payload", () => {
+  it("encodes frames with instance index, little-endian timestamp, and JPEG bytes", () => {
     const jpegBuffer = Buffer.from([0xff, 0xd8, 0x01, 0xff, 0xd9]);
 
     const encoded = encodeFrame(
-      createFrame({
-        instanceIndex: 7,
-        sequence: 42,
-        timestampMs: 0x12_34_56_78,
-        jpegBuffer,
-      })
+      createFrame({ instanceIndex: 7, timestampMs: 0x12_34_56_78, jpegBuffer })
     );
-    const decoded = decodeStreamFrame(encoded);
 
-    expect(decoded?.header).toMatchObject({
-      frameType: 1,
-      instanceIndex: 7,
-      payloadBytes: jpegBuffer.byteLength,
-      sequence: 42,
-      timestampMs: 0x12_34_56_78,
-      version: 1,
-    });
-    expect(decoded?.payload).toEqual(jpegBuffer);
+    expect(encoded.subarray(0, 5)).toEqual(
+      Buffer.from([0x07, 0x78, 0x56, 0x34, 0x12])
+    );
+    expect(encoded.subarray(5)).toEqual(jpegBuffer);
   });
 
   it("drops frames for clients over the backpressure limit", async () => {
@@ -80,20 +68,6 @@ describe("DashboardBroadcast", () => {
     fixture.broadcast.broadcastFrame(createFrame({ timestampMs: 2 }));
   });
 
-
-  it("replays the latest keyframe to newly connected dashboard clients", async () => {
-    const fixture = await createFixture();
-    fixtures.push(fixture);
-    const frame = createFrame({ sequence: 7, timestampMs: 1234 });
-    fixture.broadcast.broadcastFrame(frame);
-
-    const { firstMessage } = await fixture.connectWithFirstMessage(
-      "/ws/dashboard"
-    );
-
-    await expect(firstMessage).resolves.toEqual(encodeFrame(frame));
-  });
-
   it("routes per-instance frames only to matching token subscribers", async () => {
     const fixture = await createFixture();
     fixtures.push(fixture);
@@ -118,10 +92,6 @@ interface BroadcastFixture {
   broadcast: DashboardBroadcast;
   close(): Promise<void>;
   connect(path: string): Promise<WebSocket>;
-  connectWithFirstMessage(path: string): Promise<{
-    client: WebSocket;
-    firstMessage: Promise<Buffer | undefined>;
-  }>;
   nextServerSocket(): Promise<WebSocket>;
 }
 
@@ -149,15 +119,6 @@ async function createFixture(
       await openClient(client);
       await new Promise((resolve) => setImmediate(resolve));
       return client;
-    },
-    async connectWithFirstMessage(path: string) {
-      const client = new WebSocket(`ws://${HOST}:${port}${path}`);
-      clients.add(client);
-      client.on("close", () => clients.delete(client));
-      const firstMessage = nextMessage(client);
-      await openClient(client);
-      await new Promise((resolve) => setImmediate(resolve));
-      return { client, firstMessage };
     },
     nextServerSocket() {
       return new Promise((resolve) => {
@@ -192,8 +153,6 @@ function createFrame(overrides: Partial<CapturedFrame> = {}): CapturedFrame {
   return {
     instanceIndex: 0,
     instanceId: "instance-a",
-    isKeyframe: true,
-    sequence: 0,
     token: TOKEN_A,
     jpegBuffer: Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
     timestampMs: 123,
