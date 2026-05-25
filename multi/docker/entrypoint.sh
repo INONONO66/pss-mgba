@@ -22,4 +22,4 @@ done
 export DISPLAY=:99
 
 echo "Starting gateway..."
-exec node /app/dist/index.js
+exec node /app/dist/src/index.js

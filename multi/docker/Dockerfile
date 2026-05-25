@@ -162,8 +162,8 @@ RUN cmake .. \
 FROM node:22-slim AS gateway-builder
 WORKDIR /app
 RUN npm install -g pnpm
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile 2>/dev/null || pnpm install
+COPY package.json ./
+RUN pnpm install --no-frozen-lockfile --dangerously-allow-all-builds
 COPY src/ ./src/
 COPY tsconfig.json ./
 RUN pnpm build
