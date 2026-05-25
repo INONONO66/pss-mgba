@@ -10,6 +10,7 @@ runs/
 node_modules/
 .local-tools/
 dist/
+viewer/dist/
 coverage/
 
 *.gb

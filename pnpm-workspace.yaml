@@ -1,3 +1,7 @@
+packages:
+  - .
+  - viewer
+
 allowBuilds:
   esbuild: true
   sharp: true

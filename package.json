@@ -13,6 +13,8 @@
     "harness": "tsx src/index.ts",
     "harness:full-game": "tsx src/index.ts run --mode full-game --policy openai --vision --max-steps 1500",
     "dev": "tsx src/dev.ts",
+    "viewer:dev": "cd viewer && pnpm dev",
+    "viewer:build": "cd viewer && pnpm build",
     "dev:runtime": "tsx src/index.ts run --policy openai --mode full-game --vision",
     "smoke:mgba": "tsx src/index.ts smoke",
     "trace:report": "tsx src/trace-report.ts",
