@@ -5,47 +5,50 @@ import { createApiRouter, type InstanceRegistry } from '../src/gateway/ApiRouter
 import { MgbaSocketClient } from '../src/mgba/MgbaSocketClient.js'
 import { formatMessage, SUCCESS_MARKER } from '../src/mgba/protocol.js'
 
-interface ExecFileCall {
-  file: string
-  args: string[]
-  encoding: 'buffer'
-}
-
-type ExecFileCallback = (error: Error | null, stdout: Buffer, stderr: Buffer) => void
-type ExecFileMock = (
-  file: string,
-  args: string[],
-  options: { encoding: 'buffer' },
-  callback: ExecFileCallback,
-) => void
-
-const execFileMock = vi.hoisted(() => {
-  const calls: ExecFileCall[] = []
-  const empty = Buffer.from([])
-  let implementation: ExecFileMock = (_file, _args, _options, callback) => {
-    callback(null, empty, empty)
-  }
+const readFileMock = vi.hoisted(() => {
+  const directoryStats = { isDirectory: () => true }
+  const fileStats = { dev: 1, ino: 2, isFile: () => true }
+  let response: Buffer<ArrayBufferLike> = Buffer.from([])
+  let failure: Error | undefined
+  const calls: string[] = []
 
   return {
     calls,
-    execFile(file: string, args: string[], options: { encoding: 'buffer' }, callback: ExecFileCallback) {
-      calls.push({ file, args, encoding: options.encoding })
-      implementation(file, args, options, callback)
+    lstat(path: string) {
+      calls.push(`lstat:${path}`)
+      if (failure) {
+        return Promise.reject(failure)
+      }
+      return Promise.resolve(path.endsWith('/instance-1') ? directoryStats : fileStats)
+    },
+    open(path: string, flags?: number) {
+      calls.push(`open:${path}:${flags ?? ''}`)
+      if (failure) {
+        return Promise.reject(failure)
+      }
+      return Promise.resolve({
+        close: () => Promise.resolve(),
+        readFile: () => Promise.resolve(response),
+        stat: () => Promise.resolve(fileStats),
+      })
     },
     reset() {
       calls.length = 0
-      implementation = (_file, _args, _options, callback) => {
-        callback(null, empty, empty)
-      }
+      response = Buffer.from([])
+      failure = undefined
     },
-    setImplementation(next: ExecFileMock) {
-      implementation = next
+    setFailure(error: Error) {
+      failure = error
+    },
+    setResponse(next: Buffer<ArrayBufferLike>) {
+      response = next
     },
   }
 })
 
-vi.mock('node:child_process', () => ({
-  execFile: execFileMock.execFile,
+vi.mock('node:fs/promises', () => ({
+  lstat: readFileMock.lstat,
+  open: readFileMock.open,
 }))
 
 const TOKEN = '0123456789abcdef0123456789abcdef'
@@ -69,7 +72,7 @@ interface Fixture {
 
 describe('createApiRouter', () => {
   beforeEach(() => {
-    execFileMock.reset()
+    readFileMock.reset()
   })
 
   const textCases: TextEndpointCase[] = [
@@ -170,13 +173,11 @@ describe('createApiRouter', () => {
     expect(fixture.messages).toEqual([])
   })
 
-  it('returns PNG bytes for /core/screenshot after docker exec reads the capture file', async () => {
+  it('returns PNG bytes for /core/screenshot after reading the bind-mounted capture file', async () => {
     const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a])
-    execFileMock.setImplementation((_file, _args, _options, callback) => {
-      callback(null, pngBytes, Buffer.from([]))
-    })
+    readFileMock.setResponse(pngBytes)
 
-    const socketMessage = formatMessage('core.screenshot', '/tmp/capture.png')
+    const socketMessage = formatMessage('core.screenshot', '/capture/rest-capture.png')
     const fixture = createFixture(new Map([[socketMessage, SUCCESS_MARKER]]))
 
     const response = await fixture.app.request(
@@ -188,21 +189,17 @@ describe('createApiRouter', () => {
     expect(response.headers.get('content-type')).toBe('image/png')
     expect(Buffer.from(await response.arrayBuffer())).toEqual(pngBytes)
     expect(fixture.messages).toEqual([socketMessage])
-    expect(execFileMock.calls).toEqual([
-      {
-        file: 'docker',
-        args: ['exec', CONTAINER_ID, 'cat', '/tmp/capture.png'],
-        encoding: 'buffer',
-      },
+    expect(readFileMock.calls).toEqual([
+      'lstat:/tmp/pss-mgba-captures-test/instance-1',
+      'lstat:/tmp/pss-mgba-captures-test/instance-1/rest-capture.png',
+      expect.stringMatching(/^open:\/tmp\/pss-mgba-captures-test\/instance-1\/rest-capture\.png:\d+$/),
     ])
   })
 
-  it('returns 500 when docker exec cannot read /tmp/capture.png', async () => {
-    execFileMock.setImplementation((_file, _args, _options, callback) => {
-      callback(new Error('docker failed'), Buffer.from([]), Buffer.from([]))
-    })
+  it('returns 500 when the bind-mounted capture file cannot be read', async () => {
+    readFileMock.setFailure(new Error('read failed'))
 
-    const socketMessage = formatMessage('core.screenshot', '/tmp/capture.png')
+    const socketMessage = formatMessage('core.screenshot', '/capture/rest-capture.png')
     const fixture = createFixture(new Map([[socketMessage, SUCCESS_MARKER]]))
 
     const response = await fixture.app.request(
@@ -239,6 +236,7 @@ function createFixture(responses: Map<string, string>): Fixture {
           token: TOKEN,
           containerId: CONTAINER_ID,
           containerHost: '127.0.0.1',
+          captureDirectory: '/tmp/pss-mgba-captures-test/instance-1',
           status: 'running',
           createdAt: new Date('2026-05-25T00:00:00Z'),
         },

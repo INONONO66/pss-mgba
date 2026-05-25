@@ -20,12 +20,16 @@ describe("loadConfig", () => {
   it("coerces benchmark-relevant numeric settings", () => {
     process.env.MAX_INSTANCES = "4";
     process.env.CAPTURE_INTERVAL_MS = "16";
+    process.env.EMULATOR_MEMORY_BYTES = "536870912";
+    process.env.CAPTURE_ROOT = "/tmp/pss-mgba-captures-test";
     process.env.STREAM_KEYFRAME_INTERVAL = "120";
     process.env.STREAM_TILE_SIZE = "32";
     process.env.WS_BACKPRESSURE_LIMIT = "1024";
 
     expect(loadConfig()).toMatchObject({
       captureIntervalMs: 16,
+      captureRoot: '/tmp/pss-mgba-captures-test',
+      emulatorMemoryBytes: 536870912,
       maxInstances: 4,
       streamKeyframeInterval: 120,
       streamTileSize: 32,

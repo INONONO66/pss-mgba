@@ -15,7 +15,8 @@ trap cleanup EXIT INT TERM
 
 # Start Xvfb
 echo "Starting Xvfb..."
-Xvfb :99 -screen 0 1024x768x24 -ac &
+XVFB_SCREEN="${XVFB_SCREEN:-320x240x16}"
+Xvfb :99 -screen 0 "$XVFB_SCREEN" -nolisten tcp -noreset -ac &
 XVFB_PID=$!
 
 # Wait for display to be ready
@@ -66,7 +67,9 @@ for i in $(seq 1 60); do
         wait "$MGBA_PID"
         exit 1
     fi
-    if nc -z 127.0.0.1 8888 2>/dev/null; then
+    if (exec 3<>/dev/tcp/127.0.0.1/8888) >/dev/null 2>&1; then
+        exec 3<&-
+        exec 3>&-
         echo "Lua socket ready on port 8888"
         echo "Emulator ready. Lua socket listening on :8888"
         wait "$MGBA_PID"

@@ -25,20 +25,19 @@ when deciding whether a live run proves the 10-instance target:
   interval with per-instance in-flight guards. The default
   `CAPTURE_INTERVAL_MS=16` is intended to exercise a 60fps cadence, but it must
   still be validated under load before a strict pass is accepted.
-- The gateway still obtains source pixels through mGBA screenshot plus
-  container-file readback. The WebSocket transport no longer sends JPEG images,
-  but the capture source remains a likely runtime bottleneck for the later
-  container/runtime optimization PR.
+- The gateway still obtains source pixels through mGBA screenshot, but the runtime capture path
+  removes the per-frame `docker exec cat` readback by mounting a per-instance
+  host capture directory at `/capture` and reading the file directly from the
+  gateway process.
 - `src/streaming/DashboardBroadcast.ts` now sends typed keyframe/delta frames
   with sequence numbers, keyframe replay, and client metric ingestion. The
   benchmark must continue treating sequence gaps and server/client drop counters
   as dropped-frame evidence.
 - The gateway root route still serves a placeholder dashboard, so live per-tile
   FPS/drop instrumentation is not yet visible through the gateway page.
-- `src/instances/DockerDriver.ts` and `src/instances/InstanceManager.ts` provide
-  lifecycle primitives, but the reviewed baseline does not yet expose sustained
-  benchmark memory attribution or CPU sampling for gateway and emulator
-  processes/containers.
+- `src/instances/DockerDriver.ts` caps per-emulator memory/swap, pids, tmpfs,
+  and shm while keeping the 10-instance cap. Live benchmark memory attribution
+  still comes from the strict headless benchmark resource samples.
 
 ## Report schema review checklist
 

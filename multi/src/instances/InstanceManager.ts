@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto'
+import { rm } from 'node:fs/promises'
 
 import { generateToken } from '../auth/TokenAuth.js'
 import type { Config } from '../config.js'
 import type { InstanceRegistry } from '../gateway/ApiRouter.js'
 import { MgbaSocketClient } from '../mgba/MgbaSocketClient.js'
 import { DockerDriver } from './DockerDriver.js'
+import { isSafeCaptureDirectory } from './capturePaths.js'
 import type { InstanceInfo } from './types.js'
 
 const SOCKET_READY_TIMEOUT_MS = 30_000
@@ -41,16 +43,28 @@ export class InstanceManager {
       romPath: romPath ?? this.config.romPath,
       networkName: this.config.networkName,
       emulatorPort: this.config.emulatorPort,
+      emulatorMemoryBytes: this.config.emulatorMemoryBytes,
+      captureRoot: this.config.captureRoot,
     })
 
     const client = new MgbaSocketClient()
-    await this.waitForSocket(client, containerInfo.host, containerInfo.port)
+    try {
+      await this.waitForSocket(client, containerInfo.host, containerInfo.port)
+    } catch (error) {
+      client.disconnect()
+      await this.driver.stopContainer(containerInfo.id).catch(() => undefined)
+      if (await isSafeCaptureDirectory(containerInfo.captureDirectory, this.config.captureRoot)) {
+        await rm(containerInfo.captureDirectory, { force: true, recursive: true }).catch(() => undefined)
+      }
+      throw error
+    }
 
     const info: InstanceInfo = {
       id,
       token,
       containerId: containerInfo.id,
       containerHost: containerInfo.host,
+      captureDirectory: containerInfo.captureDirectory,
       status: 'running',
       createdAt: new Date(),
     }
@@ -70,6 +84,9 @@ export class InstanceManager {
 
     this.clients.get(instanceId)?.disconnect()
     await this.driver.stopContainer(info.containerId).catch(() => undefined)
+    if (await isSafeCaptureDirectory(info.captureDirectory, this.config.captureRoot)) {
+      await rm(info.captureDirectory, { force: true, recursive: true }).catch(() => undefined)
+    }
 
     this.instances.delete(instanceId)
     this.clients.delete(instanceId)
@@ -95,6 +112,13 @@ export class InstanceManager {
         return
       }
 
+      if (container.captureDirectory === undefined ||
+        !(await isSafeCaptureDirectory(container.captureDirectory, this.config.captureRoot))
+      ) {
+        await this.driver.stopContainer(container.id).catch(() => undefined)
+        continue
+      }
+
       const inspection = await this.driver.inspectContainer(container.id).catch(() => ({ running: false }))
       if (!inspection.running) {
         continue
@@ -115,6 +139,7 @@ export class InstanceManager {
         token,
         containerId: container.id,
         containerHost: container.host,
+        captureDirectory: container.captureDirectory,
         status: 'running',
         createdAt: new Date(),
       }

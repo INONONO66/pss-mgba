@@ -230,6 +230,7 @@ function createRegistryEntry(token: string, id: string) {
       token,
       containerId: `container-${id}`,
       containerHost: "127.0.0.1",
+      captureDirectory: `/tmp/pss-mgba-captures-test/${id}`,
       status: "running" as const,
       createdAt: new Date("2026-05-25T00:00:00Z"),
     },
