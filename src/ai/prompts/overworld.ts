@@ -21,7 +21,6 @@ Strategy:
 - If partial: retry same target or try alternate path
 - Use map graph to plan multi-map routes
 - Heal at Pokecenter when HP low
-- Progress toward next badge/story milestone
 
 Output: {"command": {"type": "...", ...}, "rationale": "..."}`;
 }
