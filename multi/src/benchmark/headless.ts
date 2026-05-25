@@ -2,6 +2,10 @@ import { writeFile } from "node:fs/promises";
 
 import WebSocket, { type RawData } from "ws";
 import {
+  decodeStreamFrame,
+  STREAM_FRAME_KEYFRAME,
+} from "../streaming/StreamProtocol.js";
+import {
   buildInstanceReport,
   finalizeBenchmarkReport,
   formatHumanSummary,
@@ -48,10 +52,14 @@ interface AdminInstance {
 
 interface InstanceCapture {
   instance: AdminInstance;
+  hasSeenFrame: boolean;
   keyframeRecoveries: number;
+  lastSequence?: number;
   receivedAtMs: number[];
   reconnects: number;
   plannedClose: boolean;
+  sequenceGaps: number;
+  waitingForKeyframe: boolean;
   ws?: WebSocket;
 }
 
@@ -78,6 +86,9 @@ async function main(): Promise<void> {
       reconnects: 0,
       plannedClose: false,
       keyframeRecoveries: 0,
+      hasSeenFrame: false,
+      sequenceGaps: 0,
+      waitingForKeyframe: true,
     }));
 
     await Promise.all(
@@ -147,9 +158,11 @@ async function main(): Promise<void> {
           maxDroppedOrLateRatio: options.maxDroppedOrLateRatio,
           serverProducedFrames: serverMetrics?.producedFrames,
           serverProducedFps: serverMetrics?.producedFps,
-          serverDroppedFrames:
+          serverDroppedFrames: Math.max(
             (serverMetrics?.dashboardFramesDropped ?? 0) +
-            (serverMetrics?.instanceFramesDropped ?? 0),
+              (serverMetrics?.instanceFramesDropped ?? 0),
+            capture.sequenceGaps
+          ),
           reconnects: capture.reconnects,
           keyframeRecoveries: capture.keyframeRecoveries,
         });
@@ -232,14 +245,38 @@ async function openCaptureSocket(
   capture.ws = ws;
 
   ws.on("message", (data) => {
-    if (rawDataToBuffer(data).byteLength >= 5) {
-      capture.receivedAtMs.push(performance.now());
+    const decoded = decodeStreamFrame(rawDataToBuffer(data));
+    if (!decoded) {
+      return;
     }
+
+    if (
+      capture.lastSequence !== undefined &&
+      decoded.header.sequence > capture.lastSequence + 1
+    ) {
+      capture.sequenceGaps += decoded.header.sequence - capture.lastSequence - 1;
+    }
+    capture.lastSequence = decoded.header.sequence;
+
+    if (decoded.payload.byteLength === 0) {
+      return;
+    }
+
+    if (decoded.header.frameType === STREAM_FRAME_KEYFRAME) {
+      if (capture.waitingForKeyframe && capture.hasSeenFrame) {
+        capture.keyframeRecoveries += 1;
+      }
+      capture.waitingForKeyframe = false;
+    }
+
+    capture.hasSeenFrame = true;
+    capture.receivedAtMs.push(performance.now());
   });
 
   ws.on("close", () => {
     if (!capture.plannedClose) {
       capture.reconnects += 1;
+      capture.waitingForKeyframe = true;
     }
   });
 

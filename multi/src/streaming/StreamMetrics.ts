@@ -1,9 +1,17 @@
 // biome-ignore-all lint/style/useFilenamingConvention: Existing multi modules use PascalCase filenames.
 import type { CapturedFrame } from "./FrameCapture.js";
+import type { StreamClientMetricsMessage } from "./StreamProtocol.js";
 
 export type StreamDeliveryTarget = "dashboard" | "instance";
 
 export interface StreamInstanceMetricsSnapshot {
+  clientBufferedFrames?: number;
+  clientDecodedFrames: number;
+  clientDroppedFrames: number;
+  clientFps?: number;
+  clientKeyframeRecoveries: number;
+  clientReconnects: number;
+  clientRenderedFrames: number;
   dashboardFramesDropped: number;
   dashboardFramesSent: number;
   firstProducedAtMs?: number;
@@ -11,24 +19,41 @@ export interface StreamInstanceMetricsSnapshot {
   instanceFramesSent: number;
   instanceId: string;
   instanceIndex: number;
+  keyframesProduced: number;
   lastProducedAtMs?: number;
+  lastSequence?: number;
   producedFps: number;
   producedFrames: number;
+  sequenceGaps: number;
 }
 
 export interface StreamMetricsSnapshot {
   aggregate: {
-    producedFrames: number;
-    dashboardFramesSent: number;
+    clientDecodedFrames: number;
+    clientDroppedFrames: number;
+    clientKeyframeRecoveries: number;
+    clientReconnects: number;
+    clientRenderedFrames: number;
     dashboardFramesDropped: number;
-    instanceFramesSent: number;
+    dashboardFramesSent: number;
     instanceFramesDropped: number;
+    instanceFramesSent: number;
+    keyframesProduced: number;
+    producedFrames: number;
+    sequenceGaps: number;
   };
   generatedAtMs: number;
   instances: StreamInstanceMetricsSnapshot[];
 }
 
 interface MutableStreamInstanceMetrics {
+  clientBufferedFrames?: number;
+  clientDecodedFrames: number;
+  clientDroppedFrames: number;
+  clientFps?: number;
+  clientKeyframeRecoveries: number;
+  clientReconnects: number;
+  clientRenderedFrames: number;
   dashboardFramesDropped: number;
   dashboardFramesSent: number;
   firstProducedAtMs?: number;
@@ -36,8 +61,11 @@ interface MutableStreamInstanceMetrics {
   instanceFramesSent: number;
   instanceId: string;
   instanceIndex: number;
+  keyframesProduced: number;
   lastProducedAtMs?: number;
+  lastSequence?: number;
   producedFrames: number;
+  sequenceGaps: number;
 }
 
 export class StreamMetrics {
@@ -47,7 +75,17 @@ export class StreamMetrics {
     const metrics = this.getOrCreate(frame);
     metrics.instanceId = frame.instanceId;
     metrics.instanceIndex = frame.instanceIndex;
+    if (
+      metrics.lastSequence !== undefined &&
+      frame.sequence > metrics.lastSequence + 1
+    ) {
+      metrics.sequenceGaps += frame.sequence - metrics.lastSequence - 1;
+    }
+    metrics.lastSequence = frame.sequence;
     metrics.producedFrames += 1;
+    if (frame.isKeyframe) {
+      metrics.keyframesProduced += 1;
+    }
     metrics.firstProducedAtMs ??= frame.timestampMs;
     metrics.lastProducedAtMs = frame.timestampMs;
   }
@@ -74,6 +112,22 @@ export class StreamMetrics {
     }
   }
 
+  recordClientMetrics(message: StreamClientMetricsMessage): void {
+    const metrics = message.instanceId
+      ? this.instances.get(message.instanceId) ??
+        this.getOrCreateClientOnly(message.instanceId)
+      : this.getOrCreateClientOnly(undefined);
+
+    metrics.clientRenderedFrames += message.renderedFrames ?? 0;
+    metrics.clientDecodedFrames += message.decodedFrames ?? 0;
+    metrics.clientDroppedFrames += message.droppedFrames ?? 0;
+    metrics.clientReconnects += message.reconnects ?? 0;
+    metrics.clientKeyframeRecoveries += message.keyframeRecoveries ?? 0;
+    metrics.clientFps = message.fps ?? metrics.clientFps;
+    metrics.clientBufferedFrames =
+      message.bufferedFrames ?? metrics.clientBufferedFrames;
+  }
+
   snapshot(nowMs = Date.now()): StreamMetricsSnapshot {
     const instances = Array.from(this.instances.values())
       .map((metrics) => snapshotInstance(metrics))
@@ -89,6 +143,9 @@ export class StreamMetrics {
       aggregate: instances.reduce(
         (aggregate, metrics) => ({
           producedFrames: aggregate.producedFrames + metrics.producedFrames,
+          keyframesProduced:
+            aggregate.keyframesProduced + metrics.keyframesProduced,
+          sequenceGaps: aggregate.sequenceGaps + metrics.sequenceGaps,
           dashboardFramesSent:
             aggregate.dashboardFramesSent + metrics.dashboardFramesSent,
           dashboardFramesDropped:
@@ -97,13 +154,29 @@ export class StreamMetrics {
             aggregate.instanceFramesSent + metrics.instanceFramesSent,
           instanceFramesDropped:
             aggregate.instanceFramesDropped + metrics.instanceFramesDropped,
+          clientRenderedFrames:
+            aggregate.clientRenderedFrames + metrics.clientRenderedFrames,
+          clientDecodedFrames:
+            aggregate.clientDecodedFrames + metrics.clientDecodedFrames,
+          clientDroppedFrames:
+            aggregate.clientDroppedFrames + metrics.clientDroppedFrames,
+          clientReconnects: aggregate.clientReconnects + metrics.clientReconnects,
+          clientKeyframeRecoveries:
+            aggregate.clientKeyframeRecoveries + metrics.clientKeyframeRecoveries,
         }),
         {
           producedFrames: 0,
+          keyframesProduced: 0,
+          sequenceGaps: 0,
           dashboardFramesSent: 0,
           dashboardFramesDropped: 0,
           instanceFramesSent: 0,
           instanceFramesDropped: 0,
+          clientRenderedFrames: 0,
+          clientDecodedFrames: 0,
+          clientDroppedFrames: 0,
+          clientReconnects: 0,
+          clientKeyframeRecoveries: 0,
         }
       ),
     };
@@ -115,18 +188,46 @@ export class StreamMetrics {
       return existing;
     }
 
-    const metrics: MutableStreamInstanceMetrics = {
-      instanceId: frame.instanceId,
-      instanceIndex: frame.instanceIndex,
-      producedFrames: 0,
-      dashboardFramesSent: 0,
-      dashboardFramesDropped: 0,
-      instanceFramesSent: 0,
-      instanceFramesDropped: 0,
-    };
+    const metrics = createEmptyMetrics(frame.instanceId, frame.instanceIndex);
     this.instances.set(frame.instanceId, metrics);
     return metrics;
   }
+
+  private getOrCreateClientOnly(
+    instanceId: string | undefined
+  ): MutableStreamInstanceMetrics {
+    const key = instanceId ?? "__dashboard__";
+    const existing = this.instances.get(key);
+    if (existing) {
+      return existing;
+    }
+
+    const metrics = createEmptyMetrics(key, Number.MAX_SAFE_INTEGER);
+    this.instances.set(key, metrics);
+    return metrics;
+  }
+}
+
+function createEmptyMetrics(
+  instanceId: string,
+  instanceIndex: number
+): MutableStreamInstanceMetrics {
+  return {
+    instanceId,
+    instanceIndex,
+    producedFrames: 0,
+    keyframesProduced: 0,
+    sequenceGaps: 0,
+    dashboardFramesSent: 0,
+    dashboardFramesDropped: 0,
+    instanceFramesSent: 0,
+    instanceFramesDropped: 0,
+    clientRenderedFrames: 0,
+    clientDecodedFrames: 0,
+    clientDroppedFrames: 0,
+    clientReconnects: 0,
+    clientKeyframeRecoveries: 0,
+  };
 }
 
 function snapshotInstance(
@@ -142,6 +243,9 @@ function snapshotInstance(
     instanceId: metrics.instanceId,
     instanceIndex: metrics.instanceIndex,
     producedFrames: metrics.producedFrames,
+    keyframesProduced: metrics.keyframesProduced,
+    sequenceGaps: metrics.sequenceGaps,
+    lastSequence: metrics.lastSequence,
     firstProducedAtMs: metrics.firstProducedAtMs,
     lastProducedAtMs: metrics.lastProducedAtMs,
     producedFps:
@@ -150,5 +254,12 @@ function snapshotInstance(
     dashboardFramesDropped: metrics.dashboardFramesDropped,
     instanceFramesSent: metrics.instanceFramesSent,
     instanceFramesDropped: metrics.instanceFramesDropped,
+    clientRenderedFrames: metrics.clientRenderedFrames,
+    clientDecodedFrames: metrics.clientDecodedFrames,
+    clientDroppedFrames: metrics.clientDroppedFrames,
+    clientReconnects: metrics.clientReconnects,
+    clientKeyframeRecoveries: metrics.clientKeyframeRecoveries,
+    clientFps: metrics.clientFps,
+    clientBufferedFrames: metrics.clientBufferedFrames,
   };
 }

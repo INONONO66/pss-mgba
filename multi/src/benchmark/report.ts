@@ -144,7 +144,12 @@ export function buildInstanceReport(opts: {
     Math.floor((measuredDurationMs * opts.minP95Fps) / 1000)
   );
   const missingFrames = Math.max(0, expectedFrames - opts.receivedAtMs.length);
-  const droppedOrLateFrames = Math.max(lateFrameEquivalents, missingFrames);
+  const explicitDroppedFrames = Math.max(0, opts.serverDroppedFrames ?? 0);
+  const droppedOrLateFrames = Math.max(
+    lateFrameEquivalents,
+    missingFrames,
+    explicitDroppedFrames
+  );
   const droppedOrLateFrameRatio = droppedOrLateFrames / expectedFrames;
   const displayedFps = summarize(fpsSamples);
   const frameIntervalMs = summarize(intervals);
