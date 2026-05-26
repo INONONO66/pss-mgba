@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useAgentMemory, useGameState, useMapMemory, useRunSummary, useTurns } from "./api/hooks";
+import { useAgentMemory, useEvents, useGameState, useMapMemory, useRunSummary, useTurns } from "./api/hooks";
+import EventLog from "./components/EventLog";
 import GameScreen from "./components/GameScreen";
 import GameState from "./components/GameState";
 import LlmPanel from "./components/LlmPanel";
@@ -8,20 +9,21 @@ import MemoryPanel from "./components/MemoryPanel";
 import TopBar from "./components/TopBar";
 import TurnLog from "./components/TurnLog";
 
-type BottomTab = "turns" | "memory" | "map";
+type BottomTab = "events" | "turns" | "memory" | "map";
 
-const TAB_LABELS: Record<BottomTab, string> = { turns: "턴 로그", memory: "메모리", map: "맵" };
-const TAB_TITLES: Record<BottomTab, string> = { turns: "턴 기록", memory: "에이전트 메모리", map: "맵 뷰" };
-const TAB_IDS: BottomTab[] = ["turns", "memory", "map"];
+const TAB_LABELS: Record<BottomTab, string> = { events: "이벤트", turns: "턴 로그", memory: "메모리", map: "맵" };
+const TAB_TITLES: Record<BottomTab, string> = { events: "런 로그", turns: "턴 기록", memory: "에이전트 메모리", map: "맵 뷰" };
+const TAB_IDS: BottomTab[] = ["events", "turns", "memory", "map"];
 
 export default function App() {
   const summary = useRunSummary();
   const gameState = useGameState();
   const turns = useTurns();
+  const events = useEvents();
   const memory = useAgentMemory();
   const mapMemory = useMapMemory();
   const [refreshedAt, setRefreshedAt] = useState(new Date());
-  const [bottomTab, setBottomTab] = useState<BottomTab>("turns");
+  const [bottomTab, setBottomTab] = useState<BottomTab>("events");
 
   useEffect(() => {
     const timer = window.setInterval(() => setRefreshedAt(new Date()), 1000);
@@ -52,6 +54,7 @@ export default function App() {
             ))}
           </div>
           <div className="context-body scroll">
+            {bottomTab === "events" && <EventLog payload={events} />}
             {bottomTab === "turns" && <TurnLog payload={turns} />}
             {bottomTab === "memory" && <MemoryPanel payload={memory} />}
             {bottomTab === "map" && <MapPanel payload={mapMemory} />}
