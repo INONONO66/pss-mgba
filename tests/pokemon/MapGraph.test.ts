@@ -129,4 +129,38 @@ describe("MapGraph", () => {
     const output = emptyGraph.renderForLLM(0);
     expect(output).toBe("=== MAP GRAPH ===");
   });
+
+  it("build filters out warps with destMapId 255", () => {
+    const mapsWithInvalidWarp: MapGraphInput[] = [
+      {
+        mapId: 37,
+        warps: [
+          { y: 3, x: 7, destMapId: 255, destWarpId: 0 },
+          { y: 1, x: 7, destMapId: 38, destWarpId: 0 },
+        ],
+        connections: {},
+      },
+    ];
+    const g = new MapGraph();
+    g.build(mapsWithInvalidWarp);
+
+    const edges = g.getEdges(37);
+    expect(edges).toHaveLength(1);
+    expect(edges[0]).toMatchObject({ toMapId: 38 });
+  });
+
+  it("renderForLLM does not mention Map #255", () => {
+    const mapsWithInvalidWarp: MapGraphInput[] = [
+      {
+        mapId: 37,
+        warps: [{ y: 3, x: 7, destMapId: 255, destWarpId: 0 }],
+        connections: {},
+      },
+    ];
+    const g = new MapGraph();
+    g.build(mapsWithInvalidWarp);
+
+    const output = g.renderForLLM(37);
+    expect(output).not.toContain("255");
+  });
 });

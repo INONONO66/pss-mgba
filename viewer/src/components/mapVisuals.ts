@@ -37,14 +37,28 @@ export function visualGraphFromMapMemory(payload: MapMemoryResponse | null): Vis
   const maps = payload?.maps ?? {};
   const edges: VisualGraphEdge[] = [];
   const nodeKeys = new Set<string>();
+
+  const nameByMapId = new Map<number, string>();
+  for (const [fallbackMapId, record] of Object.entries(maps)) {
+    const id = numberValue(record.mapId, Number(fallbackMapId));
+    if (typeof record.name === "string" && record.name.length > 0) {
+      nameByMapId.set(id, record.name);
+    }
+  }
+
+  function mapLabel(mapId: number, fallbackId?: string): string {
+    const name = nameByMapId.get(mapId);
+    return name ? `${name} (${mapId})` : `맵 ${value(mapId, value(fallbackId))}`;
+  }
+
   for (const [fallbackMapId, record] of Object.entries(maps)) {
     const fromMapId = numberValue(record.mapId, Number(fallbackMapId));
-    const fromLabel = `맵 ${value(fromMapId, fallbackMapId)}`;
+    const fromLabel = mapLabel(fromMapId, fallbackMapId);
     nodeKeys.add(nodeKey(fromMapId, fromLabel));
     if (isRecord(record.connections)) {
       for (const [direction, target] of Object.entries(record.connections)) {
         const toMapId = numberValue(target);
-        const toLabel = `맵 ${value(toMapId, value(target))}`;
+        const toLabel = mapLabel(toMapId);
         nodeKeys.add(nodeKey(toMapId, toLabel));
         edges.push({ fromLabel, fromMapId, kind: "connection", detail: direction, toLabel, toMapId });
       }
@@ -52,7 +66,8 @@ export function visualGraphFromMapMemory(payload: MapMemoryResponse | null): Vis
     for (const warp of Array.isArray(record.warps) ? record.warps : []) {
       if (!isRecord(warp)) continue;
       const toMapId = numberValue(warp.destMapId);
-      const toLabel = `맵 ${value(toMapId, value(warp.destMapId))}`;
+      if (toMapId === 0xff) continue;
+      const toLabel = mapLabel(toMapId);
       nodeKeys.add(nodeKey(toMapId, toLabel));
       edges.push({
         fromLabel,
@@ -113,15 +128,21 @@ export function renderPersistedMap(record: PersistedMapRecord): string {
   const height = numberValue(record.height);
   const tiles = isRecord(record.tiles) ? record.tiles : {};
   const warps = Array.isArray(record.warps) ? record.warps : [];
+  const npcs = Array.isArray(record.knownNpcs) ? record.knownNpcs : [];
   if (width <= 0 || height <= 0) return json(record);
   const warpSet = new Set(warps.flatMap((warp) => isRecord(warp) ? [`${warp.y},${warp.x}`] : []));
+  const npcSet = new Set(npcs.flatMap((npc) => isRecord(npc) && typeof npc.mapY === "number" && typeof npc.mapX === "number" ? [`${npc.mapY},${npc.mapX}`] : []));
+  const playerKey = isRecord(record.playerPosition) && typeof record.playerPosition.y === "number" && typeof record.playerPosition.x === "number" ? `${record.playerPosition.y},${record.playerPosition.x}` : undefined;
   const lines: string[] = [];
   lines.push(`   ${Array.from({ length: width }, (_, index) => (index % 10).toString()).join("")}`);
   for (let y = 0; y < height; y += 1) {
     let line = `${y.toString().padStart(2, " ")} `;
     for (let x = 0; x < width; x += 1) {
       const key = `${y},${x}`;
-      line += warpSet.has(key) ? "W" : tileChar(tiles[key]);
+      if (playerKey === key) { line += "@"; }
+      else if (npcSet.has(key)) { line += "N"; }
+      else if (warpSet.has(key)) { line += "W"; }
+      else { line += tileChar(tiles[key]); }
     }
     lines.push(line);
   }

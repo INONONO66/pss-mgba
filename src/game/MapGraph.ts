@@ -39,6 +39,9 @@ export class MapGraph {
       const edgeList: MapGraphEdge[] = [];
 
       for (const warp of map.warps) {
+        if (warp.destMapId === 0xff) {
+          continue;
+        }
         edgeList.push({
           kind: "warp",
           fromMapId: map.mapId,
