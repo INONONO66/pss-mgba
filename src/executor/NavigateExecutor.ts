@@ -18,6 +18,7 @@ export interface NavigateMapSource {
   warpPositions?(mapId: number): ReadonlyArray<{ y: number; x: number }>;
   npcAt?(mapId: number, y: number, x: number): { slot: number; movementType: string } | undefined;
   refreshObstacles?(mapId: number): Promise<void>;
+  mapConnections?(mapId: number): Partial<Record<"north" | "south" | "east" | "west", number>>;
 }
 
 interface WorldPosition extends Position {
@@ -185,6 +186,17 @@ export async function executeNavigate(
     const exitResult = await tryStepOffEdgeWarp(current, map.width, map.height, controller, worldReader, mapId);
     if (exitResult !== undefined) {
       return exitResult;
+    }
+  }
+
+  if (samePosition(current, goal.pathTarget)) {
+    const connections = mapSource.mapConnections?.(mapId) ?? {};
+    const edgeConnection = edgeConnectionDirection(current, map.width, map.height, connections);
+    if (edgeConnection !== undefined) {
+      const exitResult = await tryStepOffEdge(current, edgeConnection, controller, worldReader, mapId);
+      if (exitResult !== undefined) {
+        return exitResult;
+      }
     }
   }
 
@@ -438,6 +450,44 @@ function findAdjacentWalkable(grid: boolean[][], target: Position, width: number
     }
   }
   return;
+}
+
+function edgeConnectionDirection(
+  pos: Position,
+  width: number,
+  height: number,
+  connections: Partial<Record<"north" | "south" | "east" | "west", number>>,
+): MgbaButton | undefined {
+  if (pos.y === 0 && connections.north !== undefined) {
+    return "Up";
+  }
+  if (pos.y === height - 1 && connections.south !== undefined) {
+    return "Down";
+  }
+  if (pos.x === 0 && connections.west !== undefined) {
+    return "Left";
+  }
+  if (pos.x === width - 1 && connections.east !== undefined) {
+    return "Right";
+  }
+  return undefined;
+}
+
+async function tryStepOffEdge(
+  current: WorldPosition,
+  button: MgbaButton,
+  controller: NavigateController,
+  worldReader: NavigateWorldReader,
+  expectedMapId: number,
+): Promise<CommandResult | undefined> {
+  await controller.pressButton(button, 5);
+  const moved = await waitForStep(worldReader, current);
+  if (moved === undefined) {
+    return undefined;
+  }
+
+  const interrupt = await interruptResult(worldReader, expectedMapId, moved.mapId);
+  return warpSuccessOnMapChange(interrupt) ?? { status: "success", reason: "map_transition" };
 }
 
 function isAdjacent(a: Position, b: Position): boolean {

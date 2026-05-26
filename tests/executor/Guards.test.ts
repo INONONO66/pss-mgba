@@ -187,6 +187,28 @@ describe("Guards", () => {
     expect(result?.reason).toBe("invalid_target");
   });
 
+  it("13a. battle command when all party fainted → rejected: all_fainted", () => {
+    const faintedParty = makeState({
+      party: {
+        count: 1,
+        members: [{
+          slot: 0, speciesId: 1, species: "Bulbasaur", nickname: "Leafy",
+          level: 5, hp: 0, maxHp: 20, status: "OK",
+          types: ["Grass", "Poison"],
+          moves: [{ id: 2, name: "Ember", pp: 25, ppUp: 0, maxPp: 25 }],
+          stats: { attack: 10, defense: 10, speed: 10, special: 10 },
+          experience: 0,
+        }],
+      },
+    });
+    const result = resultOf(
+      { type: "battle", action: { kind: "fight", move: "Ember" } },
+      context({ fullState: faintedParty }),
+    );
+    expect(result?.status).toBe("rejected");
+    expect(result?.reason).toBe("all_fainted");
+  });
+
   it("13. interact/dialog/wait/raw → always valid", () => {
     const commands: Command[] = [
       { type: "interact" },

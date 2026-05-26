@@ -85,10 +85,15 @@ export interface NpcSource {
   refreshObstacles(mapId: number): Promise<void>;
 }
 
+export interface ConnectionSource {
+  mapConnections(mapId: number): Partial<Record<"north" | "south" | "east" | "west", number>>;
+}
+
 export function createNavigateMapSource(
   source: WalkabilitySource,
   warpSource?: WarpSource,
   npcSource?: NpcSource,
+  connectionSource?: ConnectionSource,
 ): NavigateMapSource {
   return {
     walkabilityGrid(mapId) {
@@ -102,6 +107,9 @@ export function createNavigateMapSource(
     },
     async refreshObstacles(mapId) {
       await npcSource?.refreshObstacles(mapId);
+    },
+    mapConnections(mapId) {
+      return connectionSource?.mapConnections(mapId) ?? {};
     },
   };
 }
