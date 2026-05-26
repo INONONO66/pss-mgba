@@ -1,71 +1,117 @@
 import { describe, expect, it } from "vitest";
 import { executeInteract } from "../../src/executor/InteractExecutor.js";
 
-const mockController = {
-  pressedButtons: [] as { button: string; frames: number }[],
-  async pressButton(button: string, frames = 5) {
-    this.pressedButtons.push({ button, frames });
-  },
-};
-
-function createStateReader(facing: string, dialogActive: boolean) {
+function createController() {
+  const pressed: { button: string; frames: number }[] = [];
   return {
-    async readFacingDirection() {
-      return facing;
+    pressed,
+    pressButton(button: string, frames = 5): Promise<void> {
+      pressed.push({ button, frames });
+      return Promise.resolve();
     },
-    async isDialogActive() {
-      return dialogActive;
+  };
+}
+
+function createStateReader(
+  initialFacing: string,
+  dialogActive: boolean,
+  facingSequence?: string[],
+) {
+  let callIndex = 0;
+  const sequence = facingSequence ?? [initialFacing];
+  return {
+    readFacingDirection(): Promise<string> {
+      const facing = sequence[Math.min(callIndex, sequence.length - 1)];
+      callIndex += 1;
+      return Promise.resolve(facing);
+    },
+    isDialogActive(): Promise<boolean> {
+      return Promise.resolve(dialogActive);
     },
   };
 }
 
 describe("InteractExecutor", () => {
-  it("1. no direction, no facing change needed → just A pressed", async () => {
-    mockController.pressedButtons = [];
+  it("no direction → just A pressed", async () => {
+    const ctrl = createController();
 
     const result = await executeInteract(
       { type: "interact" },
-      mockController,
+      ctrl,
       createStateReader("down", false),
     );
 
-    expect(mockController.pressedButtons).toEqual([{ button: "A", frames: 5 }]);
+    expect(ctrl.pressed).toEqual([{ button: "A", frames: 8 }]);
     expect(result.reason).toBe("interacted");
   });
 
-  it("2. direction up while facing down → presses Up then A", async () => {
-    mockController.pressedButtons = [];
-
-    await executeInteract(
-      { type: "interact", direction: "up" },
-      mockController,
-      createStateReader("down", false),
-    );
-
-    expect(mockController.pressedButtons).toEqual([
-      { button: "Up", frames: 5 },
-      { button: "A", frames: 5 },
-    ]);
-  });
-
-  it("3. direction right while already facing right → just A", async () => {
-    mockController.pressedButtons = [];
+  it("already facing requested direction → skip turn, just A", async () => {
+    const ctrl = createController();
 
     await executeInteract(
       { type: "interact", direction: "right" },
-      mockController,
-      createStateReader("right", false),
+      ctrl,
+      createStateReader("right", false, ["right"]),
     );
 
-    expect(mockController.pressedButtons).toEqual([{ button: "A", frames: 5 }]);
+    expect(ctrl.pressed).toEqual([{ button: "A", frames: 8 }]);
   });
 
-  it("4. dialog triggered → reason dialog_started", async () => {
-    mockController.pressedButtons = [];
+  it("direction change succeeds on first attempt", async () => {
+    const ctrl = createController();
+
+    await executeInteract(
+      { type: "interact", direction: "up" },
+      ctrl,
+      createStateReader("down", false, ["down", "up"]),
+    );
+
+    expect(ctrl.pressed).toEqual([
+      { button: "Up", frames: 8 },
+      { button: "A", frames: 8 },
+    ]);
+  });
+
+  it("direction change succeeds on second retry with increased frames", async () => {
+    const ctrl = createController();
+
+    await executeInteract(
+      { type: "interact", direction: "left" },
+      ctrl,
+      createStateReader("up", false, ["up", "up", "left"]),
+    );
+
+    expect(ctrl.pressed).toEqual([
+      { button: "Left", frames: 8 },
+      { button: "Left", frames: 16 },
+      { button: "A", frames: 8 },
+    ]);
+  });
+
+  it("direction change fails after max retries → direction_change_failed", async () => {
+    const ctrl = createController();
+
+    const result = await executeInteract(
+      { type: "interact", direction: "left" },
+      ctrl,
+      createStateReader("up", false, ["up", "up", "up", "up"]),
+    );
+
+    expect(result.status).toBe("failed");
+    expect(result.reason).toBe("direction_change_failed");
+    expect(ctrl.pressed).toEqual([
+      { button: "Left", frames: 8 },
+      { button: "Left", frames: 16 },
+      { button: "Left", frames: 24 },
+    ]);
+  });
+
+  it("dialog triggered → reason dialog_started", async () => {
+    const ctrl = createController();
 
     const result = await executeInteract(
       { type: "interact" },
-      mockController,
+      ctrl,
       createStateReader("up", true),
     );
 
@@ -73,12 +119,12 @@ describe("InteractExecutor", () => {
     expect(result.details).toBe("Interaction triggered dialog");
   });
 
-  it("5. no dialog → reason interacted", async () => {
-    mockController.pressedButtons = [];
+  it("no dialog → reason interacted", async () => {
+    const ctrl = createController();
 
     const result = await executeInteract(
       { type: "interact" },
-      mockController,
+      ctrl,
       createStateReader("up", false),
     );
 
