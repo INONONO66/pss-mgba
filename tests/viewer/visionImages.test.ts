@@ -11,7 +11,7 @@ describe("listLatestVisionImages", () => {
     const active = buildRunPaths(evidenceDir, "active-run");
     const other = buildRunPaths(evidenceDir, "other-run");
     await mkdir(active.visionDir, { recursive: true });
-    await mkdir(active.screenshotsDir, { recursive: true });
+    await mkdir(active.rawScreenshotsDir, { recursive: true });
     await mkdir(other.visionDir, { recursive: true });
 
     await Promise.all([
@@ -20,7 +20,7 @@ describe("listLatestVisionImages", () => {
       writeFile(path.join(active.visionDir, "000003-frame-30.webp"), "three"),
       writeFile(path.join(active.visionDir, "000004-frame-40.jpg"), "four"),
       writeFile(path.join(active.visionDir, "notes.json"), "{}"),
-      writeFile(path.join(active.screenshotsDir, "000005.png"), "raw"),
+      writeFile(path.join(active.rawScreenshotsDir, "000005.png"), "raw"),
       writeFile(path.join(other.visionDir, "000999-frame-999.jpeg"), "other")
     ]);
 

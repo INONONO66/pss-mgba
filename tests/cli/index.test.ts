@@ -12,7 +12,7 @@ describe("CLI", () => {
     const output = io.out.join("\n");
     expect(output).toBe(getHarnessHelp());
     expect(output).toContain("pnpm run harness run");
-    expect(output).toContain("navigate, battle, dialog");
+    expect(output).toContain("command agent loop");
   });
 
   it("parses run command with --run-id", () => {
@@ -66,7 +66,7 @@ describe("CLI", () => {
     const io = createIo();
     let factoryCalled = false;
     const exitCode = await runCli(["run", "--run-id", "cli-test"], io, {
-      createRunner() {
+      createRunner(_config, _options) {
         factoryCalled = true;
         return {
           async run() {

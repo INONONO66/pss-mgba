@@ -29,9 +29,9 @@ export const env = createEnv({
   server: {
     MGBA_HTTP_BASE_URL: z.url().default("http://127.0.0.1:5000"),
     MGBA_ROM_PATH: absolutePath,
-    AI_BASE_URL: z.url().default("https://codex.nekos.me/v1"),
+    AI_BASE_URL: z.url().default("http://127.0.0.1:3100/v1"),
     AI_API_KEY: z.string().optional(),
-    AI_MODEL: z.string().min(1).default("gpt-5.5"),
+    AI_MODEL: z.string().min(1).default("grok-4.3"),
     AI_REASONING: reasoningEffort,
     AI_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.2),
     METRICS_HTTP_HOST: z.string().min(1).default("0.0.0.0"),

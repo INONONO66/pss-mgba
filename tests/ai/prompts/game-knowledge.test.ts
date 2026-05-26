@@ -15,12 +15,12 @@ describe("buildGameKnowledge", () => {
   it("preserves required output rules", () => {
     const prompt = buildGameKnowledge();
 
-    expect(prompt).toContain("JSON object");
-    expect(prompt).toContain("command types");
-    expect(prompt).toContain("Only use provided command types");
-    expect(prompt).toContain("No memory writes or emulator manipulation");
+    expect(prompt).toContain("exactly one game-action tool call");
+    expect(prompt).toContain("note tools alone are invalid");
+    expect(prompt).toContain("currently exposed tools");
+    expect(prompt).toContain("Do not answer with a JSON command in plain text");
+    expect(prompt).toContain("No emulator/RAM memory writes or emulator manipulation");
     expect(prompt).toContain("Base decisions on observed state only");
-    expect(prompt).toContain("Output exactly one JSON object per turn");
   });
 
   it("does not include explicit objectives", () => {

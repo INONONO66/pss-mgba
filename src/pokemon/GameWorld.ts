@@ -58,9 +58,9 @@ interface ModeFlagsRead {
 }
 
 async function readModeFlags(client: RamClient, options: GameWorldReadOptions = {}): Promise<ModeFlagsRead> {
-  const tileMapPromise = options.tileMapBytes !== undefined
-    ? Promise.resolve(options.tileMapBytes)
-    : client.readRange(map.wTileMap, map.wTileMapLength);
+  const tileMapPromise = options.tileMapBytes === undefined
+    ? client.readRange(map.wTileMap, map.wTileMapLength)
+    : Promise.resolve(options.tileMapBytes);
   const [battle, textBoxId, letterDelay, curMap, coords, partyCount, walkCounter, joyIgnore, namingScreenType, tileMapBytes] = await Promise.all([
     client.read8(map.wIsInBattle),
     client.read8(map.wTextBoxID),
@@ -97,22 +97,29 @@ function decodeTileMapText(bytes: Uint8Array): string {
 }
 
 function classifyMode(flags: ModeFlags): GameMode {
-  if (isAllZeroState(flags)) return "title";
-  if (flags.battle !== 0) return "battle";
-  if (isNamingScreen(flags)) return "naming";
-  if (isDialogActive(flags)) return "dialog";
+  if (isAllZeroState(flags)) {
+    return "title";
+  }
+  if (flags.battle !== 0) {
+    return "battle";
+  }
+  if (isNamingScreen(flags)) {
+    return "naming";
+  }
+  if (isDialogActive(flags)) {
+    return "dialog";
+  }
   return "overworld";
 }
 
 function isDialogActive(flags: ModeFlags): boolean {
-  // Red/Blue leaves stale text box style/delay values in WRAM while the player
-  // is freely walking. Use input masking or visible decoded text as the active
-  // dialog signal.
-  return flags.joyIgnore !== 0 || (flags.textBoxId !== 0 && flags.screenText.length > 0);
+  return flags.joyIgnore !== 0 || flags.textBoxId !== 0;
 }
 
 function isNamingScreen(flags: ModeFlags): boolean {
-  if (flags.namingScreenType === 0) return false;
+  if (flags.namingScreenType === 0) {
+    return false;
+  }
   return NAMING_SCREEN_MARKERS.some((marker) => flags.screenText.includes(marker));
 }
 

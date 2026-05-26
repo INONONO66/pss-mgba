@@ -18,12 +18,15 @@ export interface DialogStateReader {
 }
 
 export class DialogExecutor {
-  constructor(
-    private readonly controller: DialogController,
-    private readonly stateReader: DialogStateReader,
-  ) {}
+  private readonly controller: DialogController;
+  private readonly stateReader: DialogStateReader;
 
-  async execute(command: DialogCommand): Promise<CommandResult> {
+  constructor(controller: DialogController, stateReader: DialogStateReader) {
+    this.controller = controller;
+    this.stateReader = stateReader;
+  }
+
+  execute(command: DialogCommand): Promise<CommandResult> {
     switch (command.action.kind) {
       case "advance":
         return this.advance();
@@ -31,12 +34,22 @@ export class DialogExecutor {
         return this.choose(command.action.index);
       case "input_name":
         return this.inputName(command.action.name);
+      default:
+        return assertNever(command.action);
     }
   }
 
   private async advance(): Promise<CommandResult> {
     let previousText = await this.stateReader.readScreenText();
     let textChanged = false;
+
+    const initialState = await this.readDialogState();
+    const initialTerminalResult = this.resultForTerminalState(initialState);
+    if (initialTerminalResult !== undefined) {
+      return initialTerminalResult;
+    }
+
+    previousText = initialState.screenText;
 
     for (let presses = 1; presses <= MAX_DIALOG_PRESSES; presses += 1) {
       await this.controller.pressButton("A", PRESS_FRAMES);
@@ -133,7 +146,7 @@ export class DialogExecutor {
       return {
         status: "success",
         reason: "choice_appeared",
-        details: state.screenText.length > 0 ? `choices=${state.screenText}` : undefined,
+        ...(state.screenText.length > 0 ? { details: `choices=${state.screenText}` } : {}),
       };
     }
 
@@ -145,6 +158,10 @@ export class DialogExecutor {
       return { status: "success", reason: "dialog_ended" };
     }
 
-    return undefined;
+    return;
   }
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled dialog action: ${JSON.stringify(value)}`);
 }

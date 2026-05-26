@@ -2,8 +2,6 @@
 .env.*
 !.env.example
 
-.omo/
-
 runs/
 
 .playwright-mcp/
@@ -21,3 +19,7 @@ coverage/
 *.png
 
 .pss-mgba/
+*.tsbuildinfo
+viewer/.tsbuild/
+viewer/vite.config.js
+viewer/vite.config.d.ts

@@ -13,22 +13,35 @@ export type Action =
   | { type: "sequence"; actions?: Action[] }
   | { type: string; [key: string]: unknown };
 
-export interface LlmConversation {
-  call: number;
-  model: string;
-  temperature?: number;
-  mode?: string;
-  harnessMode?: string;
-  messages: Array<{ role: "system" | "user" | "assistant"; content: string | ContentPart[] }>;
-  responseContent?: string;
-  parsedDecision?: { command?: Command; action?: Action; rationale?: string; confidence?: number; observedStateCitations?: string[] };
-  error?: { code: string; message: string } | string;
+export interface TurnTimelineEvent { sequence: number; type: string; timestamp?: string; toolCallId?: string; toolName?: string; isGameAction?: boolean; input?: unknown; output?: unknown; text?: string; message?: string; command?: Command; result?: unknown; [key: string]: unknown; }
+
+export interface TurnRecord {
+  version?: 1;
+  turn: number;
+  run?: { runId?: string; runner?: string; objective?: string; sessionKey?: string; maxTurns?: number; startedAt?: string; status?: string };
   fileName?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  systemPrompt?: string;
+  userPrompt?: string;
+  reasoning?: string;
+  response?: string;
+  parsedCommand?: Command;
+  rationale?: string;
+  timeline?: TurnTimelineEvent[];
+  toolCalls?: Array<{ toolCallId: string; toolName: string; input?: unknown; output?: unknown; isGameAction?: boolean }>;
+  gameState?: { before?: unknown; after?: unknown };
+  agentMemory?: unknown;
+  mapAscii?: string;
+  mapGraph?: string;
+  detector?: unknown;
+  history?: unknown[];
+  error?: unknown;
 }
 
-export interface LlmConversationsResponse { runId: string; limit: number; count: number; conversations: LlmConversation[]; }
+export interface TurnsResponse { runId: string; limit: number; count: number; turns: TurnRecord[]; }
 
-export interface GameStateSnapshot { fileName?: string; state?: any; step?: number; frame?: number; stateHash?: string; error?: unknown; [key: string]: unknown; }
+export interface GameStateSnapshot { fileName?: string; state?: unknown; step?: number; frame?: number; stateHash?: string; error?: unknown; [key: string]: unknown; }
 export interface GameStateResponse { runId: string; limit: number; count: number; latest?: GameStateSnapshot; states: GameStateSnapshot[]; }
 
 export interface RunSummary {
@@ -38,10 +51,22 @@ export interface RunSummary {
   finishedAt?: string;
   totalSteps?: number;
   finalFrame?: number;
-  counts?: { decisions?: number; errors?: number; [key: string]: number | undefined };
+  counts?: { turns?: number; screenshots?: number; errors?: number; [key: string]: number | undefined };
   detectorStatus?: { status?: string; progressStep?: number; lastProgressStep?: number };
   lastAction?: { step?: number; frame?: number; command?: Command; action?: Action; confidence?: number; rationale?: string };
 }
 
-export interface RunEvent { sequence?: number; type: string; timestamp?: string; payload?: Record<string, unknown>; [key: string]: unknown; }
-export interface EventsResponse { runId: string; limit: number; count: number; events: RunEvent[]; }
+
+export interface AgentMemoryEntry { id: string; createdAt: string; content: string; }
+export interface AgentMemoryResponse {
+  runId: string;
+  updatedAt: string | null;
+  sections: {
+    objectives: AgentMemoryEntry[];
+    journal: AgentMemoryEntry[];
+    notes: AgentMemoryEntry[];
+    strategy: AgentMemoryEntry[];
+  };
+}
+
+export interface MapMemoryResponse { runId: string; version?: number; updatedAt?: string; maps?: Record<string, unknown>; }

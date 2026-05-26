@@ -46,11 +46,11 @@ export function summarizeAction(input: { parsedDecision?: { command?: Command; a
   const cmd = input.parsedDecision?.command;
   const action = input.parsedDecision?.action;
   if (cmd) {
-    if (cmd.type === "navigate") { return `navigate(${value(cmd.x)},${value(cmd.y)})`; }
-    if (cmd.type === "interact") { return `interact(${value(cmd.direction, "현재")})`; }
+    if (cmd.type === "navigate") { return `이동 y${value(cmd.y)} x${value(cmd.x)}`; }
+    if (cmd.type === "interact") { return `상호작용 ${value(cmd.direction, "현재")}`; }
     if (cmd.type === "wait") { return `대기 ${value(cmd.frames)}f`; }
-    if (cmd.type === "raw") { return `raw [${Array.isArray(cmd.inputs) ? cmd.inputs.join(",") : ""}]`; }
-    return cmd.type;
+    if (cmd.type === "raw") { return "입력 시퀀스"; }
+    return "행동";
   }
   if (action) {
     if (action.type === "wait") { return `대기 ${value(action.frames)}`; }
@@ -59,7 +59,7 @@ export function summarizeAction(input: { parsedDecision?: { command?: Command; a
       return `시퀀스 (${actions.map((entry) => summarizeAction({ parsedDecision: { action: entry } })).join(" → ")})`;
     }
     const record = action as Record<string, unknown>;
-    return `${action.type} ${value(record.button)} ${value(record.frames)}`;
+    return `${action.type === "press" ? "버튼" : "행동"} ${value(record.button)} ${value(record.frames)}`;
   }
   return "대기 중";
 }

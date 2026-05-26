@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MapMemory } from "../../src/pokemon/MapMemory.js";
+import { classifyBlock, MapMemory } from "../../src/pokemon/MapMemory.js";
 import type { GameWorldSnapshot } from "../../src/pokemon/GameWorld.js";
 import { mapName } from "../../src/pokemon/PokemonCatalog.js";
 
@@ -11,6 +11,13 @@ function tileMap(fill = 0x01): Uint8Array {
 }
 
 describe("MapMemory", () => {
+  it("classifies Gen1 blocks from lower entry tiles instead of any decorative tile", () => {
+    const collision = { tilesetId: 0, walkableTiles: new Set([0x1c]), grassTile: undefined };
+
+    expect(classifyBlock(collision, 0x0c, 0x0d, 0x1c, 0x1d)).toBe("walkable");
+    expect(classifyBlock(collision, 0x1c, 0x2a, 0x0c, 0x0d)).toBe("wall");
+  });
+
   it("records tiles when the player screen anchor has odd parity", () => {
     const memory = new MapMemory();
 

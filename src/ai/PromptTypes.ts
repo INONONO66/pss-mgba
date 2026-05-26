@@ -1,25 +1,5 @@
-import type { PolicyDecision } from "../control/ActionTypes.js";
-import type { PolicyDecision as CommandPolicyDecision, GameMode, CommandResult, CommandHistoryEntry } from "../control/CommandTypes.js";
-import type { LlmVisionDetail } from "../config.js";
+import type { GameMode, CommandResult, CommandHistoryEntry } from "../control/CommandTypes.js";
 import type { FullGameState } from "../pokemon/PokemonTypes.js";
-
-export interface VisionImageInput {
-  readonly path: string;
-  readonly sourcePath: string;
-  readonly mediaType: "image/jpeg" | "image/webp" | "image/png";
-  readonly width: number;
-  readonly height: number;
-  readonly step: number;
-  readonly frame: number;
-  readonly crop: {
-    readonly left: number;
-    readonly top: number;
-    readonly width: number;
-    readonly height: number;
-  };
-  readonly bytes: number;
-  readonly detail?: LlmVisionDetail;
-}
 
 export interface PokemonStateSnapshot {
   wIsInBattle?: number | boolean;
@@ -59,7 +39,6 @@ export interface PolicyInput {
   currentState?: unknown;
   recentActions?: readonly unknown[];
   recentStates?: readonly RecentStateSnapshot[];
-  visionImages?: readonly VisionImageInput[];
   step?: number;
   objective?: string;
   adviserHint?: string;
@@ -89,13 +68,3 @@ export interface PolicyInput {
     npcs?: Array<{ slot: number; pictureId: number; mapY: number; mapX: number; facing: string; movementType: string }>;
   };
 }
-
-export interface Policy {
-  chooseAction(input: PolicyInput): Promise<PolicyDecision>;
-}
-
-export interface CommandPolicy {
-  chooseAction(input: PolicyInput): Promise<CommandPolicyDecision>;
-}
-
-export type { CommandPolicyDecision };

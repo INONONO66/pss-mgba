@@ -9,7 +9,7 @@ import { startDevViewerServer, type StartedDevViewerServer } from "./viewer/DevV
 export interface DevDependencies {
   readonly loadConfig?: (env: NodeJS.ProcessEnv) => HarnessConfig;
   readonly runCli?: (args: readonly string[], io: CliIo) => Promise<number>;
-  readonly startViewer?: (config: HarnessConfig) => Promise<StartedDevViewerServer>;
+  readonly startViewer?: (config: HarnessConfig, agentMemoryStore?: { snapshot(): { sections: Record<string, Array<{ id: string; createdAt: string; content: string }>>; updatedAt: string } }) => Promise<StartedDevViewerServer>;
   readonly now?: () => Date;
 }
 
@@ -23,7 +23,7 @@ export async function runDev(args: readonly string[] = process.argv.slice(2), io
   const runId = nonEmpty(optionValue(normalizedArgs, "--run-id")) ?? nonEmpty(process.env.HARNESS_RUN_ID) ?? createRunId(dependencies.now?.() ?? new Date());
   const harnessArgs = buildDevHarnessArgs(normalizedArgs, runId);
   const config = loadDevConfig(harnessArgs, dependencies.loadConfig ?? loadConfig);
-  const viewer = await (dependencies.startViewer ?? startViewer)(config);
+  const viewer = await (dependencies.startViewer ?? startViewer)(config, undefined);
 
   io.stdout(`Dev viewer: ${viewer.url}`);
   io.stdout(`Run ID: ${config.harnessRunId}`);
@@ -38,7 +38,9 @@ export async function runDev(args: readonly string[] = process.argv.slice(2), io
 
 export function buildDevHarnessArgs(args: readonly string[], runId: string): string[] {
   const normalizedArgs = stripSeparator(args);
-  const forwarded = normalizedArgs[0] === "run" ? normalizedArgs.slice(1) : [...normalizedArgs];
+  const forwarded = normalizedArgs[0] === "run" || normalizedArgs[0] === "agent"
+    ? normalizedArgs.slice(1)
+    : [...normalizedArgs];
   const result = ["run", ...forwarded];
   ensureOption(result, "--run-id", runId);
   return result;
@@ -48,28 +50,20 @@ export function formatDevRunBanner(config: Pick<HarnessConfig, "aiProvider">): s
   return `Policy: ${config.aiProvider}`;
 }
 
-async function startViewer(config: HarnessConfig): Promise<StartedDevViewerServer> {
+function startViewer(config: HarnessConfig, agentMemoryStore?: { snapshot(): { sections: Record<string, Array<{ id: string; createdAt: string; content: string }>>; updatedAt: string } }): Promise<StartedDevViewerServer> {
   return startDevViewerServer({
     client: new MgbaHttpClient({ baseUrl: config.mgbaHttpBaseUrl }),
     evidenceDir: config.evidenceDir,
     runId: config.harnessRunId,
-    visionImageLimit: config.llmVisionMaxImages,
-    port: devViewerPort()
+    port: devViewerPort(),
+    agentMemoryStore
   });
 }
 
 function loadDevConfig(args: readonly string[], loader: (env: NodeJS.ProcessEnv) => HarnessConfig): HarnessConfig {
   const env: NodeJS.ProcessEnv = { ...process.env };
-  const policy = optionValue(args, "--policy");
-  const maxSteps = optionValue(args, "--max-steps");
   const runId = optionValue(args, "--run-id");
 
-  if (policy !== undefined) {
-    env.AI_PROVIDER = policy;
-  }
-  if (maxSteps !== undefined) {
-    env.LOOP_MAX_STEPS = maxSteps;
-  }
   if (runId !== undefined) {
     env.HARNESS_RUN_ID = runId;
   }
@@ -86,7 +80,7 @@ function ensureOption(args: string[], name: string, value: string): void {
 function optionValue(args: readonly string[], name: string): string | undefined {
   const index = args.indexOf(name);
   if (index === -1) {
-    return undefined;
+    return;
   }
   return args[index + 1];
 }
@@ -113,5 +107,8 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  void main();
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
 }

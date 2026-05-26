@@ -13,20 +13,18 @@ const map = RED_BLUE_MEMORY_MAP;
 const NAMING_SCREEN_MARKERS = ["lower case", "UPPER CASE", "ED Mr."];
 
 async function isDialogActiveFromRam(ram: RamReader): Promise<boolean> {
-  const [joyIgnore, textBoxId, tileMapBytes] = await Promise.all([
-    ram.read8(map.wJoyIgnore),
+  const [textBoxId, joyIgnore] = await Promise.all([
     ram.read8(map.wTextBoxID),
-    ram.readRange(map.wTileMap, map.wTileMapLength),
+    ram.read8(map.wJoyIgnore),
   ]);
-  const screenText = decodeGen1Text(tileMapBytes);
-  return joyIgnore !== 0 || (textBoxId !== 0 && screenText.length > 0);
+  return joyIgnore !== 0 || textBoxId !== 0;
 }
 
 const FACING_MAP: Record<number, string> = {
-  0x00: "down",
-  0x04: "up",
-  0x08: "left",
-  0x0c: "right",
+  0: "down",
+  4: "up",
+  8: "left",
+  12: "right",
 };
 
 export interface RamReader {
@@ -59,13 +57,13 @@ export function createNavigateWorldReader(ram: RamReader): NavigateWorldReader {
       ]);
       return { mapId, y, x };
     },
-    async readWalkCounter() {
+    readWalkCounter() {
       return ram.read8(map.wWalkCounter);
     },
     async isInBattle() {
       return (await ram.read8(map.wIsInBattle)) !== 0;
     },
-    async isDialogActive() {
+    isDialogActive() {
       return isDialogActiveFromRam(ram);
     },
   };
@@ -92,7 +90,7 @@ export function createInteractStateReader(ram: RamReader): InteractStateReader {
       const raw = await ram.read8(map.wSpritePlayerStateData1FacingDirection);
       return FACING_MAP[raw] ?? "down";
     },
-    async isDialogActive() {
+    isDialogActive() {
       return isDialogActiveFromRam(ram);
     },
   };
@@ -100,17 +98,17 @@ export function createInteractStateReader(ram: RamReader): InteractStateReader {
 
 export function createDialogStateReader(ram: RamReader): DialogStateReader {
   return {
-    async readTextBoxId() {
+    readTextBoxId() {
       return ram.read8(map.wTextBoxID);
     },
-    async readCurrentMenuItem() {
+    readCurrentMenuItem() {
       return ram.read8(map.wCurrentMenuItem);
     },
     async readScreenText() {
       const bytes = await ram.readRange(map.wTileMap, map.wTileMapLength);
       return decodeGen1Text(bytes);
     },
-    async isDialogActive() {
+    isDialogActive() {
       return isDialogActiveFromRam(ram);
     },
     async isChoiceActive() {
@@ -119,7 +117,9 @@ export function createDialogStateReader(ram: RamReader): DialogStateReader {
     },
     async isNamingScreenActive() {
       const namingScreenType = await ram.read8(map.wNamingScreenType);
-      if (namingScreenType === 0) return false;
+      if (namingScreenType === 0) {
+        return false;
+      }
       const bytes = await ram.readRange(map.wTileMap, map.wTileMapLength);
       const text = decodeGen1Text(bytes);
       return NAMING_SCREEN_MARKERS.some((marker) => text.includes(marker));
@@ -138,5 +138,11 @@ export function toCommandGameMode(worldMode: WorldGameMode): GameMode {
     case "title":
     case "menu":
       return "overworld";
+    default:
+      return assertNever(worldMode);
   }
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled world mode: ${value}`);
 }

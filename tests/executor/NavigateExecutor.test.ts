@@ -193,4 +193,68 @@ describe("NavigateExecutor", () => {
       { button: "Down", frames: 30 },
     ]);
   });
+
+  it("9. bottom-edge warp: walks to warp tile and pushes down", async () => {
+    const controller = createMockController();
+    const result = await runNavigate(
+      { type: "navigate", x: 3, y: 7 },
+      controller,
+      createMockWorldReader([
+        { y: 5, x: 5 },
+        { y: 6, x: 5 },
+        { y: 6, x: 4 },
+        { y: 6, x: 3 },
+        { y: 7, x: 3 },
+        { y: 8, x: 3, mapId: 2 },
+      ]),
+      {
+        walkabilityGrid: () => parseGrid([
+          "########",
+          "########",
+          "########",
+          "########",
+          "#####.##",
+          "#####.##",
+          "###...##",
+          "###.####",
+        ]),
+        warpPositions: () => [{ y: 7, x: 3 }],
+      },
+    );
+
+    expect(result).toEqual({ status: "interrupted", reason: "map_changed" });
+    expect(controller.pressedButtons).toEqual([
+      { button: "Down", frames: 5 },
+      { button: "Left", frames: 5 },
+      { button: "Left", frames: 5 },
+      { button: "Down", frames: 5 },
+      { button: "Down", frames: 5 },
+    ]);
+  });
+
+  it("10. fixed obstacle: routes around blocked tile", async () => {
+    const controller = createMockController();
+    const result = await runNavigate(
+      { type: "navigate", x: 3, y: 2 },
+      controller,
+      createMockWorldReader([
+        { y: 2, x: 0 },
+        { y: 3, x: 0 },
+        { y: 3, x: 1 },
+        { y: 3, x: 2 },
+        { y: 3, x: 3 },
+        { y: 2, x: 3 },
+      ]),
+      { walkabilityGrid: () => parseGrid(["....", "####", ".#..", "...."]) },
+    );
+
+    expect(result).toEqual({ status: "success", reason: "arrived" });
+    expect(controller.pressedButtons).toEqual([
+      { button: "Down", frames: 5 },
+      { button: "Right", frames: 5 },
+      { button: "Right", frames: 5 },
+      { button: "Right", frames: 5 },
+      { button: "Up", frames: 5 },
+    ]);
+  });
 });

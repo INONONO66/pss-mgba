@@ -1,6 +1,6 @@
 import type { BattleAction, Command, CommandHistoryEntry, CommandResult, DialogAction, GameMode } from "../control/CommandTypes.js";
 import type { FullGameState } from "../pokemon/PokemonTypes.js";
-import type { PolicyInput, PokemonStateSnapshot } from "./Policy.js";
+import type { PolicyInput, PokemonStateSnapshot } from "./PromptTypes.js";
 import { buildBattleContext } from "./prompts/battle.js";
 import { buildDialogContext } from "./prompts/dialog.js";
 import { buildGameKnowledge } from "./prompts/game-knowledge.js";
