@@ -157,7 +157,7 @@ function fakeConfig(overrides: Partial<HarnessConfig>): HarnessConfig {
     defaultTapFrames: 5,
     defaultHoldFrames: 15,
     aiProvider: "openai",
-    openaiBaseUrl: "http://127.0.0.1:3100/v1",
+    openaiBaseUrl: "http://192.168.0.100:3100/v1",
     openaiModel: "grok-4.3",
     openaiTemperature: 0.2,
     ...overrides
