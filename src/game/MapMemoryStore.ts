@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { MapRecord } from "./MapMemory.js";
+import { mapName } from "./PokemonCatalog.js";
 import type { TileFeature, TileTerrain } from "./TilesetData.js";
 import type { WarpEntry } from "./WarpReader.js";
 
@@ -26,6 +27,7 @@ export interface PersistedNpc {
 
 export interface PersistedMapRecord {
   mapId: number;
+  name?: string;
   width: number;
   height: number;
   tiles: Record<string, PersistedTile>;
@@ -189,6 +191,7 @@ export function toPersistedMap(
 
   return {
     mapId: record.mapId,
+    name: mapName(record.mapId),
     width: record.width,
     height: record.height,
     tiles,
