@@ -651,8 +651,8 @@ describe("agent integration smoke", () => {
               const saveTool = tools?.pokemon_save as
                 | ExecutableTool
                 | undefined;
-              const saveOutput = await saveTool?.execute({
-                slot: 0,
+               const saveOutput = await saveTool?.execute({
+                slot: 2,
                 label: "smoke",
               });
 
@@ -665,7 +665,7 @@ describe("agent integration smoke", () => {
                       type: "tool-call",
                       toolCallId: "save-1",
                       toolName: "pokemon_save",
-                      input: { slot: 0, label: "smoke" },
+                      input: { slot: 2, label: "smoke" },
                     },
                   ],
                 },
@@ -1027,7 +1027,7 @@ describe("agent integration smoke", () => {
               type: "tool-result",
               toolCallId: "save-1",
               toolName: "pokemon_save",
-              output: { action: "pokemon_save", ok: true, slot: 0 },
+              output: { action: "pokemon_save", ok: true, slot: 2 },
             },
             {
               type: "tool-result",

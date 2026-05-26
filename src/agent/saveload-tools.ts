@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { GameMode } from "../control/CommandTypes.js";
 import type { MgbaHttpClient } from "../mgba/MgbaHttpClient.js";
 
-const LLM_SLOT_MIN = 0;
+const LLM_SLOT_MIN = 2;
 const LLM_SLOT_MAX = 7;
 const AUTO_CHECKPOINT_SLOT = 8;
 const ROLLBACK_SLOT = 9;
@@ -15,7 +15,7 @@ const slotSchema = z
   .int()
   .min(LLM_SLOT_MIN)
   .max(LLM_SLOT_MAX)
-  .describe("LLM-accessible save-state slot. Slots 0-7 only; slot 8 is auto-checkpoint, slot 9 is rollback-only.");
+  .describe("LLM-accessible save-state slot. Slots 2-7 only; slot 1 is reserved for dev initialization, slot 8 is auto-checkpoint, slot 9 is rollback-only.");
 
 const saveInputSchema = z.object({
   slot: slotSchema,
@@ -90,7 +90,7 @@ export function createSaveLoadTools(
   return {
     pokemon_save: {
       description:
-        "Save the current emulator state to an LLM-accessible slot (0-7 only). Disabled during battle or dialog. Slot 8 is reserved for auto-checkpoints and slot 9 is reserved for rollback scratch space.",
+        "Save the current emulator state to an LLM-accessible slot (2-7 only). Disabled during battle or dialog. Slot 1 is reserved for dev initialization, slot 8 for auto-checkpoints, and slot 9 for rollback scratch space.",
       inputSchema: saveInputSchema,
       execute: async ({ slot, label }) => {
         const currentStep = nextStep();
@@ -106,7 +106,7 @@ export function createSaveLoadTools(
 
     pokemon_load: {
       description:
-        "Load an LLM-accessible emulator save-state slot (0-7 only). Before loading, the current state is saved automatically to rollback slot 9. Disabled during battle or dialog.",
+        "Load an LLM-accessible emulator save-state slot (2-7 only). Before loading, the current state is saved automatically to rollback slot 9. Disabled during battle or dialog.",
       inputSchema: loadInputSchema,
       execute: async ({ slot }) => {
         const currentStep = nextStep();

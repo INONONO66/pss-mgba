@@ -14,11 +14,12 @@ describe("save/load tools", () => {
     expect(client.loadStateSlot).not.toHaveBeenCalled();
   });
 
-  it("validates that LLM-accessible save/load slots are 0 through 7 only", () => {
+  it("validates that LLM-accessible save/load slots are 2 through 7 only", () => {
     const tools = createSaveLoadTools(createClient(), () => "overworld", { write: vi.fn() });
 
-    expect(safeParse(tools.pokemon_save, { slot: 0, label: "start" }).success).toBe(true);
+    expect(safeParse(tools.pokemon_save, { slot: 2, label: "start" }).success).toBe(true);
     expect(safeParse(tools.pokemon_save, { slot: 7 }).success).toBe(true);
+    expect(safeParse(tools.pokemon_save, { slot: 1 }).success).toBe(false);
     expect(safeParse(tools.pokemon_save, { slot: 8 }).success).toBe(false);
     expect(safeParse(tools.pokemon_load, { slot: 9 }).success).toBe(false);
     expect(safeParse(tools.pokemon_load, { slot: -1 }).success).toBe(false);
@@ -153,6 +154,6 @@ function safeParse(tool: unknown, input: unknown): { success: boolean } {
 
 async function runSaveSteps(tools: Record<string, unknown>, count: number): Promise<void> {
   for (let index = 0; index < count; index += 1) {
-    await executeTool(tools.pokemon_save, { slot: index % 8 });
+    await executeTool(tools.pokemon_save, { slot: (index % 6) + 2 });
   }
 }
