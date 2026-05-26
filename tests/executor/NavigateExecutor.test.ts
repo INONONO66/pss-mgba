@@ -232,7 +232,55 @@ describe("NavigateExecutor", () => {
     ]);
   });
 
-  it("10. fixed obstacle: routes around blocked tile", async () => {
+  it("10a. south edge map transition: stepping onto bottom edge triggers map_transition", async () => {
+    const controller = createMockController();
+    const result = await runNavigate(
+      { type: "navigate", x: 2, y: 3 },
+      controller,
+      createMockWorldReader([
+        { y: 1, x: 2 },
+        { y: 2, x: 2 },
+        { y: 3, x: 2, mapId: 2 },
+      ], { mapChangeAt: 2 }),
+      { walkabilityGrid: () => allWalkable(4, 4) },
+    );
+
+    expect(result).toEqual({ status: "success", reason: "map_transition" });
+  });
+
+  it("10b. north edge map transition: stepping onto top edge triggers map_transition", async () => {
+    const controller = createMockController();
+    const result = await runNavigate(
+      { type: "navigate", x: 2, y: 0 },
+      controller,
+      createMockWorldReader([
+        { y: 2, x: 2 },
+        { y: 1, x: 2 },
+        { y: 0, x: 2, mapId: 2 },
+      ], { mapChangeAt: 2 }),
+      { walkabilityGrid: () => allWalkable(4, 4) },
+    );
+
+    expect(result).toEqual({ status: "success", reason: "map_transition" });
+  });
+
+  it("10c. mid-map change away from edges still returns interrupted", async () => {
+    const controller = createMockController();
+    const result = await runNavigate(
+      { type: "navigate", x: 2, y: 6 },
+      controller,
+      createMockWorldReader([
+        { y: 2, x: 2 },
+        { y: 3, x: 2 },
+        { y: 4, x: 2 },
+      ], { mapChangeAt: 1 }),
+      { walkabilityGrid: () => allWalkable(5, 8) },
+    );
+
+    expect(result).toEqual({ status: "interrupted", reason: "map_changed" });
+  });
+
+  it("11. fixed obstacle: routes around blocked tile", async () => {
     const controller = createMockController();
     const result = await runNavigate(
       { type: "navigate", x: 3, y: 2 },

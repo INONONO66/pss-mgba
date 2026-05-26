@@ -47,16 +47,21 @@ function samePosition(a: Position, b: Position): boolean {
 }
 
 function isMapEdgeTransition(position: Position, nextTile: Position, width: number, height: number): boolean {
-  if (position.y === 0 && nextTile.y < position.y) {
+  const atTopEdge = position.y === 0 || nextTile.y === 0;
+  const atBottomEdge = position.y === height - 1 || nextTile.y === height - 1;
+  const atLeftEdge = position.x === 0 || nextTile.x === 0;
+  const atRightEdge = position.x === width - 1 || nextTile.x === width - 1;
+
+  if (atTopEdge && nextTile.y < position.y) {
     return true;
   }
-  if (position.y === height - 1 && nextTile.y > position.y) {
+  if (atBottomEdge && nextTile.y > position.y) {
     return true;
   }
-  if (position.x === 0 && nextTile.x < position.x) {
+  if (atLeftEdge && nextTile.x < position.x) {
     return true;
   }
-  if (position.x === width - 1 && nextTile.x > position.x) {
+  if (atRightEdge && nextTile.x > position.x) {
     return true;
   }
   return false;
