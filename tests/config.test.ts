@@ -17,7 +17,7 @@ describe("loadConfig", () => {
       defaultHoldFrames: 15,
       harnessMode: "full-game",
       aiProvider: "openai",
-      openaiBaseUrl: "http://127.0.0.1:3100/v1",
+      openaiBaseUrl: "http://192.168.0.100:3100/v1",
       openaiModel: "grok-4.3",
       openaiTemperature: 0.2,
     });
@@ -25,11 +25,9 @@ describe("loadConfig", () => {
     expect(config.harnessRunId).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
-  it("allows non-LLM commands to load config without an API key", () => {
-    const config = loadConfig({});
-
-    expect(config.aiProvider).toBe("openai");
-    expect(config.openaiApiKey).toBeUndefined();
+  it("requires an API key because there is no heuristic run mode", () => {
+    expect(() => loadConfig({})).toThrow(/OPENAI_API_KEY is required/);
+    expect(() => loadConfig({ AI_PROVIDER: "openai" })).toThrow(/OPENAI_API_KEY is required/);
   });
 
   it("preserves OpenAI provider settings when an OpenAI key is present", () => {

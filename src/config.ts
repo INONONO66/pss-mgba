@@ -53,10 +53,19 @@ const rawConfigSchema = z
     DEFAULT_TAP_FRAMES: integerFromEnv("DEFAULT_TAP_FRAMES", 5, 1),
     DEFAULT_HOLD_FRAMES: integerFromEnv("DEFAULT_HOLD_FRAMES", 15, 1),
     AI_PROVIDER: aiProviderSchema.default("openai"),
-    OPENAI_BASE_URL: urlString("OPENAI_BASE_URL").default("http://127.0.0.1:3100/v1"),
+    OPENAI_BASE_URL: urlString("OPENAI_BASE_URL").default("http://192.168.0.100:3100/v1"),
     OPENAI_API_KEY: optionalNonEmptyString,
     OPENAI_MODEL: z.string().min(1, "OPENAI_MODEL must not be empty").default("grok-4.3"),
     OPENAI_TEMPERATURE: numberFromEnv("OPENAI_TEMPERATURE", 0.2, 0, 2),
+  })
+  .superRefine((config, context) => {
+    if (config.OPENAI_API_KEY === undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["OPENAI_API_KEY"],
+        message: "OPENAI_API_KEY is required"
+      });
+    }
   });
 
 type RawHarnessConfig = z.infer<typeof rawConfigSchema>;
