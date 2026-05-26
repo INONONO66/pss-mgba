@@ -46,6 +46,22 @@ function samePosition(a: Position, b: Position): boolean {
   return a.y === b.y && a.x === b.x;
 }
 
+function isMapEdgeTransition(position: Position, nextTile: Position, width: number, height: number): boolean {
+  if (position.y === 0 && nextTile.y < position.y) {
+    return true;
+  }
+  if (position.y === height - 1 && nextTile.y > position.y) {
+    return true;
+  }
+  if (position.x === 0 && nextTile.x < position.x) {
+    return true;
+  }
+  if (position.x === width - 1 && nextTile.x > position.x) {
+    return true;
+  }
+  return false;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -145,6 +161,8 @@ export async function executeNavigate(
     worldReader,
     mapSource,
     mapId,
+    map.width,
+    map.height,
   );
   if (walkPathResult.commandResult !== undefined) {
     return walkPathResult.commandResult;
@@ -200,6 +218,8 @@ async function walkPathWithNpcReplans(
   worldReader: NavigateWorldReader,
   mapSource: NavigateMapSource,
   mapId: number,
+  width: number,
+  height: number,
 ): Promise<WalkPathResult> {
   let current = start;
   let remainingReplans = MAX_NPC_REPLANS;
@@ -210,6 +230,12 @@ async function walkPathWithNpcReplans(
     const next = currentPath[pathIndex];
     const stepResult = await walkOneStep(current, next, controller, worldReader, mapId);
     if (stepResult.interrupt !== undefined) {
+      if (
+        stepResult.interrupt.reason === "map_changed" &&
+        isMapEdgeTransition(current, next, width, height)
+      ) {
+        return { position: stepResult.position, commandResult: { status: "success", reason: "map_transition" } };
+      }
       return { position: stepResult.position, commandResult: stepResult.interrupt };
     }
 
