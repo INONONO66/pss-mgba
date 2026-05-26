@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { classifyBlock, MapMemory } from "../../src/game/MapMemory.js";
+import type { MapRecord, RecordedTile } from "../../src/game/MapMemory.js";
 import type { GameWorldSnapshot } from "../../src/game/GameWorld.js";
 import { mapName } from "../../src/game/PokemonCatalog.js";
 
@@ -113,6 +114,48 @@ describe("MapMemory", () => {
     const output = memory.renderMicro(3, 1, 1, "left");
 
     expect(output).toContain("Right:npc");
+  });
+
+  it("walkabilityGrid treats unknown tiles as walkable", () => {
+    const memory = new MapMemory();
+    seedRecord(memory, 10, 4, 4, 2, [
+      [0, 0, "walkable"],
+      [0, 1, "wall"],
+    ]);
+
+    const grid = memory.walkabilityGrid(10);
+
+    expect(grid).toBeDefined();
+    expect(grid!.grid[0][0]).toBe(true);
+    expect(grid!.grid[0][1]).toBe(false);
+    expect(grid!.grid[1][0]).toBe(true);
+    expect(grid!.grid[2][2]).toBe(true);
+  });
+
+  it("loadRecord preserves knownNpcs from the source record", () => {
+    const memory = new MapMemory();
+    const knownNpcs = new Map([
+      [1, { slot: 1, pictureId: 5, mapY: 3, mapX: 4, movementType: "stationary", onScreen: false, lastSeenTurn: 10 }],
+    ]);
+
+    memory.loadRecord({ mapId: 20, width: 8, height: 8, tiles: new Map(), npcPositions: [], knownNpcs } as MapRecord);
+
+    const npcs = memory.getKnownNpcs(20);
+    expect(npcs).toHaveLength(1);
+    expect(npcs[0]).toMatchObject({ slot: 1, pictureId: 5, mapY: 3, mapX: 4 });
+  });
+
+  it("importRecords preserves knownNpcs for new maps", () => {
+    const memory = new MapMemory();
+    const knownNpcs = new Map([
+      [2, { slot: 2, pictureId: 8, mapY: 1, mapX: 1, movementType: "random", onScreen: false, lastSeenTurn: 5 }],
+    ]);
+
+    memory.importRecords([{ mapId: 30, width: 6, height: 6, tiles: new Map(), npcPositions: [], knownNpcs } as MapRecord]);
+
+    const npcs = memory.getKnownNpcs(30);
+    expect(npcs).toHaveLength(1);
+    expect(npcs[0]).toMatchObject({ slot: 2, pictureId: 8 });
   });
 });
 

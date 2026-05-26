@@ -107,7 +107,7 @@ export class MapMemory {
         const t2 = screenTileBytes[(sy + 1) * SCREEN_TILE_W + sx];
         const t3 = screenTileBytes[(sy + 1) * SCREEN_TILE_W + sx + 1];
 
-        if (t0 === OFFSCREEN_TILE && t1 === OFFSCREEN_TILE && t2 === OFFSCREEN_TILE && t3 === OFFSCREEN_TILE) {
+        if (t0 === OFFSCREEN_TILE || t1 === OFFSCREEN_TILE || t2 === OFFSCREEN_TILE || t3 === OFFSCREEN_TILE) {
           continue;
         }
 
@@ -223,7 +223,7 @@ export class MapMemory {
         }
         const tile = record.tiles.get(key);
         if (tile === undefined) {
-          row.push(false);
+          row.push(true);
           continue;
         }
         const terrain = tileTerrain(tile);
@@ -380,7 +380,7 @@ export class MapMemory {
       const existing = this.maps.get(incoming.mapId);
       if (existing === undefined) {
         const tiles = new Map(incoming.tiles);
-        this.maps.set(incoming.mapId, { ...incoming, tiles, npcPositions: [], knownNpcs: new Map() });
+        this.maps.set(incoming.mapId, { ...incoming, tiles, npcPositions: [], knownNpcs: new Map(incoming.knownNpcs) });
       } else {
         if (incoming.width > 0) {
           existing.width = incoming.width;
@@ -404,7 +404,10 @@ export class MapMemory {
   // -----------------------------------------------------------------------
 
   loadRecord(record: MapRecord): void {
-    this.maps.set(record.mapId, { ...record, knownNpcs: new Map() });
+    this.maps.set(record.mapId, {
+      ...record,
+      knownNpcs: new Map(record.knownNpcs),
+    });
   }
 
   private getOrCreate(mapId: number): MapRecord {
