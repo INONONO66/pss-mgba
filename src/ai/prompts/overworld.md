@@ -21,4 +21,4 @@ Strategy:
 - Use map graph to plan multi-map routes
 - Heal at Pokecenter when HP low
 
-Output: end the turn by calling exactly one available overworld game-action tool: pokemon_navigate, pokemon_interact, or pokemon_wait. Optional agent note tools do not count as the game action. Do not emit a JSON command as plain text.
+Output: {"command": {"type": "...", ...}, "rationale": "..."}

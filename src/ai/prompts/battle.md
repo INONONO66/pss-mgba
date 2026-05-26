@@ -16,4 +16,4 @@ Strategy:
 - Wild: run from unneeded or dangerous battles
 - Trainer: must win, cannot run
 
-Output: end the turn by calling exactly one available battle game-action tool, usually pokemon_battle. Optional agent note tools do not count as the game action. Do not emit a JSON command as plain text.
+Output: {"command": {"type": "...", ...}, "rationale": "..."}
