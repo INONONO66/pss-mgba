@@ -1,6 +1,6 @@
 # TypeScript Pokemon Harness
 
-Stage 1 is the default bounded Pokemon Red and Blue harness mode for mGBA-http. It reads RAM state, records evidence, chooses safe controller actions, and stops at the Stage 1 contract described below. An opt-in full-game mode exists, but it only treats stable Hall of Fame map observation as completion.
+A full-game Pokemon Red and Blue harness for mGBA-http. It reads RAM state, records evidence, chooses safe controller actions, and treats stable Hall of Fame map observation as completion.
 
 This project does not bundle a ROM. You must provide your own legal Pokemon Red or Pokemon Blue ROM and load it in mGBA yourself.
 
@@ -143,41 +143,17 @@ DEV_VIEWER_PORT        Override the integrated dev viewer port; default is 8787.
 
 If mGBA is absent, the command exits nonzero and prints setup guidance instead of a raw stack trace. Start mGBA manually, enable mGBA-http, load your own ROM, then confirm `MGBA_HTTP_BASE_URL` points to it.
 
-## Stage 1 Contract
-
-Stage 1 means the harness attempts to progress from the Pallet start through Oak and starter flow, starter acquisition, Rival battle entry, and Rival battle exit.
-
-The agent must base each action on current observed RAM state and recent actions. It must not use a global hardcoded input timeline. Evidence includes states, decisions, actions, screenshots, errors, and a final summary under `EVIDENCE_DIR`.
-
 ## Full-Game Mode
 
-Full-game mode is opt in through `HARNESS_MODE=full-game`. It preserves the same safe-input and read-only-RAM rules as Stage 1.
+The harness runs full-game only. It preserves safe-input and read-only-RAM rules throughout.
 
-The detector tracks early Stage 1 milestones, badge observation, all-badges observation, and Hall of Fame observation. It does not complete on Rival battle exit or all badges alone. Completion requires two consecutive observations of Hall of Fame map id `0x76` or the derived `hallOfFameComplete` state field.
+The detector tracks badge observation, all-badges observation, and Hall of Fame observation. Completion requires two consecutive observations of Hall of Fame map id `0x76` or the derived `hallOfFameComplete` state field. All-badges alone does not trigger completion.
 
-The agent full-game prompt treats badges as progress only, forbids memory writes and hardcoded global input timelines, and forbids route-facts-alone completion claims.
+The agent prompt treats badges as progress only, forbids memory writes and hardcoded global input timelines, and forbids route-facts-alone completion claims.
 
-## Upstream Runtime Utilities
+## Memory Map Profile
 
-This fork keeps its richer Pokemon state reader and memory map as the authoritative
-LLM context source. The upstream runtime refresh has been pulled in as additive
-utilities for future wiring: run traces, behavior metrics, token usage tracking,
-Prometheus/Grafana assets, stuck-movement memory, and screenshot normalization.
-Do not replace `src/pokemon/memoryMap.ts`, `src/pokemon/PokemonStateReader.ts`,
-`src/pokemon/GameWorld.ts`, `src/pokemon/MapMemory.ts`, or the modular readers
-with the compact upstream `src/pokemon-state.ts` reader.
-
-`src/pokemon/memoryMap.ts` keeps the compatibility exports used by the runtime,
-but its Red/Blue WRAM symbols are sourced from the conservative JSON profile at
-`src/pokemon/data/red-blue-memory-profile.json`. Future game support should add a
-new profile and loader wiring instead of hardcoding another address table in
-TypeScript. This profile foundation does not by itself implement another game.
-
-The optional upstream trace report command is available as:
-
-```bash
-pnpm run trace:report
-```
+`src/pokemon/memoryMap.ts` keeps the compatibility exports used by the runtime, but its Red/Blue WRAM symbols are sourced from the conservative JSON profile at `src/pokemon/data/red-blue-memory-profile.json`. Future game support should add a new profile and loader wiring instead of hardcoding another address table in TypeScript. This profile foundation does not by itself implement another game.
 
 The Grafana/Prometheus assets are under `observability/` and can be started with:
 
@@ -205,4 +181,4 @@ Only enable integration tests when mGBA-http is already running with your ROM lo
 
 ## Limitations
 
-This is an MVP harness for Pokemon Red and Blue. Stage 1 remains the default and best-supported mode. Full-game mode is an opt-in foundation with read-only progress signals and Hall of Fame-only completion detection; it does not include a full reliable game-clearing strategy. It does not bundle, download, or verify ROM files. It does not start emulator processes. It does not include OBS or Twitch integration. It does not write emulator memory.
+This is an MVP harness for Pokemon Red and Blue. It runs full-game only, with read-only progress signals and Hall of Fame-only completion detection. It does not include a full reliable game-clearing strategy. It does not bundle, download, or verify ROM files. It does not start emulator processes. It does not include OBS or Twitch integration. It does not write emulator memory.
