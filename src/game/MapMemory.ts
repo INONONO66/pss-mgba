@@ -422,18 +422,23 @@ export class MapMemory {
 // ---------------------------------------------------------------------------
 
 export function classifyBlock(collision: TileCollisionData, _t0: number, _t1: number, t2: number, t3: number): ClassifiedTile {
-  const tiles = [classifyTile(collision, t2), classifyTile(collision, t3)];
-  const features = [...new Set(tiles.flatMap((tile) => tile.features))];
+  const lower = [classifyTile(collision, t2), classifyTile(collision, t3)];
+  const features = [...new Set(lower.flatMap((tile) => tile.features))];
+  const terrains = lower.map((tile) => tile.terrain);
 
-  if (tiles.some((tile) => tile.terrain === "grass")) {
-    return { terrain: "grass", features, tileId: t2 };
+  const bothPassable = terrains.every((t) => t === "walkable" || t === "grass");
+  if (bothPassable) {
+    return {
+      terrain: terrains.includes("grass") ? "grass" : "walkable",
+      features,
+      tileId: t2,
+    };
   }
-  if (tiles.some((tile) => tile.terrain === "walkable")) {
-    return { terrain: "walkable", features, tileId: t2 };
-  }
-  if (tiles.some((tile) => tile.terrain === "water")) {
+
+  if (terrains.includes("water")) {
     return { terrain: "water", features, tileId: t2 };
   }
+
   return { terrain: "wall", features, tileId: t2 };
 }
 
