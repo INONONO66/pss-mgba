@@ -26,11 +26,11 @@ export async function executeBattle(
     case "fight":
       return executeFight(command.action.move, controller, fullState, dialogStateReader);
     case "item":
-      return executeItem(command.action.item, controller, fullState);
+      return executeItem(command.action.item, controller, fullState, dialogStateReader);
     case "switch":
-      return executeSwitch(command.action.pokemon, controller, fullState);
+      return executeSwitch(command.action.pokemon, controller, fullState, dialogStateReader);
     case "run":
-      return executeRun(controller);
+      return executeRun(controller, dialogStateReader);
   }
 }
 
@@ -48,8 +48,20 @@ async function executeFight(
     return { status: "failed", reason: "move_not_found", details: `Move ${moveName} was not found` };
   }
 
-  for (let step = 0; step < moveIndex; step += 1) {
-    await controller.pressButton("Down", QUICK_FRAMES);
+  // The move cursor remembers its last position (wCurrentMenuItem).
+  // Read the current cursor position and navigate from there to the target.
+  const cursorPos = dialogStateReader !== undefined
+    ? await dialogStateReader.readCurrentMenuItem()
+    : 0;
+  const delta = moveIndex - cursorPos;
+  if (delta > 0) {
+    for (let step = 0; step < delta; step += 1) {
+      await controller.pressButton("Down", QUICK_FRAMES);
+    }
+  } else if (delta < 0) {
+    for (let step = 0; step < -delta; step += 1) {
+      await controller.pressButton("Up", QUICK_FRAMES);
+    }
   }
   await controller.pressButton("A", MENU_TRANSITION_FRAMES);
 
@@ -114,15 +126,27 @@ async function executeItem(
   itemName: string,
   controller: BattleController,
   fullState: FullGameState,
+  dialogStateReader?: DialogStateReader,
 ): Promise<CommandResult> {
   await navigateTopMenu(controller, ["Up", "Right"]);
   await controller.pressButton("A", MENU_TRANSITION_FRAMES);
 
   const selectedItem = fullState.bag.find((item) => sameName(item.name, itemName));
+  const displayName = selectedItem?.name ?? itemName;
+
+  if (dialogStateReader === undefined) {
+    return { status: "success", reason: "item_used", details: `Used ${displayName}` };
+  }
+
+  const narration = await advanceBattleNarration(controller, dialogStateReader);
+
+  const battleEnded = !(await dialogStateReader.isInBattle());
+  const reason = battleEnded ? "battle_ended" : "item_used";
+
   return {
     status: "success",
-    reason: "item_used",
-    details: `Used ${selectedItem?.name ?? itemName}`,
+    reason,
+    details: `Used ${displayName}${narration.length > 0 ? `; transcript=${JSON.stringify(narration)}` : ""}`,
   };
 }
 
@@ -130,6 +154,7 @@ async function executeSwitch(
   pokemonName: string,
   controller: BattleController,
   fullState: FullGameState,
+  dialogStateReader?: DialogStateReader,
 ): Promise<CommandResult> {
   await navigateTopMenu(controller, ["Down", "Left"]);
 
@@ -144,20 +169,39 @@ async function executeSwitch(
   await controller.pressButton("A", MENU_TRANSITION_FRAMES);
 
   const selectedPokemon = fullState.party.members[pokemonIndex];
+
+  if (dialogStateReader === undefined) {
+    return { status: "success", reason: "pokemon_switched", details: `Switched to ${selectedPokemon.nickname}` };
+  }
+
+  const narration = await advanceBattleNarration(controller, dialogStateReader);
+
   return {
     status: "success",
     reason: "pokemon_switched",
-    details: `Switched to ${selectedPokemon.nickname}`,
+    details: `Switched to ${selectedPokemon.nickname}${narration.length > 0 ? `; transcript=${JSON.stringify(narration)}` : ""}`,
   };
 }
 
-async function executeRun(controller: BattleController): Promise<CommandResult> {
+async function executeRun(
+  controller: BattleController,
+  dialogStateReader?: DialogStateReader,
+): Promise<CommandResult> {
   await navigateTopMenu(controller, ["Down", "Right"]);
+
+  if (dialogStateReader === undefined) {
+    return { status: "success", reason: "fled", details: "Attempted to flee" };
+  }
+
+  const narration = await advanceBattleNarration(controller, dialogStateReader);
+
+  const battleEnded = !(await dialogStateReader.isInBattle());
+  const reason = battleEnded ? "battle_ended" : "fled_failed";
 
   return {
     status: "success",
-    reason: "fled",
-    details: "Attempted to flee",
+    reason,
+    details: `Attempted to flee${narration.length > 0 ? `; transcript=${JSON.stringify(narration)}` : ""}`,
   };
 }
 

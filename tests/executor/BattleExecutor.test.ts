@@ -169,6 +169,74 @@ describe("BattleExecutor", () => {
     expect(result).toEqual({ status: "success", reason: "fled", details: "Attempted to flee" });
   });
 
+  it("fight navigates Up when cursor is past the target move", async () => {
+    const controller = createMockController();
+    const fullState = createBattleState(["Scratch", "Ember", "Flamethrower"], ["Charmander"]);
+
+    let narrationCalls = 0;
+    const mockDialogStateReader = {
+      readCurrentMenuItem: async () => 2,
+      readTextBoxId: async () => 0,
+      readScreenText: async () => "",
+      readTileAt: async () => { narrationCalls += 1; return narrationCalls > 1 ? 0xed : 0; },
+      isDialogActive: async () => false,
+      isWindowVisible: async () => false,
+      isInBattle: async () => true,
+      isChoiceActive: async () => false,
+      isNamingScreenActive: async () => false,
+    };
+
+    const result = await executeBattle(
+      { type: "battle", action: { kind: "fight", move: "Scratch" } },
+      controller,
+      fullState,
+      mockDialogStateReader,
+    );
+
+    expect(controller.pressed.slice(0, 6)).toEqual([
+      { button: "Up", frames: 5 },
+      { button: "Left", frames: 5 },
+      { button: "A", frames: 15 },
+      { button: "Up", frames: 5 },
+      { button: "Up", frames: 5 },
+      { button: "A", frames: 15 },
+    ]);
+    expect(result).toMatchObject({ status: "success", reason: "move_used", details: "Used Scratch" });
+  });
+
+  it("fight skips cursor movement when already on the target move", async () => {
+    const controller = createMockController();
+    const fullState = createBattleState(["Scratch", "Ember"], ["Charmander"]);
+
+    let narrationCalls = 0;
+    const mockDialogStateReader = {
+      readCurrentMenuItem: async () => 1,
+      readTextBoxId: async () => 0,
+      readScreenText: async () => "",
+      readTileAt: async () => { narrationCalls += 1; return narrationCalls > 1 ? 0xed : 0; },
+      isDialogActive: async () => false,
+      isWindowVisible: async () => false,
+      isInBattle: async () => true,
+      isChoiceActive: async () => false,
+      isNamingScreenActive: async () => false,
+    };
+
+    const result = await executeBattle(
+      { type: "battle", action: { kind: "fight", move: "Ember" } },
+      controller,
+      fullState,
+      mockDialogStateReader,
+    );
+
+    expect(controller.pressed.slice(0, 4)).toEqual([
+      { button: "Up", frames: 5 },
+      { button: "Left", frames: 5 },
+      { button: "A", frames: 15 },
+      { button: "A", frames: 15 },
+    ]);
+    expect(result).toMatchObject({ status: "success", reason: "move_used", details: "Used Ember" });
+  });
+
   it("returns descriptive status and details for battle actions", async () => {
     const fullState = createBattleState(["Scratch", "Ember"], ["Charmander", "Pikachu"]);
 
