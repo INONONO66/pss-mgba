@@ -222,7 +222,7 @@ describe("NavigateExecutor", () => {
       },
     );
 
-    expect(result).toEqual({ status: "interrupted", reason: "map_changed" });
+    expect(result).toEqual({ status: "success", reason: "warped" });
     expect(controller.pressedButtons).toEqual([
       { button: "Down", frames: 5 },
       { button: "Left", frames: 5 },
