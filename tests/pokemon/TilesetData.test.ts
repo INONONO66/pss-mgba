@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { RED_BLUE_MEMORY_MAP } from "../../src/game/memoryMap.js";
-import { readTileCollisionData } from "../../src/game/TilesetData.js";
+import { classifyTile, readTileCollisionData } from "../../src/game/TilesetData.js";
+import { TILESET } from "../../src/game/tilesetSpecialTiles.js";
 
 const map = RED_BLUE_MEMORY_MAP;
 
@@ -40,5 +41,81 @@ describe("TilesetData", () => {
       { method: "readRange", address: map.wTilesetCollisionPtr, length: metadataLength },
       { method: "readRange", address: collPtr, length: 64 },
     ]);
+  });
+});
+
+describe("classifyTile", () => {
+  it("classifies Overworld water tile $14 as water terrain", () => {
+    const collision = { tilesetId: TILESET.OVERWORLD, walkableTiles: new Set([0x01]), grassTile: 0x52 };
+    const result = classifyTile(collision, 0x14);
+    expect(result.terrain).toBe("water");
+    expect(result.tileId).toBe(0x14);
+  });
+
+  it("classifies Overworld grass tile $52 as grass with cuttable feature", () => {
+    const collision = { tilesetId: TILESET.OVERWORLD, walkableTiles: new Set([0x52]), grassTile: 0x52 };
+    const result = classifyTile(collision, 0x52);
+    expect(result.terrain).toBe("grass");
+    expect(result.features).toContain("cuttable");
+  });
+
+  it("classifies Overworld cut tree $3D as wall with cuttable feature", () => {
+    const collision = { tilesetId: TILESET.OVERWORLD, walkableTiles: new Set([0x01]), grassTile: 0x52 };
+    const result = classifyTile(collision, 0x3D);
+    expect(result.terrain).toBe("wall");
+    expect(result.features).toContain("cuttable");
+  });
+
+  it("classifies Overworld ledge tile $37 with ledge feature", () => {
+    const collision = { tilesetId: TILESET.OVERWORLD, walkableTiles: new Set([0x01]), grassTile: 0x52 };
+    const result = classifyTile(collision, 0x37);
+    expect(result.features).toContain("ledge");
+  });
+
+  it("classifies Overworld door tile $1B with door feature", () => {
+    const collision = { tilesetId: TILESET.OVERWORLD, walkableTiles: new Set([0x1B]), grassTile: 0x52 };
+    const result = classifyTile(collision, 0x1B);
+    expect(result.terrain).toBe("walkable");
+    expect(result.features).toContain("door");
+    expect(result.features).toContain("warp");
+  });
+
+  it("classifies Gym cut tree $50 with cuttable feature", () => {
+    const collision = { tilesetId: TILESET.GYM, walkableTiles: new Set([0x01]), grassTile: undefined };
+    const result = classifyTile(collision, 0x50);
+    expect(result.features).toContain("cuttable");
+  });
+
+  it("classifies Gym counter tile $3A with counter feature", () => {
+    const collision = { tilesetId: TILESET.GYM, walkableTiles: new Set([0x01]), grassTile: undefined };
+    const result = classifyTile(collision, 0x3A);
+    expect(result.features).toContain("counter");
+  });
+
+  it("does NOT classify $14 as water in non-water tileset (HOUSE)", () => {
+    const collision = { tilesetId: TILESET.HOUSE, walkableTiles: new Set([0x14]), grassTile: undefined };
+    const result = classifyTile(collision, 0x14);
+    expect(result.terrain).toBe("walkable");
+    expect(result.terrain).not.toBe("water");
+  });
+
+  it("classifies Mart door tile $5E with door feature", () => {
+    const collision = { tilesetId: TILESET.MART, walkableTiles: new Set([0x5E]), grassTile: undefined };
+    const result = classifyTile(collision, 0x5E);
+    expect(result.features).toContain("door");
+  });
+
+  it("classifies plain walkable tile with no features", () => {
+    const collision = { tilesetId: TILESET.OVERWORLD, walkableTiles: new Set([0x01]), grassTile: 0x52 };
+    const result = classifyTile(collision, 0x01);
+    expect(result.terrain).toBe("walkable");
+    expect(result.features).toEqual([]);
+  });
+
+  it("classifies plain wall tile with no features", () => {
+    const collision = { tilesetId: TILESET.OVERWORLD, walkableTiles: new Set([0x01]), grassTile: 0x52 };
+    const result = classifyTile(collision, 0xFF);
+    expect(result.terrain).toBe("wall");
+    expect(result.features).toEqual([]);
   });
 });
