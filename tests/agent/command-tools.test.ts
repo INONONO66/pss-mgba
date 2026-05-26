@@ -117,14 +117,13 @@ describe("command tools", () => {
   });
 
   it("delegates battle actions in battle mode and includes battle snapshots", async () => {
+    const battleStates = Array.from({ length: 50 }, () =>
+      gameState({ mode: "battle", enemyHp: 5 })
+    );
     const context = createContext({
       states: [
         gameState({ mode: "battle", enemyHp: 12 }),
-        gameState({ mode: "battle", enemyHp: 5 }),
-        gameState({ mode: "battle", enemyHp: 5 }),
-        gameState({ mode: "battle", enemyHp: 5 }),
-        gameState({ mode: "battle", enemyHp: 5 }),
-        gameState({ mode: "battle", enemyHp: 5 }),
+        ...battleStates,
       ],
     });
     const result = await executeTool(
@@ -145,6 +144,96 @@ describe("command tools", () => {
       },
     });
     expect(result).not.toHaveProperty("mapSnippet");
+  });
+
+  it("advances post-battle dialog until overworld and returns battle_ended", async () => {
+    const context = createContext({
+      states: [
+        gameState({ mode: "battle", enemyHp: 12 }),
+        gameState({ mode: "battle", enemyHp: 0 }),
+        gameState({ mode: "dialog" }),
+        gameState({ mode: "overworld" }),
+        gameState({ mode: "overworld" }),
+      ],
+    });
+    executeCommandMock.mockResolvedValueOnce({
+      status: "success",
+      reason: "battle_ended",
+    } satisfies CommandResult);
+
+    const result = await executeTool(
+      createCommandTools(context).pokemon_battle,
+      { action: { kind: "fight", move: "Scratch" } }
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      result: { status: "success", reason: "battle_ended" },
+    });
+    expect((result.after as Record<string, unknown>).mode).toBe("overworld");
+  });
+
+  it("stops post-battle dialog on choice_appeared for move learning", async () => {
+    const choiceDialogStateReader = {
+      readTextBoxId: vi.fn(async () => 0),
+      readCurrentMenuItem: vi.fn(async () => 0),
+      readScreenText: vi.fn(async () => "learn FLAMETHROWER?"),
+      readTileAt: vi.fn(async () => 0),
+      isDialogActive: vi.fn(async () => true),
+      isWindowVisible: vi.fn(async () => true),
+      isInBattle: vi.fn(async () => false),
+      isChoiceActive: vi.fn(async () => true),
+      isNamingScreenActive: vi.fn(async () => false),
+    };
+    const context = createContext({
+      states: [
+        gameState({ mode: "battle", enemyHp: 12 }),
+        gameState({ mode: "battle", enemyHp: 0 }),
+        gameState({ mode: "dialog" }),
+        gameState({ mode: "dialog" }),
+        gameState({ mode: "dialog" }),
+      ],
+    });
+    (context.executionContext as unknown as Record<string, unknown>).dialogStateReader = choiceDialogStateReader;
+
+    executeCommandMock.mockResolvedValueOnce({
+      status: "success",
+      reason: "battle_ended",
+    } satisfies CommandResult);
+
+    const result = await executeTool(
+      createCommandTools(context).pokemon_battle,
+      { action: { kind: "fight", move: "Scratch" } }
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      result: { status: "interrupted", reason: "choice_appeared" },
+    });
+  });
+
+  it("returns battle_ended for successful run with narration", async () => {
+    const context = createContext({
+      states: [
+        gameState({ mode: "battle", enemyHp: 12 }),
+        gameState({ mode: "overworld" }),
+        gameState({ mode: "overworld" }),
+      ],
+    });
+    executeCommandMock.mockResolvedValueOnce({
+      status: "success",
+      reason: "battle_ended",
+    } satisfies CommandResult);
+
+    const result = await executeTool(
+      createCommandTools(context).pokemon_battle,
+      { action: { kind: "run" } }
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      result: { status: "success", reason: "battle_ended" },
+    });
   });
 });
 

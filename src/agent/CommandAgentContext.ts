@@ -19,7 +19,9 @@ import { MapMemory } from "../game/MapMemory.js";
 import { MapMemoryStore,
 fromPersistedMap,
 toPersistedMap,
-type MapMemoryFile, } from "../game/MapMemoryStore.js";
+type MapMemoryFile,
+type PersistedMapRecord, } from "../game/MapMemoryStore.js";
+import type { WarpEntry } from "../game/WarpReader.js";
 import { mapName } from "../game/PokemonCatalog.js";
 import { FullGameDetector, type FullGameObservableState } from "../game/FullGameDetector.js";
 
@@ -126,6 +128,19 @@ export function createCommandAgentContext(config: HarnessConfig): CommandAgentCo
       lastWorld = world;
       mapMemory.update(world, world.tileMapBytes);
     },
+  }, {
+    mapConnections(_mapId) {
+      const conn = lastWorld?.warps?.connections;
+      if (conn === undefined) {
+        return {};
+      }
+      const result: Partial<Record<"north" | "south" | "east" | "west", number>> = {};
+      if (conn.north) { result.north = conn.north.mapId; }
+      if (conn.south) { result.south = conn.south.mapId; }
+      if (conn.west) { result.west = conn.west.mapId; }
+      if (conn.east) { result.east = conn.east.mapId; }
+      return result;
+    },
   });
   const interactStateReader = createInteractStateReader(ram);
   const dialogStateReader = createDialogStateReader(ram);
@@ -189,13 +204,8 @@ export function createCommandAgentContext(config: HarnessConfig): CommandAgentCo
 
   const updateMapGraph = (): void => {
     const inputs: MapGraphInput[] = mapMemory.visitedMaps().map((mapId) => {
-      const warps = lastWorld?.mapLayout.mapId === mapId ? (lastWorld.warps?.warps ?? []) : [];
-      const connections: Partial<Record<"north" | "south" | "east" | "west", number>> = {};
-
-      if (lastWorld?.mapLayout.mapId === mapId && lastWorld.warps?.connections) {
-        assignConnections(connections, lastWorld.warps.connections);
-      }
-
+      const existing = mapStoreData.maps[String(mapId)];
+      const { warps, connections } = resolveMapMetadata(mapId, existing, lastWorld, lastGameState);
       return { mapId, warps, connections };
     });
 
@@ -217,16 +227,8 @@ export function createCommandAgentContext(config: HarnessConfig): CommandAgentCo
           continue;
         }
 
-        const warps = lastWorld?.mapLayout.mapId === mapId ? [...(lastWorld.warps?.warps ?? [])] : [];
-        const connections: Partial<Record<"north" | "south" | "east" | "west", number>> = {};
-
-        if (lastWorld?.mapLayout.mapId === mapId && lastWorld.warps?.connections) {
-          assignConnections(connections, lastWorld.warps.connections);
-        }
-
-        const playerPos = lastGameState?.mapId === mapId
-          ? { y: lastGameState.playerY, x: lastGameState.playerX }
-          : undefined;
+        const existing = mapStoreData.maps[String(mapId)];
+        const { warps, connections, playerPos } = resolveMapMetadata(mapId, existing, lastWorld, lastGameState);
         mapStoreData.maps[String(mapId)] = toPersistedMap(record, warps, connections, playerPos);
       }
 
@@ -265,20 +267,37 @@ function createDetector(_config: Pick<HarnessConfig, "harnessMode">): CommandAge
   return new FullGameDetector();
 }
 
-function assignConnections(
-  target: Partial<Record<"north" | "south" | "east" | "west", number>>,
-  source: NonNullable<NonNullable<GameWorldSnapshot["warps"]>["connections"]>,
-): void {
-  if (source.north) {
-    target.north = source.north.mapId;
+function resolveMapMetadata(
+  mapId: number,
+  existing: PersistedMapRecord | undefined,
+  world: GameWorldSnapshot | undefined,
+  gameState: CommandAgentGameState | undefined,
+): {
+  warps: WarpEntry[];
+  connections: Partial<Record<"north" | "south" | "east" | "west", number>>;
+  playerPos: { y: number; x: number } | undefined;
+} {
+  const isCurrentMap = world?.mapLayout.mapId === mapId;
+
+  const warps: WarpEntry[] = isCurrentMap && world
+    ? [...(world.warps?.warps ?? [])]
+    : existing?.warps?.map((w) => ({ y: w.y, x: w.x, destMapId: w.destMapId, destWarpId: w.destWarpId })) ?? [];
+
+  const connections: Partial<Record<"north" | "south" | "east" | "west", number>> = existing?.connections
+    ? { ...existing.connections }
+    : {};
+
+  if (isCurrentMap && world?.warps?.connections) {
+    const source = world.warps.connections;
+    if (source.north) { connections.north = source.north.mapId; }
+    if (source.south) { connections.south = source.south.mapId; }
+    if (source.west) { connections.west = source.west.mapId; }
+    if (source.east) { connections.east = source.east.mapId; }
   }
-  if (source.south) {
-    target.south = source.south.mapId;
-  }
-  if (source.west) {
-    target.west = source.west.mapId;
-  }
-  if (source.east) {
-    target.east = source.east.mapId;
-  }
+
+  const playerPos = gameState?.mapId === mapId
+    ? { y: gameState.playerY, x: gameState.playerX }
+    : existing?.playerPosition;
+
+  return { warps, connections, playerPos };
 }

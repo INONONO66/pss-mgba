@@ -31,6 +31,7 @@ import {
 import { waitForInputReady } from "../executor/InputReadiness.js";
 import { createMemoryTools } from "./memory-tools";
 import { createSaveLoadTools } from "./saveload-tools";
+import { toObservableState } from "../game/FullGameDetector.js";
 
 const HISTORY_LIMIT = 10;
 const AUTO_CHECKPOINT_SLOT = 8;
@@ -237,28 +238,13 @@ export class CommandAgentRunner {
 
       let status: HarnessStatus | undefined;
       while (this.turn < this.maxTurns) {
-        const preStatus = this.detectorStatus();
-        if (isDetectorComplete(preStatus)) {
+        const preTurn = await this.prepareTurn();
+        if (preTurn.completed) {
           status = "completed";
           break;
         }
 
-        await this.waitForGameReady();
-
-        let state = await this.refreshState();
-        let detectorStatus = this.updateDetector(state);
-        if (isDetectorComplete(detectorStatus)) {
-          status = "completed";
-          break;
-        }
-
-        state = await this.autoAdvanceDialog(state);
-        detectorStatus = this.updateDetector(state);
-        if (isDetectorComplete(detectorStatus)) {
-          status = "completed";
-          break;
-        }
-
+        const { state, detectorStatus } = preTurn;
         this.turn += 1;
         const activeTools = this.updateModeContext(state.mode, tools);
         const beforeFrame = await this.safeCurrentFrame();
@@ -470,6 +456,37 @@ export class CommandAgentRunner {
     }
   }
 
+  private async prepareTurn(): Promise<
+    | { completed: true; state?: undefined; detectorStatus?: undefined }
+    | { completed: false; state: CommandAgentGameState; detectorStatus: DetectorStatus }
+  > {
+    if (isDetectorComplete(this.detectorStatus())) {
+      return { completed: true };
+    }
+
+    await this.waitForGameReady();
+
+    let state = await this.refreshState();
+    let detectorStatus = this.updateDetector(state);
+    if (isDetectorComplete(detectorStatus)) {
+      return { completed: true };
+    }
+
+    state = await this.autoAdvanceDialog(state);
+    detectorStatus = this.updateDetector(state);
+    if (isDetectorComplete(detectorStatus)) {
+      return { completed: true };
+    }
+
+    state = await this.autoAdvanceBattleLoss(state);
+    detectorStatus = this.updateDetector(state);
+    if (isDetectorComplete(detectorStatus)) {
+      return { completed: true };
+    }
+
+    return { completed: false, state, detectorStatus };
+  }
+
   private async autoAdvanceDialog(
     state: CommandAgentGameState
   ): Promise<CommandAgentGameState> {
@@ -491,6 +508,32 @@ export class CommandAgentRunner {
       mode: "dialog",
     });
     this.recordCommand(command, result, this.turn + 1);
+
+    return this.refreshState();
+  }
+
+  private async autoAdvanceBattleLoss(
+    state: CommandAgentGameState
+  ): Promise<CommandAgentGameState> {
+    if (state.mode !== "battle") {
+      return state;
+    }
+
+    const allFainted = state.fullState.party.members.length > 0
+      && state.fullState.party.members.every((pokemon) => pokemon.hp === 0);
+    if (!allFainted) {
+      return state;
+    }
+
+    const MAX_LOSS_PRESSES = 60;
+    const PRESS_FRAMES = 16;
+    for (let i = 0; i < MAX_LOSS_PRESSES; i += 1) {
+      await this.context.controller.pressButton("A", PRESS_FRAMES);
+      const refreshed = await this.refreshState();
+      if (refreshed.mode !== "battle") {
+        return refreshed;
+      }
+    }
 
     return this.refreshState();
   }
@@ -654,7 +697,7 @@ export class CommandAgentRunner {
 
   private updateDetector(state: CommandAgentGameState): DetectorStatus {
     return this.context.detector.update(
-      state.fullState as unknown as Record<string, unknown>,
+      toObservableState(state.fullState),
       undefined,
       this.turn
     );

@@ -262,61 +262,103 @@ interface PostCommandResult {
   readonly finalState: CommandAgentGameState;
 }
 
-async function handlePostCommand(
+const MAX_POST_BATTLE_DIALOG_ROUNDS = 5;
+const INTERRUPTING_REASONS = new Set(["choice_appeared", "naming_screen", "battle_started"]);
+
+function advanceDialog(
   context: CommandAgentContext,
-  command: Command,
-  originalResult: CommandResult
+): Promise<CommandResult> {
+  const dialogExecutor = new DialogExecutor(
+    context.executionContext.controller,
+    context.executionContext.dialogStateReader,
+  );
+  return dialogExecutor.execute({ type: "dialog", action: { kind: "advance" } });
+}
+
+function mergeDialogResult(
+  base: CommandResult,
+  dialogResult: CommandResult,
+): CommandResult {
+  if (dialogResult.reason !== undefined && INTERRUPTING_REASONS.has(dialogResult.reason)) {
+    return {
+      ...base,
+      status: "interrupted",
+      reason: dialogResult.reason,
+      details: combineDetails(base.details, dialogResult.details),
+    };
+  }
+  return { ...base, details: combineDetails(base.details, dialogResult.details) };
+}
+
+const BATTLE_EXIT_PRESS_FRAMES = 16;
+const MAX_BATTLE_EXIT_PRESSES = 40;
+
+async function waitForBattleExit(
+  context: CommandAgentContext,
+): Promise<CommandAgentGameState> {
+  for (let i = 0; i < MAX_BATTLE_EXIT_PRESSES; i += 1) {
+    const state = await refreshState(context);
+    if (!state.fullState.battle.inBattle) {
+      return state;
+    }
+    await context.executionContext.controller.pressButton("A", BATTLE_EXIT_PRESS_FRAMES);
+  }
+  return refreshState(context);
+}
+
+async function handlePostBattleCommand(
+  context: CommandAgentContext,
+  originalResult: CommandResult,
 ): Promise<PostCommandResult> {
   const transcript: string[] = [];
   let state = await refreshState(context);
   let result = { ...originalResult };
 
-  if (state.mode === "dialog" && command.type !== "dialog") {
-    const dialogExecutor = new DialogExecutor(
-      context.executionContext.controller,
-      context.executionContext.dialogStateReader
-    );
-    const dialogResult = await dialogExecutor.execute({ type: "dialog", action: { kind: "advance" } });
-    const pages = parseTranscript(dialogResult.details);
-    transcript.push(...pages);
-
-    if (dialogResult.reason === "choice_appeared") {
-      result = {
-        ...result,
-        status: "interrupted",
-        reason: "choice_appeared",
-        details: combineDetails(result.details, dialogResult.details),
-      };
-    } else if (dialogResult.reason === "battle_started") {
-      result = {
-        ...result,
-        status: "interrupted",
-        reason: "battle_started",
-        details: combineDetails(result.details, dialogResult.details),
-      };
-    } else {
-      result = {
-        ...result,
-        details: combineDetails(result.details, dialogResult.details),
-      };
+  if (state.fullState.battle.inBattle) {
+    state = await waitForBattleExit(context);
+    if (!state.fullState.battle.inBattle) {
+      result = { ...result, status: "success", reason: "battle_ended" };
     }
-
-    state = await refreshState(context);
   }
 
-  if (state.mode === "battle" && command.type === "battle") {
-    const dialogExecutor = new DialogExecutor(
-      context.executionContext.controller,
-      context.executionContext.dialogStateReader
-    );
-    const battleDialog = await dialogExecutor.execute({ type: "dialog", action: { kind: "advance" } });
-    const pages = parseTranscript(battleDialog.details);
-    transcript.push(...pages);
-
+  for (let round = 0; round < MAX_POST_BATTLE_DIALOG_ROUNDS && state.mode === "dialog"; round += 1) {
+    const dialogResult = await advanceDialog(context);
+    transcript.push(...parseTranscript(dialogResult.details));
+    result = mergeDialogResult(result, dialogResult);
     state = await refreshState(context);
-    if (!state.fullState.battle.inBattle) {
-      result = { status: "success", reason: "battle_ended", details: combineDetails(result.details, battleDialog.details) };
+
+    if (dialogResult.reason !== undefined && INTERRUPTING_REASONS.has(dialogResult.reason)) {
+      break;
     }
+  }
+
+  const battleResolved = !state.fullState.battle.inBattle;
+  const pendingInteraction = INTERRUPTING_REASONS.has(result.reason ?? "");
+  if (battleResolved && !pendingInteraction) {
+    result = { ...result, status: "success", reason: "battle_ended" };
+  }
+
+  return { result, transcript, finalState: state };
+}
+
+async function handlePostCommand(
+  context: CommandAgentContext,
+  command: Command,
+  originalResult: CommandResult
+): Promise<PostCommandResult> {
+  if (command.type === "battle") {
+    return handlePostBattleCommand(context, originalResult);
+  }
+
+  const transcript: string[] = [];
+  let state = await refreshState(context);
+  let result = { ...originalResult };
+
+  if (state.mode === "dialog" && command.type !== "dialog") {
+    const dialogResult = await advanceDialog(context);
+    transcript.push(...parseTranscript(dialogResult.details));
+    result = mergeDialogResult(result, dialogResult);
+    state = await refreshState(context);
   }
 
   return { result, transcript, finalState: state };
