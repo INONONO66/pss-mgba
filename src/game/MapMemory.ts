@@ -251,7 +251,8 @@ export class MapMemory {
         const terrain = tileTerrain(tile);
         const features = tileFeatures(tile);
         if (terrain === "wall") {
-          row.push(canCut && features.includes("cuttable"));
+          const passable = features.includes("door") || features.includes("warp") || (canCut && features.includes("cuttable"));
+          row.push(passable);
         } else if (terrain === "water") {
           row.push(canSurf);
         } else {
