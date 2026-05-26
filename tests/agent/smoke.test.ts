@@ -1216,6 +1216,7 @@ function createMockClient(): MgbaHttpClient {
   return {
     currentFrame: vi.fn(async () => 42),
     loadStateSlot: vi.fn(async () => undefined),
+    read8: vi.fn(async () => 0),
     saveStateSlot: vi.fn(async () => undefined),
     screenshot: vi.fn(async (filePath: string) => filePath),
   } as unknown as MgbaHttpClient;

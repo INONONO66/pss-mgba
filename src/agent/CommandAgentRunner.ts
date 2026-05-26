@@ -28,6 +28,7 @@ import {
   type DynamicLlmContext,
   type DynamicReasoningEffort,
 } from "./dynamic-llm";
+import { waitForInputReady } from "../executor/InputReadiness.js";
 import { createMemoryTools } from "./memory-tools";
 import { createSaveLoadTools } from "./saveload-tools";
 
@@ -241,6 +242,8 @@ export class CommandAgentRunner {
           status = "completed";
           break;
         }
+
+        await this.waitForGameReady();
 
         let state = await this.refreshState();
         let detectorStatus = this.updateDetector(state);
@@ -702,6 +705,23 @@ export class CommandAgentRunner {
       totalSteps: this.turn,
       totalTurns: this.turn,
     };
+  }
+
+  private async waitForGameReady(): Promise<void> {
+    const result = await waitForInputReady(this.context.client, {
+      sleep: this.options.sleep,
+      allowDialog: true,
+    });
+    if (result.timedOut) {
+      await this.evidence.recordError({
+        step: this.turn,
+        type: "input_readiness_timeout",
+        joyIgnore: result.joyIgnore,
+        walkCounter: result.walkCounter,
+        windowY: result.windowY,
+        polls: result.polls,
+      });
+    }
   }
 
   private async sleep(ms: number): Promise<void> {
