@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildSystemPrompt, buildUserMessage } from "../../src/ai/PromptBuilder.js";
-import type { FullGameState } from "../../src/pokemon/PokemonTypes.js";
+import type { FullGameState } from "../../src/game/PokemonTypes.js";
 
 const gameKnowledgeLines = [
   "World Rules",

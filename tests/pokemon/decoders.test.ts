@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HarnessError } from "../../src/errors.js";
+import { HarnessError } from "../../src/shared/errors.js";
 import {
   decodeBattleFlag,
   decodeBigEndianWord,
@@ -8,7 +8,7 @@ import {
   decodeLittleEndianWord,
   decodePartyCount,
   decodeUnsignedByte
-} from "../../src/pokemon/decoders.js";
+} from "../../src/game/decoders.js";
 
 describe("pokemon decoders", () => {
   it("decodes wIsInBattle flags", () => {

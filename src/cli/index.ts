@@ -1,18 +1,18 @@
 import "dotenv/config";
 import { pathToFileURL } from "node:url";
 import { inspect } from "node:util";
-import { Controller } from "./control/Controller.js";
-import type { MgbaButton } from "./mgba/MgbaTypes.js";
-import { MGBA_BUTTONS } from "./mgba/MgbaTypes.js";
-import { HarnessActionSchema } from "./control/ActionSchema.js";
+import { Controller } from "../control/Controller.js";
+import type { MgbaButton } from "../mgba/MgbaTypes.js";
+import { MGBA_BUTTONS } from "../mgba/MgbaTypes.js";
+import { HarnessActionSchema } from "../control/ActionSchema.js";
 import { loadConfig, type HarnessConfig } from "./config.js";
-import { CommandAgentRunner } from "./agent/CommandAgentRunner.js";
-import type { DynamicReasoningEffort } from "./agent/dynamic-llm.js";
-import { redactSecrets } from "./evidence/redaction.js";
-import { HarnessError } from "./errors.js";
+import { CommandAgentRunner } from "../agent/CommandAgentRunner.js";
+import type { DynamicReasoningEffort } from "../agent/dynamic-llm.js";
+import { redactSecrets } from "../evidence/redaction.js";
+import { HarnessError } from "../shared/errors.js";
 
-import { MgbaHttpClient } from "./mgba/MgbaHttpClient.js";
-import { runMgbaPreflight, type MgbaPreflightReport } from "./mgba/preflight.js";
+import { MgbaHttpClient } from "../mgba/MgbaHttpClient.js";
+import { runMgbaPreflight, type MgbaPreflightReport } from "../mgba/preflight.js";
 
 type HarnessCommand = "preflight" | "run" | "press" | "agent";
 

@@ -1,4 +1,4 @@
-import { HarnessError } from "../errors.js";
+import { HarnessError } from "../shared/errors.js";
 import type { MgbaButton } from "../mgba/MgbaTypes.js";
 import { HarnessActionSchema } from "./ActionSchema.js";
 import type { HarnessAction } from "./ActionTypes.js";

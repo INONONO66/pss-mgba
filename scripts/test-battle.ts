@@ -1,8 +1,8 @@
 import { MgbaHttpClient } from "../src/mgba/MgbaHttpClient.js";
-import { PokemonStateReader } from "../src/pokemon/PokemonStateReader.js";
-import { readGameWorld } from "../src/pokemon/GameWorld.js";
-import { readFullGameState } from "../src/pokemon/readers/FullGameStateReader.js";
-import { RED_BLUE_MEMORY_MAP } from "../src/pokemon/memoryMap.js";
+import { PokemonStateReader } from "../src/game/PokemonStateReader.js";
+import { readGameWorld } from "../src/game/GameWorld.js";
+import { readFullGameState } from "../src/game/readers/FullGameStateReader.js";
+import { RED_BLUE_MEMORY_MAP } from "../src/game/memoryMap.js";
 import { executeBattle, type BattleController } from "../src/executor/BattleExecutor.js";
 import type { BattleCommand } from "../src/control/CommandTypes.js";
 

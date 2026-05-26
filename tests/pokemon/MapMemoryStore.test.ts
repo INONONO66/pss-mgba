@@ -1,15 +1,15 @@
 import { access, mkdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { MapRecord } from "../../src/pokemon/MapMemory.js";
+import type { MapRecord } from "../../src/game/MapMemory.js";
 import {
   fromPersistedMap,
   MapMemoryStore,
   toPersistedMap,
   type MapMemoryFile,
   type PersistedMapRecord,
-} from "../../src/pokemon/MapMemoryStore.js";
-import type { WarpEntry } from "../../src/pokemon/WarpReader.js";
+} from "../../src/game/MapMemoryStore.js";
+import type { WarpEntry } from "../../src/game/WarpReader.js";
 
 const TMP_BASE = "/var/folders/70/44j59lmn1x95z003s9fg4qlm0000gn/T/opencode";
 

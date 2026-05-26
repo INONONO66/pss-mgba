@@ -6,7 +6,7 @@ import {
   decodePlayerFacing,
   decodeUnsignedByte
 } from "./decoders.js";
-import { HarnessError } from "../errors.js";
+import { HarnessError } from "../shared/errors.js";
 import { HALL_OF_FAME_MAP_ID, RED_BLUE_MEMORY_MAP } from "./memoryMap.js";
 import type { BadgeProgress, BattleFlag, FullGameState, HitPoints, MenuTextState, PartySummary, PlayerFacing, PokemonCoordinates, PokemonGameState } from "./PokemonTypes.js";
 import type { RamClient } from "./RamClient.js";

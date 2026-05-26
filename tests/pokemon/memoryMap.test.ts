@@ -4,7 +4,7 @@ import {
   REQUIRED_RED_BLUE_CONSTANTS,
   REQUIRED_RED_BLUE_MEMORY_SYMBOLS,
   validateMemoryProfile,
-} from "../../src/pokemon/memory-profile.js";
+} from "../../src/game/memory-profile.js";
 import {
   HALL_OF_FAME_MAP_ID,
   RED_BLUE_MEMORY_MAP,
@@ -44,7 +44,7 @@ import {
   wXCoord,
   wYBlockCoord,
   wYCoord,
-} from "../../src/pokemon/memoryMap.js";
+} from "../../src/game/memoryMap.js";
 
 const MALFORMED_MEMORY_MAP_PATTERN = /memoryMap\.wCurMap/;
 
@@ -147,7 +147,7 @@ describe("Red/Blue memory map", () => {
   it("loads every Red/Blue memory symbol from the JSON profile", () => {
     const profile = loadMemoryProfile(
       new URL(
-        "../../src/pokemon/data/red-blue-memory-profile.json",
+        "../../src/game/data/red-blue-memory-profile.json",
         import.meta.url
       )
     );
@@ -191,7 +191,7 @@ describe("Red/Blue memory map", () => {
   });
 
   it("keeps a direct compatibility export for each memory-map key", async () => {
-    const exported = (await import("../../src/pokemon/memoryMap.js")) as Record<
+    const exported = (await import("../../src/game/memoryMap.js")) as Record<
       string,
       unknown
     >;

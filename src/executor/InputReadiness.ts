@@ -1,5 +1,5 @@
-import { RED_BLUE_MEMORY_MAP } from "../pokemon/memoryMap.js";
-import { RWY_ADDRESS, WINDOW_HIDDEN_Y } from "../pokemon/GameWorld.js";
+import { RED_BLUE_MEMORY_MAP } from "../game/memoryMap.js";
+import { RWY_ADDRESS, WINDOW_HIDDEN_Y } from "../game/GameWorld.js";
 
 const map = RED_BLUE_MEMORY_MAP;
 

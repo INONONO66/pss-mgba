@@ -1,7 +1,7 @@
-import type { HarnessConfig } from "../config.js";
-import { HarnessError } from "../errors.js";
-import { wCurMap, wXCoord, wYCoord } from "../pokemon/memoryMap.js";
-import type { HarnessErrorCode } from "../types.js";
+import type { HarnessConfig } from "../cli/config.js";
+import { HarnessError } from "../shared/errors.js";
+import { wCurMap, wXCoord, wYCoord } from "../game/memoryMap.js";
+import type { HarnessErrorCode } from "../shared/types.js";
 import { MgbaHttpClient } from "./MgbaHttpClient.js";
 
 export type MgbaPreflightStatus = "pass" | "fail" | "warn";

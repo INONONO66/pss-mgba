@@ -1,6 +1,6 @@
 import type { BattleCommand, CommandResult } from "../control/CommandTypes.js";
 import type { MgbaButton } from "../mgba/MgbaTypes.js";
-import type { FullGameState } from "../pokemon/PokemonTypes.js";
+import type { FullGameState } from "../game/PokemonTypes.js";
 import type { DialogStateReader } from "./DialogExecutor.js";
 
 const QUICK_FRAMES = 5;

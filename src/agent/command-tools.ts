@@ -10,7 +10,7 @@ import type {
 } from "../control/CommandTypes.js";
 import { executeCommand } from "../executor/CommandExecutor.js";
 import { DialogExecutor } from "../executor/DialogExecutor.js";
-import { mapName } from "../pokemon/PokemonCatalog.js";
+import { mapName } from "../game/PokemonCatalog.js";
 import type {
   CommandAgentContext,
   CommandAgentGameState,

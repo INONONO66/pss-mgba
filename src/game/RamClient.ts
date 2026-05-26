@@ -1,4 +1,4 @@
-import { HarnessError } from "../errors.js";
+import { HarnessError } from "../shared/errors.js";
 import type { MgbaHttpClient } from "../mgba/MgbaHttpClient.js";
 
 export type RamClient = Pick<MgbaHttpClient, "read8" | "read16" | "readRange">;

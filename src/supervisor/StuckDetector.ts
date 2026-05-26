@@ -1,5 +1,5 @@
 import type { HarnessAction } from "../control/ActionTypes.js";
-import type { FullGameState } from "../pokemon/PokemonTypes.js";
+import type { FullGameState } from "../game/PokemonTypes.js";
 
 export interface StuckDetectorThresholds {
   readonly repeatedActionCount: number;

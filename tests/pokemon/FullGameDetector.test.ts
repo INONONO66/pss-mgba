@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FullGameDetector, HALL_OF_FAME_MAP_ID, type FullGameObservableState } from "../../src/pokemon/FullGameDetector.js";
+import { FullGameDetector, HALL_OF_FAME_MAP_ID, type FullGameObservableState } from "../../src/game/FullGameDetector.js";
 
 function state(overrides: Partial<FullGameObservableState> = {}): FullGameObservableState {
   return {

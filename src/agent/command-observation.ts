@@ -3,9 +3,9 @@ import { buildUserMessage } from "../ai/PromptBuilder.js";
 import type { PolicyInput } from "../ai/PromptTypes.js";
 import type { CommandHistoryEntry, CommandResult, GameMode } from "../control/CommandTypes.js";
 import { AGENT_MEMORY_SECTIONS, type AgentMemoryEntry, type AgentMemoryFile } from "./AgentMemoryStore.js";
-import type { MapGraph } from "../pokemon/MapGraph.js";
-import type { MapMemory } from "../pokemon/MapMemory.js";
-import type { FullGameState } from "../pokemon/PokemonTypes.js";
+import type { MapGraph } from "../game/MapGraph.js";
+import type { MapMemory } from "../game/MapMemory.js";
+import type { FullGameState } from "../game/PokemonTypes.js";
 
 const HISTORY_LIMIT = 10;
 

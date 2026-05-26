@@ -1,8 +1,8 @@
 import "dotenv/config";
 import { MgbaHttpClient } from "../src/mgba/MgbaHttpClient.js";
-import { readGameWorld } from "../src/pokemon/GameWorld.js";
-import { MapMemory } from "../src/pokemon/MapMemory.js";
-import { mapName } from "../src/pokemon/PokemonCatalog.js";
+import { readGameWorld } from "../src/game/GameWorld.js";
+import { MapMemory } from "../src/game/MapMemory.js";
+import { mapName } from "../src/game/PokemonCatalog.js";
 
 const DIRECTIONS = ["Up", "Down", "Left", "Right"] as const;
 

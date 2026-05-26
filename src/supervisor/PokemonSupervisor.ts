@@ -1,4 +1,4 @@
-import type { FullGameState, PartyPokemon } from "../pokemon/PokemonTypes.js";
+import type { FullGameState, PartyPokemon } from "../game/PokemonTypes.js";
 import { analyzeStuckSignals } from "./StuckDetector.js";
 import type { SupervisorAssessment, SupervisorGoal, SupervisorInput, SupervisorPlan, SupervisorProgressState } from "./SupervisorTypes.js";
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { executeBattle } from "../../src/executor/BattleExecutor.js";
-import type { FullGameState, MoveSlot, PartyPokemon } from "../../src/pokemon/PokemonTypes.js";
+import type { FullGameState, MoveSlot, PartyPokemon } from "../../src/game/PokemonTypes.js";
 
 function createMockController() {
   return {

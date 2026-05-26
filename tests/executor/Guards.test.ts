@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Command, CommandResult } from "../../src/control/CommandTypes.js";
 import { validateCommand, type GuardContext } from "../../src/executor/Guards.js";
-import type { FullGameState } from "../../src/pokemon/PokemonTypes.js";
+import type { FullGameState } from "../../src/game/PokemonTypes.js";
 
 function makeState(overrides: Partial<FullGameState> = {}): FullGameState {
   const base: FullGameState = {

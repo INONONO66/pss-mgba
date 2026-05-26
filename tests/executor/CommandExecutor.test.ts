@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { executeCommand, type ExecutionContext } from "../../src/executor/CommandExecutor.js";
-import type { FullGameState, MoveSlot, PartyPokemon } from "../../src/pokemon/PokemonTypes.js";
+import type { FullGameState, MoveSlot, PartyPokemon } from "../../src/game/PokemonTypes.js";
 import type { MgbaButton } from "../../src/mgba/MgbaTypes.js";
 
 vi.mock("../../src/executor/NavigateExecutor.js", () => ({

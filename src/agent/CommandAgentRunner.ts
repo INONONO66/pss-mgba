@@ -3,7 +3,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { Agent, type AgentEvent, type AgentTools } from "@minpeter/pss-runtime";
 import { FileSessionStore } from "@minpeter/pss-runtime/session-store/file";
 import type { LanguageModel } from "ai";
-import type { HarnessConfig } from "../config.js";
+import type { HarnessConfig } from "../cli/config.js";
 import type {
   Command,
   CommandHistoryEntry,
@@ -12,8 +12,8 @@ import type {
 } from "../control/CommandTypes.js";
 import { EvidenceRecorder } from "../evidence/EvidenceRecorder.js";
 import { executeCommand } from "../executor/CommandExecutor.js";
-import type { DetectorStatus } from "../pokemon/Detector.js";
-import type { HarnessStatus } from "../types.js";
+import type { DetectorStatus } from "../game/Detector.js";
+import type { HarnessStatus } from "../shared/types.js";
 import { AgentMemoryStore } from "./AgentMemoryStore";
 import {
   type CommandAgentContext,

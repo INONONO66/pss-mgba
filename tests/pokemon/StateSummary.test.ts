@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildStateSummary } from "../../src/pokemon/StateSummary.js";
-import type { FullGameState } from "../../src/pokemon/PokemonTypes.js";
+import { buildStateSummary } from "../../src/game/StateSummary.js";
+import type { FullGameState } from "../../src/game/PokemonTypes.js";
 
 describe("buildStateSummary", () => {
   it("derives adjacent tiles from rendered map rows without treating headers or row gutters as tiles", () => {

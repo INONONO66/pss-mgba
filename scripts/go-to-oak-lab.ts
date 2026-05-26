@@ -1,11 +1,11 @@
 import { MgbaHttpClient } from "../src/mgba/MgbaHttpClient.js";
-import { PokemonStateReader } from "../src/pokemon/PokemonStateReader.js";
-import { readGameWorld } from "../src/pokemon/GameWorld.js";
-import { MapMemory } from "../src/pokemon/MapMemory.js";
+import { PokemonStateReader } from "../src/game/PokemonStateReader.js";
+import { readGameWorld } from "../src/game/GameWorld.js";
+import { MapMemory } from "../src/game/MapMemory.js";
 import { executeNavigate, type NavigateController, type NavigateWorldReader, type NavigateMapSource } from "../src/executor/NavigateExecutor.js";
-import { RED_BLUE_MEMORY_MAP } from "../src/pokemon/memoryMap.js";
+import { RED_BLUE_MEMORY_MAP } from "../src/game/memoryMap.js";
 import type { NavigateCommand } from "../src/control/CommandTypes.js";
-import { mapName } from "../src/pokemon/PokemonCatalog.js";
+import { mapName } from "../src/game/PokemonCatalog.js";
 
 const client = new MgbaHttpClient({ baseUrl: "http://127.0.0.1:5001" });
 const stateReader = new PokemonStateReader({ client, version: "red" });
@@ -157,7 +157,7 @@ async function main() {
 
   // Oak's Lab entrance is typically at (5,3) or similar in Pallet Town
   // Read warps to find it
-  const { readWarps } = await import("../src/pokemon/WarpReader.js");
+  const { readWarps } = await import("../src/game/WarpReader.js");
   const warps = await readWarps(client);
   console.log("\nWarps on this map:");
   for (const w of warps.warps) {

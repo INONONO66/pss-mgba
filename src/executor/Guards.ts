@@ -1,5 +1,5 @@
 import type { BattleCommand, Command, CommandResult } from "../control/CommandTypes.js";
-import type { FullGameState } from "../pokemon/PokemonTypes.js";
+import type { FullGameState } from "../game/PokemonTypes.js";
 
 export interface GuardContext {
   fullState: FullGameState;

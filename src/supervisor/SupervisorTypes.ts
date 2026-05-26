@@ -1,4 +1,4 @@
-import type { FullGameState } from "../pokemon/PokemonTypes.js";
+import type { FullGameState } from "../game/PokemonTypes.js";
 
 export type SupervisorProgressState = "progressing" | "stuck" | "blocked" | "complete";
 

@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import type { HarnessStatus } from "../types.js";
+import type { HarnessStatus } from "../shared/types.js";
 import { buildRunPaths, type RunPaths } from "./RunPaths.js";
 
 export interface EvidenceRecorderOptions {

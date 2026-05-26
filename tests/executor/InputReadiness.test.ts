@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { waitForInputReady } from "../../src/executor/InputReadiness.js";
-import { RED_BLUE_MEMORY_MAP } from "../../src/pokemon/memoryMap.js";
-import { RWY_ADDRESS } from "../../src/pokemon/GameWorld.js";
+import { RED_BLUE_MEMORY_MAP } from "../../src/game/memoryMap.js";
+import { RWY_ADDRESS } from "../../src/game/GameWorld.js";
 
 const map = RED_BLUE_MEMORY_MAP;
 

@@ -1,13 +1,13 @@
 import type { MgbaButton } from "../mgba/MgbaTypes.js";
 import type { GameMode } from "../control/CommandTypes.js";
-import type { GameMode as WorldGameMode } from "../pokemon/GameWorld.js";
+import type { GameMode as WorldGameMode } from "../game/GameWorld.js";
 import type { NavigateController, NavigateWorldReader, NavigateMapSource } from "./NavigateExecutor.js";
 import type { InteractController, InteractStateReader } from "./InteractExecutor.js";
 import type { DialogController, DialogStateReader } from "./DialogExecutor.js";
 import type { BattleController } from "./BattleExecutor.js";
-import { RED_BLUE_MEMORY_MAP } from "../pokemon/memoryMap.js";
-import { RWY_ADDRESS, WINDOW_HIDDEN_Y, NAMING_SCREEN_MARKERS } from "../pokemon/GameWorld.js";
-import { decodeGen1Text } from "../pokemon/TextCodec.js";
+import { RED_BLUE_MEMORY_MAP } from "../game/memoryMap.js";
+import { RWY_ADDRESS, WINDOW_HIDDEN_Y, NAMING_SCREEN_MARKERS } from "../game/GameWorld.js";
+import { decodeGen1Text } from "../game/TextCodec.js";
 
 const map = RED_BLUE_MEMORY_MAP;
 

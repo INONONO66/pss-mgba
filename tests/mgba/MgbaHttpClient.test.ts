@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HarnessError } from "../../src/errors.js";
+import { HarnessError } from "../../src/shared/errors.js";
 import { MgbaHttpClient, type MgbaFetch } from "../../src/mgba/MgbaHttpClient.js";
 
 interface FetchCall {

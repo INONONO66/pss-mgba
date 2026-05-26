@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { MapGraph } from "../../src/pokemon/MapGraph.js";
-import type { MapGraphInput } from "../../src/pokemon/MapGraph.js";
+import { MapGraph } from "../../src/game/MapGraph.js";
+import type { MapGraphInput } from "../../src/game/MapGraph.js";
 
 // Small test world:
 // Pallet Town (map 0): warp(5,3)→map 40 (Oak's Lab), connection north→map 12 (Route 1)

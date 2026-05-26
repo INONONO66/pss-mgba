@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { RED_BLUE_MEMORY_MAP } from "../../src/pokemon/memoryMap.js";
-import { readTileCollisionData } from "../../src/pokemon/TilesetData.js";
+import { RED_BLUE_MEMORY_MAP } from "../../src/game/memoryMap.js";
+import { readTileCollisionData } from "../../src/game/TilesetData.js";
 
 const map = RED_BLUE_MEMORY_MAP;
 

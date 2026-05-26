@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadConfig } from "../../src/config.js";
+import { loadConfig } from "../../src/cli/config.js";
 import { runMgbaPreflight } from "../../src/mgba/preflight.js";
 
 const integrationEnabled = process.env.RUN_MGBA_INTEGRATION === "1";

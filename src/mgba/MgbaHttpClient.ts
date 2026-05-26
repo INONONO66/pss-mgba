@@ -1,7 +1,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { HarnessError } from "../errors.js";
-import type { FrameNumber, HarnessErrorCode } from "../types.js";
+import { HarnessError } from "../shared/errors.js";
+import type { FrameNumber, HarnessErrorCode } from "../shared/types.js";
 import type { MgbaButton } from "./MgbaTypes.js";
 
 export type MgbaFetch = (input: string | URL, init?: RequestInit) => Promise<Response>;

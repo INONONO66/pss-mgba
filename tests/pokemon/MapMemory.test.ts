@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { classifyBlock, MapMemory } from "../../src/pokemon/MapMemory.js";
-import type { GameWorldSnapshot } from "../../src/pokemon/GameWorld.js";
-import { mapName } from "../../src/pokemon/PokemonCatalog.js";
+import { classifyBlock, MapMemory } from "../../src/game/MapMemory.js";
+import type { GameWorldSnapshot } from "../../src/game/GameWorld.js";
+import { mapName } from "../../src/game/PokemonCatalog.js";
 
 const SCREEN_TILE_W = 20;
 const SCREEN_TILE_H = 18;

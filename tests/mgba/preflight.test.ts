@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { loadConfig } from "../../src/config.js";
-import { HarnessError } from "../../src/errors.js";
+import { loadConfig } from "../../src/cli/config.js";
+import { HarnessError } from "../../src/shared/errors.js";
 import { type MgbaPreflightClient, runMgbaPreflight } from "../../src/mgba/preflight.js";
-import { wCurMap, wXCoord, wYCoord } from "../../src/pokemon/memoryMap.js";
+import { wCurMap, wXCoord, wYCoord } from "../../src/game/memoryMap.js";
 
 interface FakeClient extends MgbaPreflightClient {
   readonly calls: string[];

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Controller, type ControllerClient } from "../../src/control/Controller.js";
-import { HarnessError } from "../../src/errors.js";
+import { HarnessError } from "../../src/shared/errors.js";
 import type { MgbaButton } from "../../src/mgba/MgbaTypes.js";
 
 type ClientCall =

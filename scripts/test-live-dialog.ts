@@ -13,9 +13,9 @@ import {
   toCommandGameMode,
 } from "../src/executor/MgbaAdapters.js";
 import { MgbaHttpClient } from "../src/mgba/MgbaHttpClient.js";
-import { readGameWorld } from "../src/pokemon/GameWorld.js";
-import { MapMemory } from "../src/pokemon/MapMemory.js";
-import { PokemonStateReader } from "../src/pokemon/PokemonStateReader.js";
+import { readGameWorld } from "../src/game/GameWorld.js";
+import { MapMemory } from "../src/game/MapMemory.js";
+import { PokemonStateReader } from "../src/game/PokemonStateReader.js";
 
 const baseUrl = process.env.MGBA_HTTP_BASE_URL ?? "http://127.0.0.1:5001";
 const settleMs = Number(process.env.LIVE_DIALOG_SETTLE_MS ?? 350);

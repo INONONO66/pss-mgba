@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HarnessError } from "../src/errors.js";
+import { HarnessError } from "../src/shared/errors.js";
 
 describe("HarnessError", () => {
   const fakeSecretPrefix = `s${"k"}-test`;

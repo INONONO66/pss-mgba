@@ -1,9 +1,9 @@
 import { MgbaHttpClient } from "../src/mgba/MgbaHttpClient.js";
-import { PokemonStateReader } from "../src/pokemon/PokemonStateReader.js";
-import { readGameWorld } from "../src/pokemon/GameWorld.js";
-import { MapMemory } from "../src/pokemon/MapMemory.js";
+import { PokemonStateReader } from "../src/game/PokemonStateReader.js";
+import { readGameWorld } from "../src/game/GameWorld.js";
+import { MapMemory } from "../src/game/MapMemory.js";
 import { executeNavigate, type NavigateController, type NavigateWorldReader, type NavigateMapSource } from "../src/executor/NavigateExecutor.js";
-import { RED_BLUE_MEMORY_MAP } from "../src/pokemon/memoryMap.js";
+import { RED_BLUE_MEMORY_MAP } from "../src/game/memoryMap.js";
 import type { NavigateCommand } from "../src/control/CommandTypes.js";
 
 async function main() {

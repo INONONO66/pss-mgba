@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FullGameState } from "../../src/pokemon/PokemonTypes.js";
+import type { FullGameState } from "../../src/game/PokemonTypes.js";
 import { buildPokemonSupervisorPlan, GoalLedger, renderSupervisorPlan, StuckDetector } from "../../src/supervisor/index.js";
 
 describe("PokemonSupervisor", () => {

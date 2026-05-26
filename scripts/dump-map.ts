@@ -1,8 +1,8 @@
 import "dotenv/config";
 import { MgbaHttpClient } from "../src/mgba/MgbaHttpClient.js";
-import { readGameWorld } from "../src/pokemon/GameWorld.js";
-import { MapMemory } from "../src/pokemon/MapMemory.js";
-import { mapName } from "../src/pokemon/PokemonCatalog.js";
+import { readGameWorld } from "../src/game/GameWorld.js";
+import { MapMemory } from "../src/game/MapMemory.js";
+import { mapName } from "../src/game/PokemonCatalog.js";
 
 async function main() {
   const client = new MgbaHttpClient({

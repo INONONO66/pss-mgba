@@ -1,10 +1,12 @@
 import "dotenv/config";
 import { pathToFileURL } from "node:url";
-import { createRunId } from "./evidence/EvidenceRecorder.js";
+import { createRunId } from "../evidence/EvidenceRecorder.js";
 import { loadConfig, type HarnessConfig } from "./config.js";
 import { runCli, type CliIo } from "./index.js";
-import { MgbaHttpClient } from "./mgba/MgbaHttpClient.js";
-import { startDevViewerServer, type StartedDevViewerServer } from "./viewer/DevViewerServer.js";
+import { MgbaHttpClient } from "../mgba/MgbaHttpClient.js";
+import { startDevViewerServer, type StartedDevViewerServer } from "../viewer/DevViewerServer.js";
+import { DevViewerHub } from "../viewer/DevViewerHub.js";
+import type { MgbaButton } from "../mgba/MgbaTypes.js";
 
 export interface DevDependencies {
   readonly loadConfig?: (env: NodeJS.ProcessEnv) => HarnessConfig;
@@ -26,6 +28,7 @@ export async function runDev(args: readonly string[] = process.argv.slice(2), io
   const viewer = await (dependencies.startViewer ?? startViewer)(config, undefined);
 
   io.stdout(`Dev viewer: ${viewer.url}`);
+  io.stdout(`WebSocket: ${viewer.url.replace("http", "ws")}/ws`);
   io.stdout(`Run ID: ${config.harnessRunId}`);
   io.stdout(formatDevRunBanner(config));
 
@@ -50,14 +53,32 @@ export function formatDevRunBanner(config: Pick<HarnessConfig, "aiProvider">): s
   return `Policy: ${config.aiProvider}`;
 }
 
-function startViewer(config: HarnessConfig, agentMemoryStore?: { snapshot(): { sections: Record<string, Array<{ id: string; createdAt: string; content: string }>>; updatedAt: string } }): Promise<StartedDevViewerServer> {
-  return startDevViewerServer({
-    client: new MgbaHttpClient({ baseUrl: config.mgbaHttpBaseUrl }),
+async function startViewer(config: HarnessConfig, agentMemoryStore?: { snapshot(): { sections: Record<string, Array<{ id: string; createdAt: string; content: string }>>; updatedAt: string } }): Promise<StartedDevViewerServer & { hub: DevViewerHub }> {
+  const mgbaClient = new MgbaHttpClient({ baseUrl: config.mgbaHttpBaseUrl });
+  const started = await startDevViewerServer({
+    client: mgbaClient,
     evidenceDir: config.evidenceDir,
     runId: config.harnessRunId,
     port: devViewerPort(),
     agentMemoryStore
   });
+
+  const hub = new DevViewerHub({
+    runId: config.harnessRunId,
+    onButtonPress: async (button, frames) => {
+      await mgbaClient.tapButton(button as MgbaButton, frames);
+    },
+  });
+  hub.attachToServer(started.server);
+
+  return {
+    ...started,
+    hub,
+    close: async () => {
+      hub.close();
+      await started.close();
+    },
+  };
 }
 
 function loadDevConfig(args: readonly string[], loader: (env: NodeJS.ProcessEnv) => HarnessConfig): HarnessConfig {

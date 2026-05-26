@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getHarnessHelp, parseCliArgs, runCli } from "../../src/index.js";
+import { getHarnessHelp, parseCliArgs, runCli } from "../../src/cli/index.js";
 import type { MgbaPreflightReport } from "../../src/mgba/preflight.js";
 
 describe("CLI", () => {

@@ -1,4 +1,4 @@
-import { HarnessError } from "../errors.js";
+import { HarnessError } from "../shared/errors.js";
 import type { BattleFlag, PlayerFacing, PokemonCoordinates, StatusCondition } from "./PokemonTypes.js";
 
 export function decodeUnsignedByte(value: number, fieldName = "byte"): number {

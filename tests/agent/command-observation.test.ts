@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildAgentObservation, type AgentObservationState } from "../../src/agent/command-observation.js";
 import type { AgentMemoryFile } from "../../src/agent/AgentMemoryStore.js";
-import type { MapGraph } from "../../src/pokemon/MapGraph.js";
-import type { MapMemory } from "../../src/pokemon/MapMemory.js";
+import type { MapGraph } from "../../src/game/MapGraph.js";
+import type { MapMemory } from "../../src/game/MapMemory.js";
 
 function stubState(): AgentObservationState {
   return {

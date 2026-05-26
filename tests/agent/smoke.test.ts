@@ -14,14 +14,14 @@ import { createCommandTools } from "../../src/agent/command-tools.js";
 import { createDynamicLlm } from "../../src/agent/dynamic-llm.js";
 import { createMemoryTools } from "../../src/agent/memory-tools.js";
 import { createSaveLoadTools } from "../../src/agent/saveload-tools.js";
-import type { HarnessConfig } from "../../src/config.js";
+import type { HarnessConfig } from "../../src/cli/config.js";
 import type {
   CommandResult,
   GameMode,
 } from "../../src/control/CommandTypes.js";
-import { buildDevHarnessArgs, runDev } from "../../src/dev.js";
+import { buildDevHarnessArgs, runDev } from "../../src/cli/dev.js";
 import type { MgbaHttpClient } from "../../src/mgba/MgbaHttpClient.js";
-import type { DetectorStatus } from "../../src/pokemon/Detector.js";
+import type { DetectorStatus } from "../../src/game/Detector.js";
 
 const generateTextMock = vi.hoisted(() => vi.fn());
 const executeCommandMock = vi.hoisted(() => vi.fn());

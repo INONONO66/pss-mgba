@@ -1,5 +1,5 @@
 import type { Command, CommandResult, GameMode } from "../control/CommandTypes.js";
-import type { FullGameState } from "../pokemon/PokemonTypes.js";
+import type { FullGameState } from "../game/PokemonTypes.js";
 import type { NavigateController, NavigateWorldReader, NavigateMapSource } from "./NavigateExecutor.js";
 import type { InteractController, InteractStateReader } from "./InteractExecutor.js";
 import type { DialogController, DialogStateReader } from "./DialogExecutor.js";
