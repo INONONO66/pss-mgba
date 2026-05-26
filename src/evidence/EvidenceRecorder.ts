@@ -15,7 +15,7 @@ export interface ScreenshotMetadata {
   readonly note?: string;
 }
 
-export interface RunSummary {
+interface RunSummary {
   readonly runId: string;
   readonly status: HarnessStatus;
   readonly startedAt: string;
@@ -28,60 +28,24 @@ export interface RunSummary {
   readonly result?: unknown;
 }
 
-export interface TurnRunContext {
-  readonly runId: string;
-  readonly runner: string;
-  readonly objective: string;
-  readonly sessionKey: string;
-  readonly maxTurns: number;
-  readonly startedAt: string;
-  readonly status: HarnessStatus | "running";
-}
-
-export interface TurnTimelineEvent {
-  readonly sequence: number;
-  readonly timestamp: string;
-  readonly type: string;
-  readonly toolCallId?: string;
-  readonly toolName?: string;
-  readonly isGameAction?: boolean;
-  readonly input?: unknown;
-  readonly output?: unknown;
-  readonly text?: string;
-  readonly message?: string;
-  readonly command?: unknown;
-  readonly result?: unknown;
-}
-
-export interface TurnToolCallLog {
-  input?: unknown;
-  readonly isGameAction: boolean;
-  output?: unknown;
-  readonly toolCallId: string;
-  readonly toolName: string;
-}
-
 export interface TurnLog {
-  readonly version: 1;
   readonly turn: number;
-  readonly run: TurnRunContext;
   readonly startedAt: string;
   readonly finishedAt: string;
-  readonly frame: { readonly before?: number; readonly after?: number };
-  readonly systemPrompt: string;
-  readonly userPrompt: string;
-  readonly reasoning: string;
-  readonly response: string;
+  readonly frame?: { readonly before?: number; readonly after?: number };
+  readonly systemPrompt?: string;
+  readonly userPrompt?: string;
+  readonly reasoning?: string;
+  readonly response?: string;
   readonly parsedCommand?: unknown;
   readonly rationale?: string;
-  readonly timeline: readonly TurnTimelineEvent[];
-  readonly toolCalls: readonly TurnToolCallLog[];
-  readonly gameState: { readonly before: unknown; readonly after?: unknown };
-  readonly agentMemory: unknown;
-  readonly mapAscii: string;
-  readonly mapGraph: string;
-  readonly detector: unknown;
-  readonly history: readonly unknown[];
+  readonly toolCalls?: readonly unknown[];
+  readonly gameState?: { readonly before?: unknown; readonly after?: unknown };
+  readonly agentMemory?: unknown;
+  readonly mapAscii?: string;
+  readonly mapGraph?: string;
+  readonly detector?: unknown;
+  readonly history?: readonly unknown[];
 }
 
 const secretKeyPattern = /(api[_-]?key|token|secret|password|authorization|credential)/i;
@@ -115,7 +79,6 @@ export class EvidenceRecorder {
   }
 
   async recordTurn(turn: TurnLog): Promise<string> {
-    assertCompleteTurnLog(turn, this.paths.runId);
     const sequence = Math.max(1, Math.trunc(turn.turn));
     this.turnCount = Math.max(this.turnCount, sequence);
     const file = this.paths.turnFile(sequence);
@@ -189,50 +152,6 @@ export function redactSecrets(value: unknown): unknown {
   }
 
   return value;
-}
-
-
-function assertCompleteTurnLog(turn: TurnLog, expectedRunId: string): void {
-  const missing: string[] = [];
-  if (turn.version !== 1) missing.push("version");
-  if (!Number.isInteger(turn.turn) || turn.turn < 1) missing.push("turn");
-  if (!isNonEmptyString(turn.startedAt)) missing.push("startedAt");
-  if (!isNonEmptyString(turn.finishedAt)) missing.push("finishedAt");
-  if (!isRecord(turn.run) || !isNonEmptyString(turn.run.runId) || turn.run.runId !== expectedRunId || !isNonEmptyString(turn.run.runner) || !isNonEmptyString(turn.run.objective) || !isNonEmptyString(turn.run.sessionKey) || !Number.isInteger(turn.run.maxTurns) || turn.run.maxTurns < 1 || !isNonEmptyString(turn.run.startedAt) || !isNonEmptyString(turn.run.status)) missing.push("run");
-  if (!isRecord(turn.frame)) missing.push("frame");
-  if (typeof turn.systemPrompt !== "string") missing.push("systemPrompt");
-  if (typeof turn.userPrompt !== "string") missing.push("userPrompt");
-  if (typeof turn.reasoning !== "string") missing.push("reasoning");
-  if (typeof turn.response !== "string") missing.push("response");
-  if (!Array.isArray(turn.timeline) || !turn.timeline.every(isTimelineEvent)) missing.push("timeline");
-  if (!Array.isArray(turn.toolCalls)) missing.push("toolCalls");
-  if (!isRecord(turn.gameState) || !("before" in turn.gameState)) missing.push("gameState.before");
-  if (turn.agentMemory === undefined) missing.push("agentMemory");
-  if (typeof turn.mapAscii !== "string") missing.push("mapAscii");
-  if (typeof turn.mapGraph !== "string") missing.push("mapGraph");
-  if (turn.detector === undefined) missing.push("detector");
-  if (!Array.isArray(turn.history)) missing.push("history");
-
-  if (missing.length > 0) {
-    throw new Error(`Turn log is missing required integrated fields: ${missing.join(", ")}`);
-  }
-}
-
-
-function isTimelineEvent(value: unknown): value is TurnTimelineEvent {
-  return isRecord(value) &&
-    Number.isInteger(value.sequence) &&
-    (value.sequence as number) > 0 &&
-    isNonEmptyString(value.timestamp) &&
-    isNonEmptyString(value.type);
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function normalizeError(error: unknown): unknown {
