@@ -83,6 +83,14 @@ function selectActiveGoal(input: SupervisorInput, assessment: SupervisorAssessme
   }
 
   if (state.battle.inBattle) {
+    const allFainted = state.party.members.length > 0
+      && state.party.members.every((member) => member.hp === 0);
+    if (allFainted) {
+      return goal("battle-loss-recovery", "recover-from-loop", "Recover from battle loss", 95, "All party Pokemon have fainted. The game will black out and return to the last Pokemon Center.", [
+        "Wait for the battle loss narration to complete automatically.",
+        "After whiteout, re-evaluate position and heal party before continuing.",
+      ]);
+    }
     return goal("win-current-battle", "win-battle", "Win the current battle", 90, "A battle is active and blocks overworld progress.", [
       "Use available damaging moves when PP is available.",
       "If HP is low and the bag has healing items, consider a healing action through the battle menu.",
