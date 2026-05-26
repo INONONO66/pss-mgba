@@ -2,7 +2,6 @@ import type { HarnessAction } from "../control/ActionTypes.js";
 import type { HarnessStatus } from "../types.js";
 import type { DetectorStatus, ProgressDetector } from "./Detector.js";
 import { HALL_OF_FAME_MAP_ID } from "./memoryMap.js";
-import { type Stage1ObservableState } from "./Stage1Detector.js";
 export { HALL_OF_FAME_MAP_ID };
 
 export type FullGameCheckpointName =
@@ -16,7 +15,17 @@ export type FullGameCheckpointName =
   | "hallOfFameCompleted"
   | "completed";
 
-export interface FullGameObservableState extends Stage1ObservableState {
+export interface FullGameObservableState {
+  readonly wCurMap?: number;
+  readonly mapId?: number;
+  readonly wYCoord?: number;
+  readonly y?: number;
+  readonly wXCoord?: number;
+  readonly x?: number;
+  readonly wPartyCount?: number;
+  readonly partyCount?: number;
+  readonly wIsInBattle?: number;
+  readonly isInBattle?: boolean | number;
   readonly wObtainedBadges?: number;
   readonly badgeCount?: number;
   readonly badgesObtained?: readonly boolean[];
