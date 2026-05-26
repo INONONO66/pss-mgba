@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { HarnessConfig } from "../config.js";
+import type { HarnessConfig } from "../cli/config.js";
 import type { ExecutionContext } from "../executor/CommandExecutor.js";
 import {
   createDialogStateReader,
@@ -14,20 +14,18 @@ import {
 import type { DialogStateReader } from "../executor/DialogExecutor.js";
 import type { InteractStateReader } from "../executor/InteractExecutor.js";
 import type { NavigateMapSource, NavigateWorldReader } from "../executor/NavigateExecutor.js";
-import { MapGraph, type MapGraphInput } from "../pokemon/MapGraph.js";
-import { MapMemory } from "../pokemon/MapMemory.js";
-import {
-  MapMemoryStore,
-  fromPersistedMap,
-  toPersistedMap,
-  type MapMemoryFile,
-} from "../pokemon/MapMemoryStore.js";
-import { mapName } from "../pokemon/PokemonCatalog.js";
-import { FullGameDetector } from "../pokemon/FullGameDetector.js";
-import { Stage1Detector } from "../pokemon/Stage1Detector.js";
-import type { DetectorStatus, ProgressDetector } from "../pokemon/Detector.js";
-import { PokemonStateReader } from "../pokemon/PokemonStateReader.js";
-import { readGameWorld, type GameWorldSnapshot } from "../pokemon/GameWorld.js";
+import { MapGraph, type MapGraphInput } from "../game/MapGraph.js";
+import { MapMemory } from "../game/MapMemory.js";
+import { MapMemoryStore,
+fromPersistedMap,
+toPersistedMap,
+type MapMemoryFile, } from "../game/MapMemoryStore.js";
+import { mapName } from "../game/PokemonCatalog.js";
+import { FullGameDetector } from "../game/FullGameDetector.js";
+
+import type { DetectorStatus, ProgressDetector } from "../game/Detector.js";
+import { PokemonStateReader } from "../game/PokemonStateReader.js";
+import { readGameWorld, type GameWorldSnapshot } from "../game/GameWorld.js";
 import { MgbaHttpClient } from "../mgba/MgbaHttpClient.js";
 import type { MgbaButton } from "../mgba/MgbaTypes.js";
 
@@ -251,8 +249,8 @@ export function createCommandAgentContext(config: HarnessConfig): CommandAgentCo
   };
 }
 
-function createDetector(config: Pick<HarnessConfig, "harnessMode">): CommandAgentDetector {
-  return config.harnessMode === "full-game" ? new FullGameDetector() : new Stage1Detector();
+function createDetector(_config: Pick<HarnessConfig, "harnessMode">): CommandAgentDetector {
+  return new FullGameDetector();
 }
 
 function assignConnections(

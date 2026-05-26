@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadConfig } from "../src/config.js";
+import { loadConfig } from "../src/cli/config.js";
 import { redactSecrets } from "../src/evidence/redaction.js";
 
 describe("loadConfig", () => {
@@ -53,15 +53,15 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ POKEMON_VERSION: "yellow" })).toThrow(/POKEMON_VERSION must be one of: red, blue/);
     expect(() => loadConfig({ AI_PROVIDER: "heuristic" })).toThrow(/AI_PROVIDER must be openai/);
     expect(() => loadConfig({ AI_PROVIDER: "other" })).toThrow(/AI_PROVIDER must be openai/);
-    expect(() => loadConfig({ HARNESS_MODE: "credits" })).toThrow(/HARNESS_MODE must be one of: stage1, full-game/);
+    expect(() => loadConfig({ HARNESS_MODE: "credits" })).toThrow(/HARNESS_MODE must be: full-game/);
   });
 
   it("defaults to full-game mode", () => {
     expect(loadConfig({ OPENAI_API_KEY: "unit-test-key" }).harnessMode).toBe("full-game");
   });
 
-  it("allows opt-in stage1 mode", () => {
-    expect(loadConfig({ OPENAI_API_KEY: "unit-test-key", HARNESS_MODE: "stage1" }).harnessMode).toBe("stage1");
+  it("rejects removed stage1 mode", () => {
+    expect(() => loadConfig({ OPENAI_API_KEY: "unit-test-key", HARNESS_MODE: "stage1" })).toThrow(/HARNESS_MODE must be: full-game/);
   });
 
   it("rejects invalid numeric ranges", () => {

@@ -1,5 +1,5 @@
 import type { HarnessAction } from "../control/ActionTypes.js";
-import type { HarnessStatus } from "../types.js";
+import type { HarnessStatus } from "../shared/types.js";
 import type { DetectorStatus, ProgressDetector } from "./Detector.js";
 import { HALL_OF_FAME_MAP_ID } from "./memoryMap.js";
 export { HALL_OF_FAME_MAP_ID };

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { HarnessError } from "../../src/errors.js";
-import { RED_BLUE_MEMORY_MAP } from "../../src/pokemon/memoryMap.js";
-import { PokemonStateReader } from "../../src/pokemon/PokemonStateReader.js";
+import { HarnessError } from "../../src/shared/errors.js";
+import { RED_BLUE_MEMORY_MAP } from "../../src/game/memoryMap.js";
+import { PokemonStateReader } from "../../src/game/PokemonStateReader.js";
 
 type ReadCall =
   | { method: "read8"; address: number }
@@ -123,7 +123,7 @@ function encodeTile(character: string): number {
 }
 
 describe("PokemonStateReader", () => {
-  it("reads grouped RAM ranges and returns a validated overworld state with Stage1-compatible fields", async () => {
+  it("reads grouped RAM ranges and returns a validated overworld state with detector-compatible fields", async () => {
     const client = createStateClient();
     const reader = new PokemonStateReader({ client, version: "red" });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildDevHarnessArgs, formatDevRunBanner, runDev } from "../src/dev.js";
-import type { AiProvider, HarnessConfig, HarnessMode } from "../src/config.js";
+import { buildDevHarnessArgs, formatDevRunBanner, runDev } from "../src/cli/dev.js";
+import type { AiProvider, HarnessConfig, HarnessMode } from "../src/cli/config.js";
 
 describe("dev command", () => {
   it("builds run args with a generated run id by default", () => {
@@ -140,8 +140,8 @@ function parseAiProvider(value: string | undefined): AiProvider {
   return "openai";
 }
 
-function parseHarnessMode(value: string | undefined): HarnessMode {
-  return value === "full-game" ? "full-game" : "stage1";
+function parseHarnessMode(_value: string | undefined): HarnessMode {
+  return "full-game";
 }
 
 function fakeConfig(overrides: Partial<HarnessConfig>): HarnessConfig {

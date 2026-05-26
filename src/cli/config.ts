@@ -12,8 +12,8 @@ const aiProviderSchema = z.enum(["openai"], {
   error: "AI_PROVIDER must be openai"
 });
 
-const harnessModeSchema = z.enum(["stage1", "full-game"], {
-  error: "HARNESS_MODE must be one of: stage1, full-game"
+const harnessModeSchema = z.enum(["full-game"], {
+  error: "HARNESS_MODE must be: full-game"
 });
 
 const optionalNonEmptyString = z.preprocess(
