@@ -24,6 +24,13 @@ export interface DevViewerServerOptions {
       updatedAt: string;
     };
   };
+  readonly supervisorSnapshot?: () => {
+    plan: unknown | null;
+    assessment: unknown | null;
+    activeGoal: unknown | null;
+    knowledgeBaseSize: number;
+  };
+  readonly onButtonPress?: (button: string, frames: number) => Promise<void>;
 }
 
 export interface StartedDevViewerServer {
@@ -142,10 +149,28 @@ export function createDevViewerServer(options: DevViewerServerOptions): Server {
         return;
       }
 
+      if (requestUrl.pathname === "/api/global/supervisor") {
+        const data = options.supervisorSnapshot?.() ?? { plan: null, assessment: null, activeGoal: null, knowledgeBaseSize: 0 };
+        response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        response.end(JSON.stringify({ runId: options.runId, ...data }));
+        return;
+      }
+
       if (requestUrl.pathname === "/api/global/map-memory") {
         const mapMemory = await readJsonRecord(paths.mapMemoryFile);
         response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
         response.end(JSON.stringify({ runId: options.runId, ...(mapMemory ?? { version: 1, maps: {} }) }));
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/input" && request.method === "POST" && options.onButtonPress) {
+        const body = await readRequestBody(request);
+        const parsed = JSON.parse(body) as Record<string, unknown>;
+        const button = typeof parsed.button === "string" ? parsed.button : "";
+        const frames = typeof parsed.frames === "number" ? parsed.frames : 5;
+        await options.onButtonPress(button, frames);
+        response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        response.end(JSON.stringify({ ok: true }));
         return;
       }
 
@@ -488,6 +513,15 @@ async function readVisionFile(filePath: string): Promise<Buffer | undefined> {
     }
     throw error;
   }
+}
+
+function readRequestBody(request: http.IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    request.on("data", (chunk: Buffer) => chunks.push(chunk));
+    request.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    request.on("error", reject);
+  });
 }
 
 function isNotFound(error: unknown): boolean {

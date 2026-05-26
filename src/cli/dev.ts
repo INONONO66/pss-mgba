@@ -2,7 +2,7 @@ import "dotenv/config";
 import { pathToFileURL } from "node:url";
 import { createRunId } from "../evidence/EvidenceRecorder.js";
 import { loadConfig, type HarnessConfig } from "./config.js";
-import { runCli, type CliIo } from "./index.js";
+import { getSupervisorSnapshot, runCli, type CliIo } from "./index.js";
 import { MgbaHttpClient } from "../mgba/MgbaHttpClient.js";
 import { startDevViewerServer, type StartedDevViewerServer } from "../viewer/DevViewerServer.js";
 import { DevViewerHub } from "../viewer/DevViewerHub.js";
@@ -11,7 +11,11 @@ import type { MgbaButton } from "../mgba/MgbaTypes.js";
 export interface DevDependencies {
   readonly loadConfig?: (env: NodeJS.ProcessEnv) => HarnessConfig;
   readonly runCli?: (args: readonly string[], io: CliIo) => Promise<number>;
-  readonly startViewer?: (config: HarnessConfig, agentMemoryStore?: { snapshot(): { sections: Record<string, Array<{ id: string; createdAt: string; content: string }>>; updatedAt: string } }) => Promise<StartedDevViewerServer>;
+  readonly startViewer?: (
+    config: HarnessConfig,
+    agentMemoryStore?: { snapshot(): { sections: Record<string, Array<{ id: string; createdAt: string; content: string }>>; updatedAt: string } },
+    supervisorSnapshot?: () => { plan: unknown | null; assessment: unknown | null; activeGoal: unknown | null; knowledgeBaseSize: number }
+  ) => Promise<StartedDevViewerServer>;
   readonly now?: () => Date;
 }
 
@@ -25,7 +29,7 @@ export async function runDev(args: readonly string[] = process.argv.slice(2), io
   const runId = nonEmpty(optionValue(normalizedArgs, "--run-id")) ?? nonEmpty(process.env.HARNESS_RUN_ID) ?? createRunId(dependencies.now?.() ?? new Date());
   const harnessArgs = buildDevHarnessArgs(normalizedArgs, runId);
   const config = loadDevConfig(harnessArgs, dependencies.loadConfig ?? loadConfig);
-  const viewer = await (dependencies.startViewer ?? startViewer)(config, undefined);
+  const viewer = await (dependencies.startViewer ?? startViewer)(config, undefined, getSupervisorSnapshot);
 
   io.stdout(`Dev viewer: ${viewer.url}`);
   io.stdout(`WebSocket: ${viewer.url.replace("http", "ws")}/ws`);
@@ -53,21 +57,29 @@ export function formatDevRunBanner(config: Pick<HarnessConfig, "aiProvider">): s
   return `Policy: ${config.aiProvider}`;
 }
 
-async function startViewer(config: HarnessConfig, agentMemoryStore?: { snapshot(): { sections: Record<string, Array<{ id: string; createdAt: string; content: string }>>; updatedAt: string } }): Promise<StartedDevViewerServer & { hub: DevViewerHub }> {
+async function startViewer(
+  config: HarnessConfig,
+  agentMemoryStore?: { snapshot(): { sections: Record<string, Array<{ id: string; createdAt: string; content: string }>>; updatedAt: string } },
+  supervisorSnapshot?: () => { plan: unknown | null; assessment: unknown | null; activeGoal: unknown | null; knowledgeBaseSize: number }
+): Promise<StartedDevViewerServer & { hub: DevViewerHub }> {
   const mgbaClient = new MgbaHttpClient({ baseUrl: config.mgbaHttpBaseUrl });
+  const tapButton = async (button: string, frames: number) => {
+    await mgbaClient.tapButton(button as MgbaButton, frames);
+  };
   const started = await startDevViewerServer({
     client: mgbaClient,
     evidenceDir: config.evidenceDir,
     runId: config.harnessRunId,
+    host: devViewerHost(),
     port: devViewerPort(),
-    agentMemoryStore
+    agentMemoryStore,
+    supervisorSnapshot,
+    onButtonPress: tapButton,
   });
 
   const hub = new DevViewerHub({
     runId: config.harnessRunId,
-    onButtonPress: async (button, frames) => {
-      await mgbaClient.tapButton(button as MgbaButton, frames);
-    },
+    onButtonPress: tapButton,
   });
   hub.attachToServer(started.server);
 
@@ -121,6 +133,14 @@ function devViewerPort(): number {
   }
   const parsed = Number(raw);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 8787;
+}
+
+function devViewerHost(): string {
+  const raw = process.env.DEV_VIEWER_HOST;
+  if (raw === undefined || raw.trim() === "") {
+    return "127.0.0.1";
+  }
+  return raw.trim();
 }
 
 export async function main(args: readonly string[] = process.argv.slice(2)): Promise<void> {

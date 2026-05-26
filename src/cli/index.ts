@@ -7,14 +7,18 @@ import { MGBA_BUTTONS } from "../mgba/MgbaTypes.js";
 import { HarnessActionSchema } from "../control/ActionSchema.js";
 import { loadConfig, type HarnessConfig } from "./config.js";
 import { CommandAgentRunner } from "../agent/CommandAgentRunner.js";
+import type { CommandAgentGameState } from "../agent/CommandAgentContext.js";
 import type { DynamicReasoningEffort } from "../agent/dynamic-llm.js";
 import { redactSecrets } from "../evidence/redaction.js";
 import { HarnessError } from "../shared/errors.js";
+import { SupervisorOrchestrator } from "../supervisor/index.js";
 
 import { MgbaHttpClient } from "../mgba/MgbaHttpClient.js";
 import { runMgbaPreflight, type MgbaPreflightReport } from "../mgba/preflight.js";
 
 type HarnessCommand = "preflight" | "run" | "press" | "agent";
+
+let activeSupervisorOrchestrator: SupervisorOrchestrator | undefined;
 
 export interface CliOptions {
   readonly command?: HarnessCommand;
@@ -36,6 +40,13 @@ export interface CliFactories {
   readonly createRunner?: (config: HarnessConfig, options: { maxTurns?: number; reasoning?: DynamicReasoningEffort }) => CliRunner;
   readonly runPreflight?: (config: HarnessConfig) => Promise<MgbaPreflightReport>;
   readonly executePress?: (config: HarnessConfig, action: unknown) => Promise<void>;
+}
+
+export interface SupervisorSnapshot {
+  plan: unknown | null;
+  assessment: unknown | null;
+  activeGoal: unknown | null;
+  knowledgeBaseSize: number;
 }
 
 export interface CliRunner {
@@ -77,49 +88,10 @@ export function parseCliArgs(args: readonly string[]): ParsedOptionResult {
   const rest: string[] = [];
 
   for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    switch (arg) {
-      case "--help":
-      case "-h":
-        options.help = true;
-        break;
-      case "--run-id":
-        options.runId = parseNonEmpty(args[++index], "--run-id", errors);
-        break;
-      case "--max-turns":
-        options.maxTurns = parsePositiveInteger(args[++index], "--max-turns", errors);
-        break;
-      case "--reasoning":
-        options.reasoning = parseReasoningEffort(args[++index], errors);
-        break;
-      case "--frames":
-        options.pressFrames = parsePositiveInteger(args[++index], "--frames", errors);
-        break;
-      default:
-        if (arg?.startsWith("--") === true) {
-          errors.push(`Unknown option: ${arg}`);
-        } else if (arg !== undefined) {
-          rest.push(arg);
-        }
-    }
+    index = consumeCliArg(args, index, options, errors, rest);
   }
 
-  const command = rest[0];
-  if (command !== undefined) {
-    if (isHarnessCommand(command)) {
-      options.command = command;
-      if (command === "press") {
-        options.pressButton = rest[1];
-        if (rest.length > 2) {
-          errors.push(`Unexpected argument for press: ${rest.slice(2).join(" ")}`);
-        }
-      } else if (rest.length > 1) {
-        errors.push(`Unexpected argument for ${command}: ${rest.slice(1).join(" ")}`);
-      }
-    } else {
-      errors.push(`Unknown command: ${command}`);
-    }
-  }
+  applyCommandArgs(rest, options, errors);
 
   return { options, errors };
 }
@@ -137,7 +109,7 @@ export async function runCli(
 
   if (parsed.errors.length > 0) {
     io.stderr(parsed.errors.join("\n"));
-    io.stderr("\n" + getHarnessHelp());
+    io.stderr(`\n${getHarnessHelp()}`);
     return 1;
   }
 
@@ -158,6 +130,20 @@ export async function runCli(
     io.stderr(formatSafeError(error));
     return 1;
   }
+}
+
+export function getSupervisorSnapshot(): SupervisorSnapshot {
+  const orchestrator = activeSupervisorOrchestrator;
+  const plan = orchestrator?.getLastPlan() ?? null;
+  const ledger = orchestrator?.getLedger().snapshot();
+  const knowledgeBaseSize = orchestrator?.getKnowledgeBase().size ?? 0;
+
+  return {
+    plan,
+    assessment: ledger?.assessment ?? plan?.assessment ?? null,
+    activeGoal: ledger?.activeGoal ?? plan?.activeGoal ?? null,
+    knowledgeBaseSize,
+  };
 }
 
 export async function main(args: readonly string[] = process.argv.slice(2)): Promise<void> {
@@ -181,13 +167,46 @@ async function handlePreflight(options: CliOptions, io: CliIo, factories: CliFac
 
 async function handleRun(options: CliOptions, io: CliIo, factories: CliFactories): Promise<number> {
   const config = loadCommandConfig(options, factories);
+  const orchestrator = new SupervisorOrchestrator({
+    evidenceDir: config.evidenceDir,
+    runId: config.harnessRunId
+  });
+  activeSupervisorOrchestrator = orchestrator;
+  const recentStates: unknown[] = [];
+  const recentActions: unknown[] = [];
+  const RECENT_BUFFER_SIZE = 20;
+
   const runnerOptions = { maxTurns: options.maxTurns, reasoning: options.reasoning };
+  const defaultRunnerOptions = {
+    ...runnerOptions,
+    adviserHintProvider: () => orchestrator.getAdviserHint(),
+    onTurnStart: (turn: number, state: CommandAgentGameState) => {
+      recentStates.push(state.fullState);
+      if (recentStates.length > RECENT_BUFFER_SIZE) {
+        recentStates.shift();
+      }
+
+      orchestrator.update({
+        step: turn,
+        fullState: state.fullState,
+        recentActions: recentActions.slice(-RECENT_BUFFER_SIZE),
+        recentStates: recentStates.slice(-RECENT_BUFFER_SIZE)
+      });
+    }
+  };
+
   const runner = factories.createRunner
     ? factories.createRunner(config, runnerOptions)
-    : new CommandAgentRunner(config, runnerOptions);
-  const result = await runner.run();
-  io.stdout(redactSecrets({ command: "run", result }));
-  return result.status === "completed" ? 0 : 1;
+    : new CommandAgentRunner(config, defaultRunnerOptions);
+  try {
+    const result = await runner.run();
+    io.stdout(redactSecrets({ command: "run", result }));
+    return result.status === "completed" ? 0 : 1;
+  } finally {
+    if (activeSupervisorOrchestrator === orchestrator) {
+      activeSupervisorOrchestrator = undefined;
+    }
+  }
 }
 
 async function handlePress(options: CliOptions, io: CliIo, factories: CliFactories): Promise<number> {
@@ -254,7 +273,7 @@ function parsePositiveInteger(value: string | undefined, name: string, errors: s
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 1) {
     errors.push(`${name} must be a positive integer`);
-    return undefined;
+    return;
   }
   return parsed;
 }
@@ -262,7 +281,7 @@ function parsePositiveInteger(value: string | undefined, name: string, errors: s
 function parseNonEmpty(value: string | undefined, name: string, errors: string[]): string | undefined {
   if (value === undefined || value.trim().length === 0) {
     errors.push(`${name} must not be empty`);
-    return undefined;
+    return;
   }
   return value;
 }
@@ -270,7 +289,7 @@ function parseNonEmpty(value: string | undefined, name: string, errors: string[]
 function parseReasoningEffort(value: string | undefined, errors: string[]): DynamicReasoningEffort | undefined {
   if (value === undefined || value.trim().length === 0) {
     errors.push("--reasoning must not be empty");
-    return undefined;
+    return;
   }
 
   if (
@@ -286,7 +305,77 @@ function parseReasoningEffort(value: string | undefined, errors: string[]): Dyna
   }
 
   errors.push("--reasoning must be one of: provider-default, none, minimal, low, medium, high, xhigh");
-  return undefined;
+  return;
+}
+
+function consumeCliArg(
+  args: readonly string[],
+  index: number,
+  options: MutableCliOptions,
+  errors: string[],
+  rest: string[]
+): number {
+  const arg = args[index];
+  if (arg === "--help" || arg === "-h") {
+    options.help = true;
+    return index;
+  }
+
+  if (arg === "--run-id") {
+    options.runId = parseNonEmpty(args[index + 1], "--run-id", errors);
+    return index + 1;
+  }
+
+  if (arg === "--max-turns") {
+    options.maxTurns = parsePositiveInteger(args[index + 1], "--max-turns", errors);
+    return index + 1;
+  }
+
+  if (arg === "--reasoning") {
+    options.reasoning = parseReasoningEffort(args[index + 1], errors);
+    return index + 1;
+  }
+
+  if (arg === "--frames") {
+    options.pressFrames = parsePositiveInteger(args[index + 1], "--frames", errors);
+    return index + 1;
+  }
+
+  if (arg?.startsWith("--") === true) {
+    errors.push(`Unknown option: ${arg}`);
+    return index;
+  }
+
+  if (arg !== undefined) {
+    rest.push(arg);
+  }
+
+  return index;
+}
+
+function applyCommandArgs(rest: readonly string[], options: MutableCliOptions, errors: string[]): void {
+  const command = rest[0];
+  if (command === undefined) {
+    return;
+  }
+
+  if (!isHarnessCommand(command)) {
+    errors.push(`Unknown command: ${command}`);
+    return;
+  }
+
+  options.command = command;
+  if (command === "press") {
+    options.pressButton = rest[1];
+    if (rest.length > 2) {
+      errors.push(`Unexpected argument for press: ${rest.slice(2).join(" ")}`);
+    }
+    return;
+  }
+
+  if (rest.length > 1) {
+    errors.push(`Unexpected argument for ${command}: ${rest.slice(1).join(" ")}`);
+  }
 }
 
 function isHarnessCommand(value: string): value is HarnessCommand {
