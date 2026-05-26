@@ -5,6 +5,7 @@ import { buildBattleContext } from "./prompts/battle.js";
 import { buildDialogContext } from "./prompts/dialog.js";
 import { buildGameKnowledge } from "./prompts/game-knowledge.js";
 import { buildOverworldContext } from "./prompts/overworld.js";
+import { GEN1_SPRITE_NAMES } from "../game/data/Gen1Names.js";
 
 export function buildSystemPrompt(mode: GameMode): string {
   return buildGameKnowledge() + "\n\n" + buildModeContext(mode);
@@ -162,7 +163,10 @@ function buildMapSections(input: PolicyInput): string[] {
       lines.push(`Warps: ${input.microContext.warps.map((w) => `(${w.x},${w.y})→${w.destMapName}`).join(", ")}`);
     }
     if (input.microContext.npcs !== undefined && input.microContext.npcs.length > 0) {
-      lines.push(`NPCs: ${input.microContext.npcs.map((n) => `#${n.slot} at (${n.mapX},${n.mapY}) facing ${n.facing} [${n.movementType}]`).join(", ")}`);
+      lines.push(`NPCs: ${input.microContext.npcs.map((n) => {
+        const spriteName = GEN1_SPRITE_NAMES[n.pictureId] ?? `sprite:${n.pictureId}`;
+        return `#${n.slot} "${spriteName}" at (${n.mapX},${n.mapY}) facing ${n.facing} [${n.movementType}]`;
+      }).join(", ")}`);
     }
     sections.push(lines.join("\n"));
   }

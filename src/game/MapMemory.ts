@@ -2,6 +2,28 @@ import type { GameWorldSnapshot } from "./GameWorld.js";
 import { classifyTile, type ClassifiedTile, type TileCollisionData, type TileFeature, type TileTerrain, type TileType } from "./TilesetData.js";
 import { mapName } from "./PokemonCatalog.js";
 import type { WarpEntry } from "./WarpReader.js";
+import { GEN1_SPRITE_NAMES } from "./data/Gen1Names.js";
+
+const FIRST_STILL_SPRITE = 0x3d;
+
+interface NpcPosition { readonly y: number; readonly x: number; readonly slot: number; readonly pictureId: number }
+
+function npcMapChar(slot: number): string {
+  return slot.toString(36);
+}
+
+function isItemSprite(pictureId: number): boolean {
+  return pictureId >= FIRST_STILL_SPRITE;
+}
+
+function buildNpcLegend(npcs: readonly NpcPosition[]): string {
+  if (npcs.length === 0) return "";
+  return npcs.map((n) => {
+    const tag = isItemSprite(n.pictureId) ? "Item" : "NPC";
+    const name = GEN1_SPRITE_NAMES[n.pictureId] ?? `sprite:${n.pictureId}`;
+    return `${npcMapChar(n.slot)}=${name}(${tag})`;
+  }).join(" ");
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -29,7 +51,7 @@ export interface MapRecord {
   width: number;
   height: number;
   readonly tiles: Map<string, RecordedTile>;
-  npcPositions: ReadonlyArray<{ readonly y: number; readonly x: number }>;
+  npcPositions: ReadonlyArray<{ readonly y: number; readonly x: number; readonly slot: number; readonly pictureId: number }>;
   knownNpcs: Map<number, KnownNpc>;
 }
 
@@ -38,7 +60,7 @@ export interface MapRecordView {
   readonly width: number;
   readonly height: number;
   readonly tileCount: number;
-  readonly npcPositions: ReadonlyArray<{ readonly y: number; readonly x: number }>;
+  readonly npcPositions: ReadonlyArray<{ readonly y: number; readonly x: number; readonly slot: number; readonly pictureId: number }>;
 }
 
 export type MapMemoryUpdateResult =
@@ -130,7 +152,7 @@ export class MapMemory {
     const onScreenSlots = new Set(onScreenNpcs.map((npc) => npc.slot));
     const turn = ++this.turnCounter;
 
-    record.npcPositions = onScreenNpcs.map((npc) => ({ y: npc.mapY, x: npc.mapX }));
+    record.npcPositions = onScreenNpcs.map((npc) => ({ y: npc.mapY, x: npc.mapX, slot: npc.slot, pictureId: npc.pictureId }));
 
     for (const [slot, knownNpc] of record.knownNpcs) {
       if (knownNpc.onScreen && !onScreenSlots.has(slot)) {
@@ -251,7 +273,7 @@ export class MapMemory {
       return "(dimensions unknown)";
     }
 
-    const npcSet = new Set(record.npcPositions.map((p) => `${p.y},${p.x}`));
+    const npcMap = new Map(record.npcPositions.map((p) => [`${p.y},${p.x}`, p]));
     const lines: string[] = [];
 
     lines.push(`   ${Array.from({ length: record.width }, (_, i) => (i % 10).toString()).join("")}`);
@@ -260,10 +282,11 @@ export class MapMemory {
       let line = `${y.toString().padStart(2, " ")} `;
       for (let x = 0; x < record.width; x++) {
         const key = `${y},${x}`;
+        const npc = npcMap.get(key);
         if (playerY === y && playerX === x) {
           line += "@";
-        } else if (npcSet.has(key)) {
-          line += "N";
+        } else if (npc !== undefined) {
+          line += npcMapChar(npc.slot);
         } else {
           const tile = record.tiles.get(key);
           if (tile === undefined) {
@@ -277,7 +300,8 @@ export class MapMemory {
     }
 
     lines.push("");
-    lines.push(`  Legend: .=walkable #=wall "=grass ?=unknown @=player N=NPC`);
+    const npcLegend = buildNpcLegend(record.npcPositions);
+    lines.push(`  Legend: .=walkable #=wall "=grass ?=unknown @=player ${npcLegend}`);
     lines.push(`  Coverage: ${record.tiles.size}/${record.width * record.height} tiles`);
     return lines.join("\n");
   }
@@ -291,7 +315,7 @@ export class MapMemory {
       return "(dimensions unknown)";
     }
 
-    const npcSet = new Set(record.npcPositions.map((p) => `${p.y},${p.x}`));
+    const npcMap = new Map(record.npcPositions.map((p) => [`${p.y},${p.x}`, p]));
     const warpSet = new Set((warps ?? []).map((warp) => `${warp.y},${warp.x}`));
     const lines: string[] = [];
 
@@ -302,10 +326,11 @@ export class MapMemory {
       let line = `${y.toString().padStart(2, " ")} `;
       for (let x = 0; x < record.width; x++) {
         const key = `${y},${x}`;
+        const npc = npcMap.get(key);
         if (playerY === y && playerX === x) {
           line += "@";
-        } else if (npcSet.has(key)) {
-          line += "N";
+        } else if (npc !== undefined) {
+          line += npcMapChar(npc.slot);
         } else if (warpSet.has(key)) {
           line += "W";
         } else {
@@ -317,7 +342,8 @@ export class MapMemory {
     }
 
     lines.push("");
-    lines.push(`  Legend: .=walkable #=wall "=grass ?=unknown @=player N=NPC W=warp`);
+    const npcLegend = buildNpcLegend(record.npcPositions);
+    lines.push(`  Legend: .=walkable #=wall "=grass ?=unknown @=player W=warp ${npcLegend}`);
     lines.push(`  Coverage: ${record.tiles.size}/${record.width * record.height} tiles`);
     return lines.join("\n");
   }
