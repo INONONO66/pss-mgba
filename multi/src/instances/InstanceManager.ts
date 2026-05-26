@@ -40,6 +40,7 @@ export class InstanceManager {
     const containerInfo = await this.driver.createContainer({
       image: this.config.emulatorImage,
       instanceId: id,
+      token,
       romPath: romPath ?? this.config.romPath,
       networkName: this.config.networkName,
       emulatorPort: this.config.emulatorPort,
@@ -124,7 +125,11 @@ export class InstanceManager {
         continue
       }
 
-      const token = generateToken()
+      const token = container.token
+      if (token === undefined || token === '') {
+        continue
+      }
+
       const client = new MgbaSocketClient()
       await this.waitForSocket(client, container.host, this.config.emulatorPort).catch(() => {
         client.disconnect()

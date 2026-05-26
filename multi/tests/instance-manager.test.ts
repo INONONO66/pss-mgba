@@ -21,6 +21,7 @@ vi.mock('node:fs/promises', () => ({
 interface CreateContainerOptions {
   image: string
   instanceId: string
+  token: string
   romPath?: string
   networkName: string
   emulatorPort: number
@@ -40,6 +41,7 @@ interface ManagedContainer {
   instanceId: string
   host: string
   captureDirectory?: string
+  token?: string
 }
 
 interface MgbaClientMock {
@@ -180,6 +182,7 @@ describe('InstanceManager', () => {
       {
         image: 'pss-mgba-emulator',
         instanceId: info.id,
+        token: info.token,
         romPath: '/rom/custom.gb',
         networkName: 'pss-mgba-net',
         emulatorPort: 8888,
@@ -293,6 +296,7 @@ describe('InstanceManager', () => {
       instanceId: 'instance-existing',
       host: 'pss-mgba-instance-existing',
       captureDirectory: '/tmp/pss-mgba-captures-test/instance-existing',
+      token: 'existing-token',
     })
     dockerMock.runningContainers.set('container-existing', true)
     const registry: InstanceRegistry = new Map()
@@ -302,6 +306,7 @@ describe('InstanceManager', () => {
 
     const info = manager.get('instance-existing')
     expect(info?.containerId).toBe('container-existing')
+    expect(info?.token).toBe('existing-token')
     expect(info?.containerHost).toBe('pss-mgba-instance-existing')
     expect(info?.captureDirectory).toBe('/tmp/pss-mgba-captures-test/instance-existing')
     expect(info?.status).toBe('running')

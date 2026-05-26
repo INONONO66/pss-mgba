@@ -47,6 +47,7 @@ function ignoreDockerError(): void {
 export interface ContainerCreateOptions {
   image: string
   instanceId: string
+  token: string
   romPath?: string
   networkName: string
   emulatorPort: number
@@ -66,6 +67,7 @@ interface ManagedContainerInfo {
   instanceId: string
   host: string
   captureDirectory?: string
+  token?: string
 }
 
 export class DockerDriver {
@@ -95,6 +97,7 @@ export class DockerDriver {
         'pss-mgba.capture-directory': captureDirectory,
         'pss-mgba.instance-id': opts.instanceId,
         'pss-mgba.managed': 'true',
+        'pss-mgba.token': opts.token,
       },
       Env: [
         'DISPLAY=:99',
@@ -104,7 +107,7 @@ export class DockerDriver {
       HostConfig: {
         NetworkMode: opts.networkName,
         PortBindings: {
-          [`${opts.emulatorPort}/tcp`]: [{ HostPort: '' }],
+          [`${opts.emulatorPort}/tcp`]: [{ HostIp: '127.0.0.1', HostPort: '' }],
         },
         Memory: opts.emulatorMemoryBytes,
         MemorySwap: opts.emulatorMemoryBytes,
@@ -126,19 +129,21 @@ export class DockerDriver {
       container = await this.docker.createContainer(createOptions)
       await container.start()
       const inspection = await container.inspect()
+      const containerIp = inspection.NetworkSettings.Networks?.[opts.networkName]?.IPAddress
       const hostPort = inspection.NetworkSettings.Ports?.[`${opts.emulatorPort}/tcp`]?.[0]?.HostPort
-      if (hostPort === undefined || hostPort === '') {
+      if ((containerIp === undefined || containerIp === '') && (hostPort === undefined || hostPort === '')) {
         throw new Error('Container port not bound')
       }
 
-      const port = Number.parseInt(hostPort, 10)
+      const host = containerIp && containerIp !== '' ? containerIp : '127.0.0.1'
+      const port = containerIp && containerIp !== '' ? opts.emulatorPort : Number.parseInt(hostPort ?? '', 10)
       if (!Number.isInteger(port) || port <= 0) {
         throw new Error('Container port not bound')
       }
 
       return {
         id: container.id,
-        host: '127.0.0.1',
+        host,
         port,
         captureDirectory,
       }
@@ -165,6 +170,7 @@ export class DockerDriver {
       const instanceId = container.Labels?.['pss-mgba.instance-id']
       const host = container.Names?.[0]?.replace(LEADING_SLASH, '')
       const captureDirectory = container.Labels?.['pss-mgba.capture-directory']
+      const token = container.Labels?.['pss-mgba.token']
       if (
         instanceId === undefined ||
         host === undefined ||
@@ -173,7 +179,7 @@ export class DockerDriver {
         return []
       }
 
-      return [{ id: container.Id, instanceId, host, captureDirectory }]
+      return [{ id: container.Id, instanceId, host, captureDirectory, token }]
     })
   }
 

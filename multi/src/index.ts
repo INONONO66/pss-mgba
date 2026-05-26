@@ -4,6 +4,10 @@ import { createGatewayServer } from './gateway/GatewayServer.js'
 import { InstanceManager } from './instances/InstanceManager.js'
 
 const config = loadConfig()
+if (config.adminToken === 'dev-admin-token') {
+  console.warn('WARNING: Using default admin token. Set ADMIN_TOKEN env var for production.')
+}
+
 const registry: InstanceRegistry = new Map()
 const instanceManager = new InstanceManager(config, registry)
 
@@ -17,7 +21,9 @@ gateway.start()
 
 process.on('SIGTERM', async () => {
   instanceManager.stopHealthChecks()
-  await gateway.stop()
+  await gateway.stop().catch((err: unknown) => {
+    console.error('Error during shutdown:', err instanceof Error ? err.message : String(err))
+  })
   process.exit(0)
 })
 

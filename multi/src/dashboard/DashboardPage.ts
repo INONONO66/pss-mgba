@@ -156,6 +156,7 @@ export function renderDashboard(): string {
     const tiles = new Map()
     const instanceMap = new Map()
     let expandedToken = null
+    let adminToken = localStorage.getItem('pss-mgba-admin-token')
     const expCanvas = document.getElementById('exp-canvas')
     const expCtx = expCanvas.getContext('2d')
     const grid = document.getElementById('grid')
@@ -163,18 +164,35 @@ export function renderDashboard(): string {
     const log = document.getElementById('log')
 
     // WebSocket connection
-    const wsUrl = 'ws://' + location.host + '/ws/dashboard'
+    const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = wsProto + '//' + location.host + '/ws/dashboard'
     let ws = null
 
     async function refreshInstances() {
       try {
-        const resp = await fetch('/api/instances')
+        if (!adminToken) {
+          adminToken = prompt('Enter admin token to enable dashboard controls')
+          if (adminToken) {
+            localStorage.setItem('pss-mgba-admin-token', adminToken)
+          }
+        }
+
+        const url = adminToken ? '/api/instances?admin_token=' + encodeURIComponent(adminToken) : '/api/instances'
+        const resp = await fetch(url)
         if (!resp.ok) return
 
         const list = await resp.json()
         instanceMap.clear()
         list.forEach(function (inst) {
           instanceMap.set(inst.index, inst)
+        })
+
+        const activeIndices = new Set(list.map(function (inst) { return inst.index }))
+        tiles.forEach(function (tileData, idx) {
+          if (!activeIndices.has(idx)) {
+            tileData.canvas.parentElement.remove()
+            tiles.delete(idx)
+          }
         })
       } catch (error) {
         console.error(error)
@@ -292,7 +310,11 @@ export function renderDashboard(): string {
         if (!expandedToken) return
         const button = btn.dataset.btn
         fetch('/api/v1/' + expandedToken + '/mgba-http/button/tap?button=' + encodeURIComponent(button), { method: 'POST' })
-          .then(function () {
+          .then(function (resp) {
+            if (!resp.ok) {
+              addLog('Failed ' + button + ' (HTTP ' + resp.status + ')')
+              return
+            }
             addLog('Pressed ' + button)
           })
           .catch(function (e) {
