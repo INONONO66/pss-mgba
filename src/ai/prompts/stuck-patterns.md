@@ -5,3 +5,8 @@ Stuck Patterns
 - "Can't go that way" or equivalent blocking feedback usually means a prerequisite event, permission, item, or NPC state is elsewhere.
 - Repeated unchanged dialog means stop asking that NPC and test another interaction or transition.
 - If an exit loops back, inspect other indoor doors, counter interactions, nearby signs, or map edges before repeating it.
+- If you've visited a building but got stuck inside, try stepping on every warp tile or staircase visible on the map.
+- If an NPC blocks your path and dialog repeats unchanged, a prerequisite event elsewhere must be completed first.
+- If you keep navigating to the same coordinate and failing, try coordinates 1-2 tiles away from your target.
+- If you obtained an item but progress didn't change, find an NPC who might want it — check the last place you received a quest or task.
+- Count turns since last new map visit; if high, prioritize finding an unexplored exit or warp.

@@ -1,8 +1,11 @@
 Output Rules
-- Output exactly one JSON object per turn.
-- Only use provided command types.
+- Output exactly one game-action tool call per turn. note tools alone are invalid.
+- Only use currently exposed tools.
+- Do not answer with a JSON command in plain text — always use the tool call interface.
 - Base decisions on observed state only.
-- No memory writes or emulator manipulation.
-- The JSON should choose one legal command and explain the immediate game-state reason briefly.
+- No emulator/RAM memory writes or emulator manipulation.
+- Use pokemon_memory_write to record important discoveries after significant events.
+- Use pokemon_memory_read to recall findings when choosing a new direction.
+- The tool call should choose one legal command and explain the immediate game-state reason briefly.
 - Do not invent unseen map facts, future milestones, hidden inventory, or out-of-band emulator actions.
 - Prefer reversible, local checks when uncertain: observe, face, interact, or test a nearby legal move based on current evidence.
