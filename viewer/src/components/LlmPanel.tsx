@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { TurnRecord, TurnTimelineEvent, TurnsResponse } from "../api/types";
+import MapGraphView from "./MapGraphView";
 import MapGrid from "./MapGrid";
 import Timeline from "./Timeline";
 import { actionLabel } from "./labels";
+import { visualGraphFromText } from "./mapVisuals";
 import { frameRange, formatDuration, gameActionLabel, runTurnStatus, timelinePayload, timelineSummary, timelineTitle, timelineTone, turnDurationMs, turnErrorCount } from "./turnTimeline";
 import { isRecord, json, stateFields, value } from "./shared";
 
@@ -134,10 +136,12 @@ function stateSummary(state: unknown): string {
 }
 
 function MapView({ turn }: { turn: TurnRecord }) {
+  const graph = visualGraphFromText(turn.mapGraph);
   return (
     <div className="state-block">
       <div className="map-section"><h3>턴 맵</h3><MapGrid ascii={turn.mapAscii ?? null} /></div>
-      <details open><summary>map graph</summary><pre className="mono-block">{turn.mapGraph || "맵 그래프 없음"}</pre></details>
+      <MapGraphView graph={graph} title="턴 맵 그래프" />
+      <details><summary>map graph raw</summary><pre className="mono-block">{turn.mapGraph || "맵 그래프 없음"}</pre></details>
       <details><summary>map ascii</summary><pre className="mono-block">{turn.mapAscii || "맵 없음"}</pre></details>
     </div>
   );
