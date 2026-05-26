@@ -1,7 +1,7 @@
 import type { MapMemoryResponse, PersistedMapRecord } from "../api/types";
 import MapGraphView from "./MapGraphView";
 import MapGrid from "./MapGrid";
-import { connectionChips, mapMemoryStats, renderPersistedMap, tileCount, visualGraphFromMapMemory, warpCount } from "./mapVisuals";
+import { buildNpcCellMap, connectionChips, mapMemoryStats, renderPersistedMap, tileCount, visualGraphFromMapMemory, warpCount } from "./mapVisuals";
 import { isRecord, json, value } from "./shared";
 
 export default function MapPanel({ payload }: { payload: MapMemoryResponse | null }) {
@@ -57,7 +57,7 @@ function MapMemoryCard({ mapKey, record }: { mapKey: string; record: PersistedMa
       {chips.length > 0 ? <div className="map-chip-row">{chips.map((chip) => <span className="rule-chip" key={chip}>{chip}</span>)}</div> : null}
 
       <div className="map-section">
-        <MapGrid ascii={renderPersistedMap(record)} />
+        <MapGrid ascii={renderPersistedMap(record)} npcCells={buildNpcCellMap(record)} />
       </div>
 
       {isRecord(record) ? (

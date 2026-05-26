@@ -1,5 +1,44 @@
-import type { MapMemoryResponse, PersistedMapRecord } from "../api/types";
+import type { MapMemoryResponse, PersistedMapRecord, PersistedNpc } from "../api/types";
 import { isRecord, json, value } from "./shared";
+
+const FIRST_STILL_SPRITE = 0x3d;
+
+const SPRITE_NAMES: Readonly<Record<number, string>> = {
+  0x01: "Red", 0x02: "Blue", 0x03: "Oak", 0x04: "Youngster", 0x05: "Monster",
+  0x06: "Cooltrainer F", 0x07: "Cooltrainer M", 0x08: "Little Girl", 0x09: "Bird",
+  0x0a: "Middle Aged Man", 0x0b: "Gambler", 0x0c: "Super Nerd", 0x0d: "Girl",
+  0x0e: "Hiker", 0x0f: "Beauty", 0x10: "Gentleman", 0x11: "Daisy", 0x12: "Biker",
+  0x13: "Sailor", 0x14: "Cook", 0x15: "Bike Shop Clerk", 0x16: "Mr. Fuji",
+  0x17: "Giovanni", 0x18: "Rocket", 0x19: "Channeler", 0x1a: "Waiter",
+  0x1b: "Silph Worker F", 0x1c: "Middle Aged Woman", 0x1d: "Brunette Girl",
+  0x1e: "Lance", 0x20: "Scientist", 0x21: "Rocker", 0x22: "Swimmer",
+  0x23: "Safari Zone Worker", 0x24: "Gym Guide", 0x25: "Gramps", 0x26: "Clerk",
+  0x27: "Fishing Guru", 0x28: "Granny", 0x29: "Nurse", 0x2a: "Link Receptionist",
+  0x2b: "Silph President", 0x2c: "Silph Worker M", 0x2d: "Warden", 0x2e: "Captain",
+  0x2f: "Fisher", 0x30: "Koga", 0x31: "Guard", 0x33: "Mom", 0x34: "Balding Guy",
+  0x35: "Little Boy", 0x37: "Gameboy Kid", 0x38: "Fairy", 0x39: "Agatha",
+  0x3a: "Bruno", 0x3b: "Lorelei", 0x3c: "Seel",
+  0x3d: "Poke Ball", 0x3e: "Fossil", 0x3f: "Boulder", 0x40: "Paper",
+  0x41: "Pokedex", 0x42: "Clipboard", 0x43: "Snorlax", 0x45: "Old Amber",
+  0x48: "Gambler Asleep",
+};
+
+export function spriteName(pictureId: number): string {
+  return SPRITE_NAMES[pictureId] ?? `sprite:${pictureId}`;
+}
+
+export function isItemSprite(pictureId: number): boolean {
+  return pictureId >= FIRST_STILL_SPRITE;
+}
+
+export interface NpcCellInfo {
+  readonly slot: number;
+  readonly pictureId: number;
+  readonly name: string;
+  readonly kind: "npc" | "item";
+  readonly mapY: number;
+  readonly mapX: number;
+}
 
 export interface VisualGraphEdge {
   readonly detail?: string;
@@ -123,15 +162,32 @@ export function visualGraphFromText(text: string | undefined): VisualGraph {
   return { currentLabel, edges, nodeCount: nodeNames.size };
 }
 
+export function buildNpcCellMap(record: PersistedMapRecord): Map<string, NpcCellInfo> {
+  const npcs: PersistedNpc[] = Array.isArray(record.knownNpcs) ? record.knownNpcs : [];
+  const result = new Map<string, NpcCellInfo>();
+  for (const npc of npcs) {
+    if (typeof npc.mapY !== "number" || typeof npc.mapX !== "number") continue;
+    const pid = typeof npc.pictureId === "number" ? npc.pictureId : 0;
+    result.set(`${npc.mapY},${npc.mapX}`, {
+      slot: typeof npc.slot === "number" ? npc.slot : 0,
+      pictureId: pid,
+      name: spriteName(pid),
+      kind: isItemSprite(pid) ? "item" : "npc",
+      mapY: npc.mapY,
+      mapX: npc.mapX,
+    });
+  }
+  return result;
+}
+
 export function renderPersistedMap(record: PersistedMapRecord): string {
   const width = numberValue(record.width);
   const height = numberValue(record.height);
   const tiles = isRecord(record.tiles) ? record.tiles : {};
   const warps = Array.isArray(record.warps) ? record.warps : [];
-  const npcs = Array.isArray(record.knownNpcs) ? record.knownNpcs : [];
   if (width <= 0 || height <= 0) return json(record);
   const warpSet = new Set(warps.flatMap((warp) => isRecord(warp) ? [`${warp.y},${warp.x}`] : []));
-  const npcSet = new Set(npcs.flatMap((npc) => isRecord(npc) && typeof npc.mapY === "number" && typeof npc.mapX === "number" ? [`${npc.mapY},${npc.mapX}`] : []));
+  const npcCells = buildNpcCellMap(record);
   const playerKey = isRecord(record.playerPosition) && typeof record.playerPosition.y === "number" && typeof record.playerPosition.x === "number" ? `${record.playerPosition.y},${record.playerPosition.x}` : undefined;
   const lines: string[] = [];
   lines.push(`   ${Array.from({ length: width }, (_, index) => (index % 10).toString()).join("")}`);
@@ -139,8 +195,9 @@ export function renderPersistedMap(record: PersistedMapRecord): string {
     let line = `${y.toString().padStart(2, " ")} `;
     for (let x = 0; x < width; x += 1) {
       const key = `${y},${x}`;
+      const npc = npcCells.get(key);
       if (playerKey === key) { line += "@"; }
-      else if (npcSet.has(key)) { line += "N"; }
+      else if (npc !== undefined) { line += npc.kind === "item" ? "I" : "N"; }
       else if (warpSet.has(key)) { line += "W"; }
       else { line += tileChar(tiles[key]); }
     }
