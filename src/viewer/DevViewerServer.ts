@@ -1,9 +1,8 @@
 import http, { type Server } from "node:http";
 import type { Dirent } from "node:fs";
-import { lstat, mkdir, readFile, readdir, realpath, stat } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { redactSecrets } from "../evidence/EvidenceRecorder.js";
 import { buildRunPaths } from "../evidence/RunPaths.js";
 import { listLatestVisionImages, isSafeVisionFileName, visionImageContentType } from "./visionImages.js";
 
@@ -128,25 +127,32 @@ export function createDevViewerServer(options: DevViewerServerOptions): Server {
         return;
       }
 
-      if (requestUrl.pathname === "/api/global/run-summary") {
-        const summary = await readRunSummary(paths.summaryFile, options.runId, paths.globalDir);
+      if (requestUrl.pathname === "/api/events") {
+        const limitParam = Number(requestUrl.searchParams.get("limit") ?? "20");
+        const limit = Number.isFinite(limitParam) ? Math.max(1, Math.min(100, Math.trunc(limitParam))) : 20;
+        const events = await listLatestTurnEvents(paths.turnsDir, limit);
+        response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        response.end(JSON.stringify({ runId: options.runId, limit, count: events.length, events }));
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/run-summary") {
+        const summary = await readRunSummary(paths.summaryFile, options.runId);
         response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
         response.end(JSON.stringify(summary));
         return;
       }
 
       if (requestUrl.pathname === "/api/global/agent-memory") {
-        const memoryData = sanitizeConversationForDashboard(
-          options.agentMemoryStore?.snapshot() ?? await readJsonRecord(paths.agentMemoryFile, paths.globalDir)
-        );
-        const sections = isRecord(memoryData) && isRecord(memoryData.sections) ? memoryData.sections : { objectives: [], journal: [], notes: [], strategy: [] };
+        const memoryData = options.agentMemoryStore?.snapshot();
+        const sections = memoryData?.sections ?? { objectives: [], journal: [], notes: [], strategy: [] };
         response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
-        response.end(JSON.stringify({ runId: options.runId, updatedAt: isRecord(memoryData) ? stringField(memoryData.updatedAt) ?? null : null, sections }));
+        response.end(JSON.stringify({ runId: options.runId, updatedAt: memoryData?.updatedAt ?? null, sections }));
         return;
       }
 
       if (requestUrl.pathname === "/api/global/map-memory") {
-        const mapMemory = await readJsonRecord(paths.mapMemoryFile, paths.globalDir);
+        const mapMemory = await readJsonRecord(paths.mapMemoryFile);
         response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
         response.end(JSON.stringify({ runId: options.runId, ...(mapMemory ?? { version: 1, maps: {} }) }));
         return;
@@ -169,7 +175,7 @@ export function createDevViewerServer(options: DevViewerServerOptions): Server {
           return;
         }
 
-        const bytes = await readSafeArtifactFile(filePath, paths.visionDir);
+        const bytes = await readVisionFile(filePath);
         if (bytes === undefined) {
           response.writeHead(404, { "content-type": "text/plain", "cache-control": "no-store" });
           response.end("vision image not found");
@@ -196,7 +202,7 @@ export function createDevViewerServer(options: DevViewerServerOptions): Server {
           return;
         }
 
-        const bytes = await readSafeArtifactFile(filePath, paths.rawScreenshotsDir);
+        const bytes = await readVisionFile(filePath);
         if (bytes === undefined) {
           response.writeHead(404, { "content-type": "text/plain", "cache-control": "no-store" });
           response.end("raw screenshot not found");
@@ -368,8 +374,18 @@ async function listLatestRawScreenshots(directory: string, limit: number): Promi
   return screenshots;
 }
 
-async function readRunSummary(summaryFile: string, runId: string, globalDir: string): Promise<Record<string, unknown>> {
-  const summary = await readJsonRecord(summaryFile, globalDir);
+async function listLatestTurnEvents(directory: string, limit: number): Promise<Array<Record<string, unknown>>> {
+  const turns = await listLatestJsonRecords(directory, limit);
+  return turns.map((turn) => ({
+    type: "turn",
+    sequence: turn.turn,
+    timestamp: turn.finishedAt ?? turn.startedAt,
+    payload: turn,
+  }));
+}
+
+async function readRunSummary(summaryFile: string, runId: string): Promise<Record<string, unknown>> {
+  const summary = await readJsonRecord(summaryFile);
   const result = isRecord(summary?.result) ? summary.result : undefined;
 
   return {
@@ -389,16 +405,9 @@ async function readRunSummary(summaryFile: string, runId: string, globalDir: str
   };
 }
 
-async function readJsonRecord(file: string, artifactDir?: string): Promise<Record<string, unknown> | undefined> {
+async function readJsonRecord(file: string): Promise<Record<string, unknown> | undefined> {
   try {
-    const bytes = artifactDir === undefined
-      ? await readFile(file)
-      : await readSafeArtifactFile(file, artifactDir);
-    if (bytes === undefined) {
-      return undefined;
-    }
-
-    const parsed = JSON.parse(bytes.toString("utf8")) as unknown;
+    const parsed = JSON.parse(await readFile(file, "utf8")) as unknown;
     const sanitized = sanitizeConversationForDashboard(parsed);
     return isRecord(sanitized) ? sanitized : undefined;
   } catch (error) {
@@ -413,15 +422,12 @@ function summarizeLastAction(value: unknown): unknown {
   if (!Array.isArray(value) || value.length === 0) return undefined;
   const last = value[value.length - 1];
   if (!isRecord(last)) return undefined;
-  const result = isRecord(last.result) ? last.result : undefined;
   return {
     step: numberField(last.step),
     frame: numberField(last.frame),
-    command: last.command,
-    result,
-    action: last.action ?? last.command,
+    action: last.action,
     confidence: numberField(last.confidence),
-    rationale: stringField(last.rationale) ?? stringField(result?.reason) ?? stringField(result?.details),
+    rationale: stringField(last.rationale),
   };
 }
 
@@ -445,16 +451,12 @@ function parseRawScreenshotStep(fileName: string): number | null {
 }
 
 function sanitizeConversationForDashboard(value: unknown): unknown {
-  return sanitizeDashboardValue(redactSecrets(value));
-}
-
-function sanitizeDashboardValue(value: unknown): unknown {
   if (typeof value === "string") {
-    return sanitizeDashboardString(value);
+    return isInlineImageDataUrl(value) ? "[image input omitted from dashboard log]" : value;
   }
 
   if (Array.isArray(value)) {
-    return value.map((entry) => sanitizeDashboardValue(entry));
+    return value.map((entry) => sanitizeConversationForDashboard(entry));
   }
 
   if (value !== null && typeof value === "object") {
@@ -462,31 +464,12 @@ function sanitizeDashboardValue(value: unknown): unknown {
     return Object.fromEntries(
       Object.entries(record).map(([key, entry]) => [
         key,
-        key === "image_url" ? sanitizeImageUrlObject(entry) : sanitizeDashboardValue(entry)
+        key === "image_url" ? sanitizeImageUrlObject(entry) : sanitizeConversationForDashboard(entry)
       ])
     );
   }
 
   return value;
-}
-
-
-const DASHBOARD_TOOL_LABELS: Record<string, string> = {
-  pokemon_battle: "전투",
-  pokemon_dialog: "대화",
-  pokemon_interact: "상호작용",
-  pokemon_memory_read: "기록 읽기",
-  pokemon_memory_write: "기록 추가",
-  pokemon_navigate: "이동",
-  pokemon_wait: "대기",
-};
-
-function sanitizeDashboardString(value: string): string {
-  if (isInlineImageDataUrl(value)) {
-    return "[image input omitted from dashboard log]";
-  }
-
-  return value.replace(/\bpokemon_[a-z_]+\b/g, (toolName) => DASHBOARD_TOOL_LABELS[toolName] ?? "내부 도구");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -495,7 +478,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function sanitizeImageUrlObject(value: unknown): unknown {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return sanitizeDashboardValue(value);
+    return sanitizeConversationForDashboard(value);
   }
 
   const record = value as Record<string, unknown>;
@@ -505,7 +488,7 @@ function sanitizeImageUrlObject(value: unknown): unknown {
         key,
         key === "url" && typeof entry === "string" && isInlineImageDataUrl(entry)
           ? "[image input omitted from dashboard log]"
-          : sanitizeDashboardValue(entry)
+          : sanitizeConversationForDashboard(entry)
       ])
     )
   };
@@ -513,36 +496,6 @@ function sanitizeImageUrlObject(value: unknown): unknown {
 
 function isInlineImageDataUrl(value: string): boolean {
   return /^data:image\//i.test(value) || /;base64,/i.test(value);
-}
-
-
-async function readSafeArtifactFile(filePath: string, artifactDir: string): Promise<Buffer | undefined> {
-  try {
-    const fileStat = await lstat(filePath);
-    if (!fileStat.isFile() || fileStat.isSymbolicLink()) {
-      return undefined;
-    }
-
-    const [resolvedFile, resolvedDir] = await Promise.all([
-      realpath(filePath),
-      realpath(artifactDir),
-    ]);
-    if (!isPathInsideDirectory(resolvedFile, resolvedDir)) {
-      return undefined;
-    }
-
-    return await readFile(resolvedFile);
-  } catch (error) {
-    if (isNotFound(error)) {
-      return undefined;
-    }
-    throw error;
-  }
-}
-
-function isPathInsideDirectory(filePath: string, directory: string): boolean {
-  const relative = path.relative(directory, filePath);
-  return relative.length > 0 && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
 async function readVisionFile(filePath: string): Promise<Buffer | undefined> {
