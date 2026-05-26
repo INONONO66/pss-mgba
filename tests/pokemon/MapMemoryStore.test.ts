@@ -2,6 +2,7 @@ import { access, mkdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { MapRecord } from "../../src/game/MapMemory.js";
+import type { TileFeature } from "../../src/game/TilesetData.js";
 import {
   fromPersistedMap,
   MapMemoryStore,
@@ -18,7 +19,7 @@ function uniqueDir(prefix: string): string {
 }
 
 function makeMapRecord(mapId: number): MapRecord {
-  const tiles = new Map<string, { terrain: "walkable" | "wall" | "grass" | "water"; features: readonly string[]; tileId: number }>();
+  const tiles = new Map<string, { terrain: "walkable" | "wall" | "grass" | "water"; features: readonly TileFeature[]; tileId: number }>();
   tiles.set("0,0", { terrain: "walkable", features: [], tileId: 1 });
   tiles.set("1,0", { terrain: "wall", features: [], tileId: 2 });
   tiles.set("2,1", { terrain: "grass", features: [], tileId: 3 });

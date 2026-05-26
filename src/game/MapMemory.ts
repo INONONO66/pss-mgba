@@ -188,6 +188,10 @@ export class MapMemory {
     return tile === undefined ? undefined : tileTerrain(tile);
   }
 
+  recordedTileAt(mapId: number, y: number, x: number): RecordedTile | undefined {
+    return this.maps.get(mapId)?.tiles.get(`${y},${x}`);
+  }
+
   getKnownNpcs(mapId: number): ReadonlyArray<KnownNpc> {
     const record = this.maps.get(mapId);
     if (record === undefined) {
@@ -196,12 +200,16 @@ export class MapMemory {
     return [...record.knownNpcs.values()].sort((a, b) => b.lastSeenTurn - a.lastSeenTurn);
   }
 
-  walkabilityGrid(mapId: number): { grid: boolean[][]; width: number; height: number } | undefined {
+  walkabilityGrid(
+    mapId: number,
+    capabilities: { canSurf?: boolean; canCut?: boolean } = {},
+  ): { grid: boolean[][]; width: number; height: number } | undefined {
     const record = this.maps.get(mapId);
     if (record === undefined || record.width === 0 || record.height === 0) {
       return undefined;
     }
 
+    const { canSurf = false, canCut = false } = capabilities;
     const npcSet = new Set(record.npcPositions.map((p) => `${p.y},${p.x}`));
     const grid: boolean[][] = [];
 
@@ -214,8 +222,19 @@ export class MapMemory {
           continue;
         }
         const tile = record.tiles.get(key);
-        const terrain = tile === undefined ? undefined : tileTerrain(tile);
-        row.push(terrain !== undefined && terrain !== "wall" && terrain !== "water");
+        if (tile === undefined) {
+          row.push(false);
+          continue;
+        }
+        const terrain = tileTerrain(tile);
+        const features = tileFeatures(tile);
+        if (terrain === "wall") {
+          row.push(canCut && features.includes("cuttable"));
+        } else if (terrain === "water") {
+          row.push(canSurf);
+        } else {
+          row.push(true);
+        }
       }
       grid.push(row);
     }
@@ -430,4 +449,8 @@ function tileChar(type: TileType): string {
 
 function tileTerrain(tile: RecordedTile): TileTerrain {
   return tile.terrain ?? tile.type ?? "wall";
+}
+
+function tileFeatures(tile: RecordedTile): readonly TileFeature[] {
+  return tile.features ?? [];
 }

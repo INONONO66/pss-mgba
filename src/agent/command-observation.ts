@@ -277,10 +277,32 @@ function describeTile(state: AgentObservationState, mapMemory: MapMemory, y: num
     return "warp";
   }
 
-  const tile = mapMemory.tileAt(state.mapId, y, x);
-  if (tile === undefined) {
-    return "unknown";
+  const recorded = mapMemory.recordedTileAt?.(state.mapId, y, x);
+  if (recorded === undefined) {
+    const fallback = mapMemory.tileAt(state.mapId, y, x);
+    if (fallback === undefined) {
+      return "unknown";
+    }
+    return fallback === "wall" ? "wall" : "open";
   }
 
-  return tile === "wall" ? "wall" : "open";
+  const terrain = recorded.terrain ?? "wall";
+  const features = recorded.features ?? [];
+
+  if (terrain === "water") {
+    return "water";
+  }
+  if (terrain === "grass") {
+    return features.includes("cuttable") ? "grass(cuttable)" : "grass";
+  }
+  if (terrain === "wall") {
+    if (features.includes("cuttable")) { return "cuttable_tree"; }
+    if (features.includes("ledge")) { return "ledge"; }
+    if (features.includes("counter")) { return "counter"; }
+    return "wall";
+  }
+
+  if (features.includes("door")) { return "door"; }
+  if (features.includes("warp")) { return "warp"; }
+  return "open";
 }
