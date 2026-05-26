@@ -13,7 +13,8 @@ describe("buildOverworldContext", () => {
     expect(context).toContain("Talk to NPCs");
     expect(context).toContain("retry same target");
     expect(context).toContain("map graph");
-    expect(context).toContain("Heal at Pokecenter when HP low");
+    expect(context).toContain("POKEMON CENTER");
+    expect(context).toContain("POKE MART");
 
     expect(context).not.toContain("raw");
   });

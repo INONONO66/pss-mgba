@@ -11,11 +11,11 @@ describe("buildBattleContext", () => {
     expect(context).toContain("switch(pokemon)");
     expect(context).toContain("run");
 
-    expect(context).toContain("Prefer super-effective");
-    expect(context).toContain("Check PP");
-    expect(context).toContain("Use potions if HP < 25%");
-    expect(context).toContain("Wild: run");
-    expect(context).toContain("Trainer: must win");
+    expect(context).toContain("super-effective");
+    expect(context).toContain("PP");
+    expect(context).toContain("Potion");
+    expect(context).toContain("Poke Ball");
+    expect(context).toContain("CATCHING WILD POKEMON");
 
     expect(context).not.toContain("raw");
   });
