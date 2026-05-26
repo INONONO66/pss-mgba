@@ -127,16 +127,7 @@ export function createDevViewerServer(options: DevViewerServerOptions): Server {
         return;
       }
 
-      if (requestUrl.pathname === "/api/events") {
-        const limitParam = Number(requestUrl.searchParams.get("limit") ?? "20");
-        const limit = Number.isFinite(limitParam) ? Math.max(1, Math.min(100, Math.trunc(limitParam))) : 20;
-        const events = await listLatestTurnEvents(paths.turnsDir, limit);
-        response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
-        response.end(JSON.stringify({ runId: options.runId, limit, count: events.length, events }));
-        return;
-      }
-
-      if (requestUrl.pathname === "/api/run-summary") {
+      if (requestUrl.pathname === "/api/global/run-summary") {
         const summary = await readRunSummary(paths.summaryFile, options.runId);
         response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
         response.end(JSON.stringify(summary));
@@ -372,16 +363,6 @@ async function listLatestRawScreenshots(directory: string, limit: number): Promi
     });
   }
   return screenshots;
-}
-
-async function listLatestTurnEvents(directory: string, limit: number): Promise<Array<Record<string, unknown>>> {
-  const turns = await listLatestJsonRecords(directory, limit);
-  return turns.map((turn) => ({
-    type: "turn",
-    sequence: turn.turn,
-    timestamp: turn.finishedAt ?? turn.startedAt,
-    payload: turn,
-  }));
 }
 
 async function readRunSummary(summaryFile: string, runId: string): Promise<Record<string, unknown>> {

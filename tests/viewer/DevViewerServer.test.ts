@@ -28,6 +28,12 @@ describe("DevViewerServer", () => {
       userPrompt: "Full game state summary",
       response: "response",
       parsedCommand: { type: "wait", frames: 1 },
+      run: { status: "running" },
+      timeline: [
+        { sequence: 1, type: "assistant-text", text: "response", timestamp: "2026-05-24T00:00:00.500Z" },
+        { sequence: 2, type: "tool-call", toolCallId: "wait-1", toolName: "pokemon_wait", input: { frames: 1 }, isGameAction: true },
+        { sequence: 3, type: "tool-result", toolCallId: "wait-1", toolName: "pokemon_wait", output: { ok: true }, isGameAction: true }
+      ],
       toolCalls: [{ toolCallId: "wait-1", toolName: "pokemon_wait", input: { frames: 1 }, output: { ok: true }, isGameAction: true }],
       gameState: { after: { wCurMap: 38, wYCoord: 3, wXCoord: 3 } },
     }));
@@ -59,11 +65,11 @@ describe("DevViewerServer", () => {
       const turns = await fetchJson(`${viewer.url}/api/turns?limit=20`);
       expect(turns).toMatchObject({ runId: "viewer-run", count: 1, turns: [{ turn: 1, parsedCommand: { type: "wait", frames: 1 } }] });
 
-      const events = await fetchJson(`${viewer.url}/api/events?limit=2`);
-      expect(events).toMatchObject({ runId: "viewer-run", count: 1, events: [{ type: "turn", payload: { turn: 1 } }] });
-
       const gameState = await fetchJson(`${viewer.url}/api/game-state?limit=5`);
       expect(gameState).toMatchObject({ runId: "viewer-run", count: 1, latest: { state: { wCurMap: 38, wYCoord: 3, wXCoord: 3 } } });
+
+      const runSummary = await fetchJson(`${viewer.url}/api/global/run-summary`);
+      expect(runSummary).toMatchObject({ runId: "viewer-run", status: "failed_timeout", counts: { turns: 1 } });
 
       const mapMemory = await fetchJson(`${viewer.url}/api/global/map-memory`);
       expect(mapMemory).toMatchObject({ runId: "viewer-run", version: 1, maps: { 38: { mapId: 38 } } });
@@ -71,6 +77,8 @@ describe("DevViewerServer", () => {
       const agentMemory = await fetchJson(`${viewer.url}/api/global/agent-memory`);
       expect(agentMemory).toMatchObject({ runId: "viewer-run", updatedAt: "2026-05-24T00:00:01.000Z" });
 
+      expect((await fetch(`${viewer.url}/api/events`)).status).toBe(404);
+      expect((await fetch(`${viewer.url}/api/run-summary`)).status).toBe(404);
       expect((await fetch(`${viewer.url}/api/llm-conversations`)).status).toBe(404);
       expect((await fetch(`${viewer.url}/api/agent-memory`)).status).toBe(404);
 

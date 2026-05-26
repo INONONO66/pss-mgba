@@ -39,6 +39,8 @@ export interface TurnLog {
   readonly response?: string;
   readonly parsedCommand?: unknown;
   readonly rationale?: string;
+  readonly run?: unknown;
+  readonly timeline?: readonly unknown[];
   readonly toolCalls?: readonly unknown[];
   readonly gameState?: { readonly before?: unknown; readonly after?: unknown };
   readonly agentMemory?: unknown;
