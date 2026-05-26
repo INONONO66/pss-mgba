@@ -28,6 +28,7 @@ function makeMapRecord(mapId: number): MapRecord {
     height: 10,
     tiles,
     npcPositions: [{ y: 5, x: 5 }], // should NOT be persisted
+    knownNpcs: new Map([[1, { slot: 1, pictureId: 2, mapY: 5, mapX: 5, movementType: "stationary", onScreen: true, lastSeenTurn: 1 }]]),
   };
 }
 

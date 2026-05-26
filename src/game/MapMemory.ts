@@ -12,12 +12,23 @@ export interface RecordedTile {
   readonly tileId: number;
 }
 
+export interface KnownNpc {
+  readonly slot: number;
+  readonly pictureId: number;
+  readonly mapY: number;
+  readonly mapX: number;
+  readonly movementType: string;
+  readonly onScreen: boolean;
+  lastSeenTurn: number;
+}
+
 export interface MapRecord {
   readonly mapId: number;
   width: number;
   height: number;
   readonly tiles: Map<string, RecordedTile>;
   npcPositions: ReadonlyArray<{ readonly y: number; readonly x: number }>;
+  knownNpcs: Map<number, KnownNpc>;
 }
 
 export interface MapRecordView {
@@ -46,6 +57,7 @@ const OFFSCREEN_TILE = 0x10;
 
 export class MapMemory {
   private readonly maps = new Map<number, MapRecord>();
+  private turnCounter = 0;
 
   // -----------------------------------------------------------------------
   // Public API
@@ -112,9 +124,29 @@ export class MapMemory {
       }
     }
 
-    record.npcPositions = world.sprites.npcs
-      .filter((npc) => npc.onScreen)
-      .map((npc) => ({ y: npc.mapY, x: npc.mapX }));
+    const onScreenNpcs = world.sprites.npcs.filter((npc) => npc.onScreen);
+    const onScreenSlots = new Set(onScreenNpcs.map((npc) => npc.slot));
+    const turn = ++this.turnCounter;
+
+    record.npcPositions = onScreenNpcs.map((npc) => ({ y: npc.mapY, x: npc.mapX }));
+
+    for (const [slot, knownNpc] of record.knownNpcs) {
+      if (knownNpc.onScreen && !onScreenSlots.has(slot)) {
+        record.knownNpcs.set(slot, { ...knownNpc, onScreen: false });
+      }
+    }
+
+    for (const npc of onScreenNpcs) {
+      record.knownNpcs.set(npc.slot, {
+        slot: npc.slot,
+        pictureId: npc.pictureId,
+        mapY: npc.mapY,
+        mapX: npc.mapX,
+        movementType: npc.movementType,
+        onScreen: true,
+        lastSeenTurn: turn,
+      });
+    }
 
     return { status: "updated" };
   }
@@ -151,6 +183,14 @@ export class MapMemory {
 
   tileAt(mapId: number, y: number, x: number): TileType | undefined {
     return this.maps.get(mapId)?.tiles.get(`${y},${x}`)?.type;
+  }
+
+  getKnownNpcs(mapId: number): ReadonlyArray<KnownNpc> {
+    const record = this.maps.get(mapId);
+    if (record === undefined) {
+      return [];
+    }
+    return [...record.knownNpcs.values()].sort((a, b) => b.lastSeenTurn - a.lastSeenTurn);
   }
 
   walkabilityGrid(mapId: number): { grid: boolean[][]; width: number; height: number } | undefined {
@@ -308,6 +348,7 @@ export class MapMemory {
 
   clear(): void {
     this.maps.clear();
+    this.turnCounter = 0;
   }
 
   importRecords(records: Iterable<MapRecord>): void {
@@ -315,7 +356,7 @@ export class MapMemory {
       const existing = this.maps.get(incoming.mapId);
       if (existing === undefined) {
         const tiles = new Map(incoming.tiles);
-        this.maps.set(incoming.mapId, { ...incoming, tiles, npcPositions: [] });
+        this.maps.set(incoming.mapId, { ...incoming, tiles, npcPositions: [], knownNpcs: new Map() });
       } else {
         if (incoming.width > 0) {
           existing.width = incoming.width;
@@ -339,13 +380,13 @@ export class MapMemory {
   // -----------------------------------------------------------------------
 
   loadRecord(record: MapRecord): void {
-    this.maps.set(record.mapId, record);
+    this.maps.set(record.mapId, { ...record, knownNpcs: new Map() });
   }
 
   private getOrCreate(mapId: number): MapRecord {
     let record = this.maps.get(mapId);
     if (record === undefined) {
-      record = { mapId, width: 0, height: 0, tiles: new Map(), npcPositions: [] };
+      record = { mapId, width: 0, height: 0, tiles: new Map(), npcPositions: [], knownNpcs: new Map() };
       this.maps.set(mapId, record);
     }
     return record;

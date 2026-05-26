@@ -66,5 +66,6 @@ export interface PolicyInput {
     adjacent: Record<string, string>;
     warps?: Array<{ y: number; x: number; destMapId: number; destMapName: string }>;
     npcs?: Array<{ slot: number; pictureId: number; mapY: number; mapX: number; facing: string; movementType: string }>;
+    knownNpcs?: Array<{ slot: number; pictureId: number; mapY: number; mapX: number; movementType: string; lastSeenTurn: number }>;
   };
 }

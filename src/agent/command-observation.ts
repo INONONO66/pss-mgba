@@ -4,7 +4,7 @@ import type { PolicyInput } from "../ai/PromptTypes.js";
 import type { CommandHistoryEntry, CommandResult, GameMode } from "../control/CommandTypes.js";
 import { AGENT_MEMORY_SECTIONS, type AgentMemoryEntry, type AgentMemoryFile } from "./AgentMemoryStore.js";
 import type { MapGraph } from "../game/MapGraph.js";
-import type { MapMemory } from "../game/MapMemory.js";
+import type { KnownNpc, MapMemory } from "../game/MapMemory.js";
 import type { FullGameState } from "../game/PokemonTypes.js";
 
 const HISTORY_LIMIT = 10;
@@ -24,6 +24,15 @@ export interface AgentObservationNpcInfo {
   readonly mapX: number;
   readonly facing: string;
   readonly movementType: string;
+}
+
+export interface AgentObservationKnownNpcInfo {
+  readonly slot: number;
+  readonly pictureId: number;
+  readonly mapY: number;
+  readonly mapX: number;
+  readonly movementType: string;
+  readonly lastSeenTurn: number;
 }
 
 export interface AgentObservationState {
@@ -113,8 +122,24 @@ function buildPolicyInput(
             facing: npc.facing,
             movementType: npc.movementType,
           })),
+          knownNpcs: getKnownNpcs(mapMemory, state.mapId)
+            .filter((npc) => !npc.onScreen)
+            .slice(0, 8)
+            .map((npc) => ({
+              slot: npc.slot,
+              pictureId: npc.pictureId,
+              mapY: npc.mapY,
+              mapX: npc.mapX,
+              movementType: npc.movementType,
+              lastSeenTurn: npc.lastSeenTurn,
+            })),
         },
   };
+}
+
+function getKnownNpcs(mapMemory: MapMemory, mapId: number): readonly KnownNpc[] {
+  const candidate = mapMemory as MapMemory & { getKnownNpcs?: (mapId: number) => readonly KnownNpc[] };
+  return candidate.getKnownNpcs?.(mapId) ?? [];
 }
 
 const CHECKPOINT_LABELS: Record<string, string> = {

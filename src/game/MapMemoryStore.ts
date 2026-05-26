@@ -177,7 +177,7 @@ export function toPersistedMap(
 
 /**
  * Convert PersistedMapRecord back to runtime MapRecord + warps.
- * npcPositions is initialized to empty (not persisted).
+ * npcPositions and knownNpcs are initialized to empty (not persisted).
  */
 export function fromPersistedMap(persisted: PersistedMapRecord): {
   mapRecord: MapRecord;
@@ -198,6 +198,7 @@ export function fromPersistedMap(persisted: PersistedMapRecord): {
     height: persisted.height,
     tiles,
     npcPositions: [],
+    knownNpcs: new Map(),
   };
 
   const warps: WarpEntry[] = persisted.warps.map((w) => ({
