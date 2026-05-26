@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { FullGameDetector, HALL_OF_FAME_MAP_ID, type FullGameObservableState } from "../../src/game/FullGameDetector.js";
+import { FullGameDetector, HALL_OF_FAME_MAP_ID, toObservableState, type FullGameObservableState } from "../../src/game/FullGameDetector.js";
+import type { FullGameState } from "../../src/game/PokemonTypes.js";
 
 function state(overrides: Partial<FullGameObservableState> = {}): FullGameObservableState {
   return {
@@ -16,6 +17,65 @@ function state(overrides: Partial<FullGameObservableState> = {}): FullGameObserv
 }
 
 describe("FullGameDetector", () => {
+  describe("toObservableState", () => {
+    it("converts nested FullGameState to flat FullGameObservableState", () => {
+      expect(toObservableState(fullState())).toEqual({
+        wCurMap: 38,
+        mapId: 38,
+        wYCoord: 3,
+        y: 3,
+        wXCoord: 3,
+        x: 3,
+        wPartyCount: 1,
+        partyCount: 1,
+        wIsInBattle: 0,
+        isInBattle: false,
+        wObtainedBadges: 0,
+        badgeCount: 0,
+        badgesObtained: [false, false, false, false, false, false, false, false],
+        hallOfFameComplete: false,
+      });
+    });
+
+    it("maps battle type to wIsInBattle correctly", () => {
+      expect(toObservableState(fullState({ battle: { inBattle: false, type: "none" } })).wIsInBattle).toBe(0);
+      expect(toObservableState(fullState({ battle: { inBattle: true, type: "wild" } })).wIsInBattle).toBe(1);
+      expect(toObservableState(fullState({ battle: { inBattle: true, type: "trainer" } })).wIsInBattle).toBe(2);
+      expect(toObservableState(fullState({ battle: { inBattle: false, type: "lost" } })).wIsInBattle).toBe(0);
+    });
+
+    it("derives hallOfFameComplete from map id 0x76", () => {
+      expect(toObservableState(fullState({ map: { ...fullState().map, mapId: HALL_OF_FAME_MAP_ID } })).hallOfFameComplete).toBe(true);
+    });
+
+    it("maps badge bitmask and count", () => {
+      const observable = toObservableState(fullState({
+        player: {
+          ...fullState().player,
+          badges: {
+            raw: 3,
+            count: 2,
+            obtained: [true, true, false, false, false, false, false, false],
+            names: [],
+          },
+        },
+        flags: {
+          ...fullState().flags,
+          badges: {
+            raw: 3,
+            count: 2,
+            obtained: [true, true, false, false, false, false, false, false],
+            names: [],
+          },
+        },
+      }));
+
+      expect(observable.wObtainedBadges).toBe(3);
+      expect(observable.badgeCount).toBe(2);
+      expect(observable.badgesObtained).toEqual([true, true, false, false, false, false, false, false]);
+    });
+  });
+
   it("tracks Stage 1 and badge progress without completing before Hall of Fame", () => {
     const detector = new FullGameDetector();
 
@@ -86,3 +146,57 @@ describe("FullGameDetector", () => {
     expect(flagStatus.checkpointEvidence.map((entry) => entry.checkpoint)).toContain("hallOfFameCompleted");
   });
 });
+
+function fullState(overrides: Partial<FullGameState> = {}): FullGameState {
+  return {
+    player: {
+      name: "RED",
+      rivalName: "BLUE",
+      money: 3000,
+      position: { mapId: 38, y: 3, x: 3, yBlock: 1, xBlock: 1 },
+      facing: { raw: 8, direction: "left" },
+      badges: { raw: 0, count: 0, obtained: [false, false, false, false, false, false, false, false], names: [] },
+      playTime: "1:38:18.22",
+    },
+    map: { mapId: 38, mapName: "Reds House 2f", tilesetId: 4, width: 4, height: 4 },
+    party: {
+      count: 1,
+      members: [{
+        slot: 0,
+        speciesId: 4,
+        species: "Charmander",
+        nickname: "CHAR",
+        level: 5,
+        hp: 18,
+        maxHp: 20,
+        status: "OK",
+        types: ["Fire", "Fire"],
+        moves: [{ id: 33, name: "Tackle", pp: 35, ppUp: 0 }],
+        stats: { attack: 11, defense: 10, speed: 12, special: 11 },
+        experience: 135,
+      }],
+    },
+    bag: [{ id: 20, name: "Potion", quantity: 1 }],
+    battle: { inBattle: false, type: "none" },
+    dialog: { active: false, textBoxId: 0, letterPrintingDelayFlags: 0, joyIgnore: 0 },
+    flags: {
+      hasPokedex: false,
+      hasOaksParcel: false,
+      deliveredOaksParcel: false,
+      pokedexOwned: 0,
+      pokedexSeen: 0,
+      badges: { raw: 0, count: 0, obtained: [false, false, false, false, false, false, false, false], names: [] },
+    },
+    menuText: {
+      currentMenuItem: 0,
+      textBoxId: 0,
+      letterPrintingDelayFlags: 0,
+      screenText: "",
+      screenTextKind: "none",
+      namingScreenNameLength: 0,
+      namingScreenSubmitName: 0,
+      namingScreenType: 0,
+    },
+    ...overrides,
+  };
+}
