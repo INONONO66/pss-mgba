@@ -14,8 +14,8 @@ describe("MapMemory", () => {
   it("classifies Gen1 blocks from lower entry tiles instead of any decorative tile", () => {
     const collision = { tilesetId: 0, walkableTiles: new Set([0x1c]), grassTile: undefined };
 
-    expect(classifyBlock(collision, 0x0c, 0x0d, 0x1c, 0x1d)).toBe("walkable");
-    expect(classifyBlock(collision, 0x1c, 0x2a, 0x0c, 0x0d)).toBe("wall");
+    expect(classifyBlock(collision, 0x0c, 0x0d, 0x1c, 0x1d).terrain).toBe("walkable");
+    expect(classifyBlock(collision, 0x1c, 0x2a, 0x0c, 0x0d).terrain).toBe("wall");
   });
 
   it("records tiles when the player screen anchor has odd parity", () => {
@@ -181,7 +181,7 @@ function seedRecord(
     mapId,
     width,
     height,
-    tiles: new Map<string, { type: "walkable" | "wall" | "grass"; tileId: number }>(),
+    tiles: new Map<string, { terrain: "walkable" | "wall" | "grass" | "water"; features: readonly string[]; tileId: number }>(),
     npcPositions,
   };
 
@@ -190,12 +190,12 @@ function seedRecord(
       if (record.tiles.size >= tileCount) {
         break;
       }
-      record.tiles.set(`${y},${x}`, { type: "walkable", tileId: 0 });
+      record.tiles.set(`${y},${x}`, { terrain: "walkable", features: [], tileId: 0 });
     }
   }
 
   for (const [y, x, type] of tiles) {
-    record.tiles.set(`${y},${x}`, { type, tileId: 0 });
+    record.tiles.set(`${y},${x}`, { terrain: type, features: [], tileId: 0 });
   }
 
   (memory as unknown as { maps: Map<number, unknown> }).maps.set(mapId, record);

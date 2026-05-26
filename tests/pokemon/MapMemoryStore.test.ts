@@ -18,10 +18,10 @@ function uniqueDir(prefix: string): string {
 }
 
 function makeMapRecord(mapId: number): MapRecord {
-  const tiles = new Map<string, { type: "walkable" | "wall" | "grass"; tileId: number }>();
-  tiles.set("0,0", { type: "walkable", tileId: 1 });
-  tiles.set("1,0", { type: "wall", tileId: 2 });
-  tiles.set("2,1", { type: "grass", tileId: 3 });
+  const tiles = new Map<string, { terrain: "walkable" | "wall" | "grass" | "water"; features: readonly string[]; tileId: number }>();
+  tiles.set("0,0", { terrain: "walkable", features: [], tileId: 1 });
+  tiles.set("1,0", { terrain: "wall", features: [], tileId: 2 });
+  tiles.set("2,1", { terrain: "grass", features: [], tileId: 3 });
   return {
     mapId,
     width: 10,
@@ -76,9 +76,9 @@ describe("MapMemoryStore", () => {
     expect(loadedMap.height).toBe(10);
 
     // Tiles match
-    expect(loadedMap.tiles["0,0"]).toEqual({ type: "walkable", tileId: 1 });
-    expect(loadedMap.tiles["1,0"]).toEqual({ type: "wall", tileId: 2 });
-    expect(loadedMap.tiles["2,1"]).toEqual({ type: "grass", tileId: 3 });
+    expect(loadedMap.tiles["0,0"]).toEqual({ terrain: "walkable", features: [], tileId: 1 });
+    expect(loadedMap.tiles["1,0"]).toEqual({ terrain: "wall", features: [], tileId: 2 });
+    expect(loadedMap.tiles["2,1"]).toEqual({ terrain: "grass", features: [], tileId: 3 });
 
     // Warps match
     expect(loadedMap.warps).toHaveLength(2);
@@ -244,9 +244,9 @@ describe("MapMemoryStore", () => {
 
     expect(mapRecord.mapId).toBe(7);
     expect(mapRecord.tiles).toBeInstanceOf(Map);
-    expect(mapRecord.tiles.get("0,0")).toEqual({ type: "walkable", tileId: 1 });
-    expect(mapRecord.tiles.get("1,0")).toEqual({ type: "wall", tileId: 2 });
-    expect(mapRecord.tiles.get("2,1")).toEqual({ type: "grass", tileId: 3 });
+    expect(mapRecord.tiles.get("0,0")).toEqual({ terrain: "walkable", features: [], tileId: 1 });
+    expect(mapRecord.tiles.get("1,0")).toEqual({ terrain: "wall", features: [], tileId: 2 });
+    expect(mapRecord.tiles.get("2,1")).toEqual({ terrain: "grass", features: [], tileId: 3 });
     expect(mapRecord.npcPositions).toEqual([]);
 
     expect(restoredWarps).toHaveLength(2);

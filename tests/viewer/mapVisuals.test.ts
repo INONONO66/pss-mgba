@@ -12,9 +12,9 @@ describe("map visual helpers", () => {
           width: 3,
           height: 2,
           tiles: {
-            "0,0": { type: "walkable", tileId: 1 },
-            "0,1": { type: "wall", tileId: 2 },
-            "1,2": { type: "grass", tileId: 3 },
+            "0,0": { terrain: "walkable", features: [], tileId: 1 },
+            "0,1": { terrain: "wall", features: [], tileId: 2 },
+            "1,2": { terrain: "grass", features: [], tileId: 3 },
           },
           warps: [{ y: 0, x: 2, destMapId: 2, destWarpId: 0 }],
           connections: { north: 3 },

@@ -1,5 +1,5 @@
 import type { GameWorldSnapshot } from "./GameWorld.js";
-import { classifyTile, type TileCollisionData, type TileType } from "./TilesetData.js";
+import { classifyTile, type ClassifiedTile, type TileCollisionData, type TileFeature, type TileTerrain, type TileType } from "./TilesetData.js";
 import { mapName } from "./PokemonCatalog.js";
 import type { WarpEntry } from "./WarpReader.js";
 
@@ -8,7 +8,9 @@ import type { WarpEntry } from "./WarpReader.js";
 // ---------------------------------------------------------------------------
 
 export interface RecordedTile {
-  readonly type: TileType;
+  readonly terrain?: TileTerrain;
+  readonly features?: readonly TileFeature[];
+  readonly type?: TileType;
   readonly tileId: number;
 }
 
@@ -118,9 +120,9 @@ export class MapMemory {
           }
         }
 
-        const type = classifyBlock(world.tileCollision, t0, t1, t2, t3);
+        const tile = classifyBlock(world.tileCollision, t0, t1, t2, t3);
         const key = `${blockY},${blockX}`;
-        record.tiles.set(key, { type, tileId: t0 });
+        record.tiles.set(key, tile);
       }
     }
 
@@ -182,7 +184,8 @@ export class MapMemory {
   }
 
   tileAt(mapId: number, y: number, x: number): TileType | undefined {
-    return this.maps.get(mapId)?.tiles.get(`${y},${x}`)?.type;
+    const tile = this.maps.get(mapId)?.tiles.get(`${y},${x}`);
+    return tile === undefined ? undefined : tileTerrain(tile);
   }
 
   getKnownNpcs(mapId: number): ReadonlyArray<KnownNpc> {
@@ -211,7 +214,8 @@ export class MapMemory {
           continue;
         }
         const tile = record.tiles.get(key);
-        row.push(tile !== undefined && tile.type !== "wall");
+        const terrain = tile === undefined ? undefined : tileTerrain(tile);
+        row.push(terrain !== undefined && terrain !== "wall" && terrain !== "water");
       }
       grid.push(row);
     }
@@ -246,7 +250,7 @@ export class MapMemory {
           if (tile === undefined) {
             line += "?";
           } else {
-            line += tileChar(tile.type);
+            line += tileChar(tileTerrain(tile));
           }
         }
       }
@@ -287,7 +291,7 @@ export class MapMemory {
           line += "W";
         } else {
           const tile = record.tiles.get(key);
-          line += tile === undefined ? "?" : tileChar(tile.type);
+          line += tile === undefined ? "?" : tileChar(tileTerrain(tile));
         }
       }
       lines.push(line);
@@ -337,7 +341,8 @@ export class MapMemory {
       if (tile === undefined) {
         return "unknown";
       }
-      return tile.type === "wall" ? "wall" : "open";
+      const terrain = tileTerrain(tile);
+      return terrain === "wall" || terrain === "water" ? "wall" : "open";
     };
 
     return [
@@ -397,16 +402,20 @@ export class MapMemory {
 // Helpers
 // ---------------------------------------------------------------------------
 
-export function classifyBlock(collision: TileCollisionData, _t0: number, _t1: number, t2: number, t3: number): TileType {
-  const types = [classifyTile(collision, t2), classifyTile(collision, t3)];
+export function classifyBlock(collision: TileCollisionData, _t0: number, _t1: number, t2: number, t3: number): ClassifiedTile {
+  const tiles = [classifyTile(collision, t2), classifyTile(collision, t3)];
+  const features = [...new Set(tiles.flatMap((tile) => tile.features))];
 
-  if (types.includes("grass")) {
-    return "grass";
+  if (tiles.some((tile) => tile.terrain === "grass")) {
+    return { terrain: "grass", features, tileId: t2 };
   }
-  if (types.some((t) => t === "walkable")) {
-    return "walkable";
+  if (tiles.some((tile) => tile.terrain === "walkable")) {
+    return { terrain: "walkable", features, tileId: t2 };
   }
-  return "wall";
+  if (tiles.some((tile) => tile.terrain === "water")) {
+    return { terrain: "water", features, tileId: t2 };
+  }
+  return { terrain: "wall", features, tileId: t2 };
 }
 
 function tileChar(type: TileType): string {
@@ -414,5 +423,11 @@ function tileChar(type: TileType): string {
     case "walkable": return ".";
     case "wall": return "#";
     case "grass": return '"';
+    case "water": return "~";
+    default: return "?";
   }
+}
+
+function tileTerrain(tile: RecordedTile): TileTerrain {
+  return tile.terrain ?? tile.type ?? "wall";
 }

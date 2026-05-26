@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { MapRecord } from "./MapMemory.js";
+import type { TileFeature, TileTerrain } from "./TilesetData.js";
 import type { WarpEntry } from "./WarpReader.js";
 
 // ---------------------------------------------------------------------------
@@ -23,7 +24,8 @@ export interface PersistedMapRecord {
 }
 
 export interface PersistedTile {
-  type: "walkable" | "wall" | "grass";
+  terrain: TileTerrain;
+  features: readonly TileFeature[];
   tileId: number;
 }
 
@@ -153,7 +155,8 @@ export function toPersistedMap(
   const tiles: Record<string, PersistedTile> = {};
   for (const [key, tile] of record.tiles) {
     tiles[key] = {
-      type: tile.type,
+      terrain: tile.terrain ?? tile.type ?? "wall",
+      features: tile.features ?? [],
       tileId: tile.tileId,
     };
   }
@@ -183,11 +186,13 @@ export function fromPersistedMap(persisted: PersistedMapRecord): {
   mapRecord: MapRecord;
   warps: WarpEntry[];
 } {
-  const tiles = new Map<string, { type: "walkable" | "wall" | "grass"; tileId: number }>();
+  const tiles = new Map<string, { terrain: TileTerrain; features: readonly TileFeature[]; tileId: number }>();
 
   for (const [key, tile] of Object.entries(persisted.tiles)) {
+    const legacyTile = tile as PersistedTile & { readonly type?: TileTerrain };
     tiles.set(key, {
-      type: tile.type,
+      terrain: legacyTile.terrain ?? legacyTile.type ?? "wall",
+      features: legacyTile.features ?? [],
       tileId: tile.tileId,
     });
   }

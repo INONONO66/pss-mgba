@@ -147,9 +147,11 @@ export function connectionChips(record: PersistedMapRecord): string[] {
 
 function tileChar(tile: unknown): string {
   if (!isRecord(tile)) return "?";
-  if (tile.type === "wall") return "#";
-  if (tile.type === "grass") return '"';
-  if (tile.type === "walkable") return ".";
+  const terrain = tile.terrain ?? tile.type;
+  if (terrain === "wall") return "#";
+  if (terrain === "grass") return '"';
+  if (terrain === "water") return "~";
+  if (terrain === "walkable") return ".";
   return "?";
 }
 
