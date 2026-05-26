@@ -57,6 +57,7 @@ describe("Red/Blue memory map", () => {
       wEnemyMonHP: 0xcf_e6,
       wBattleResult: 0xcf_0b,
       wCurrentMenuItem: 0xcc_26,
+      wMenuWatchedKeys: 0xcc_29,
       wTileMap: 0xc3_a0,
       wTileMapLength: 360,
       wNamingScreenNameLength: 0xce_e9,

@@ -43,6 +43,7 @@ export const wBattleMonHP = RED_BLUE_MEMORY_MAP.wBattleMonHP;
 export const wEnemyMonHP = RED_BLUE_MEMORY_MAP.wEnemyMonHP;
 export const wBattleResult = RED_BLUE_MEMORY_MAP.wBattleResult;
 export const wCurrentMenuItem = RED_BLUE_MEMORY_MAP.wCurrentMenuItem;
+export const wMenuWatchedKeys = RED_BLUE_MEMORY_MAP.wMenuWatchedKeys;
 export const wTileMap = RED_BLUE_MEMORY_MAP.wTileMap;
 export const wTileMapLength = RED_BLUE_MEMORY_MAP.wTileMapLength;
 export const wNamingScreenNameLength =

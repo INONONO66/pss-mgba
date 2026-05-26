@@ -9,6 +9,7 @@
     "wEnemyMonHP": 53222,
     "wBattleResult": 53003,
     "wCurrentMenuItem": 52262,
+    "wMenuWatchedKeys": 52265,
     "wTileMap": 50080,
     "wTileMapLength": 360,
     "wNamingScreenNameLength": 52969,

@@ -10,7 +10,7 @@ type RamClient = Pick<MgbaHttpClient, "read8" | "read16" | "readRange">;
 
 const map = RED_BLUE_MEMORY_MAP;
 
-const NAMING_SCREEN_MARKERS = ["lower case", "UPPER CASE", "ED Mr."];
+export const NAMING_SCREEN_MARKERS = ["lower case", "UPPER CASE", "ED Mr."];
 
 export type GameMode =
   | "title"
@@ -19,6 +19,13 @@ export type GameMode =
   | "battle"
   | "naming"
   | "menu";
+
+// Game Boy IO register rWY (0xFF4A) controls the Window layer Y position.
+// Gen 1 Pokemon sets rWY < 144 when a text window is on-screen and resets
+// it to 144 ($90) in CloseTextDisplay. This is the most reliable signal
+// for detecting whether a dialog box is actually visible.
+export const RWY_ADDRESS = 0xff_4a;
+export const WINDOW_HIDDEN_Y = 144;
 
 export interface ModeFlags {
   readonly battle: number;
@@ -32,7 +39,10 @@ export interface ModeFlags {
   readonly joyIgnore: number;
   readonly namingScreenType: number;
   readonly screenText: string;
+  readonly windowY: number;
 }
+
+
 
 export interface GameWorldSnapshot {
   readonly mode: GameMode;
@@ -61,7 +71,7 @@ async function readModeFlags(client: RamClient, options: GameWorldReadOptions = 
   const tileMapPromise = options.tileMapBytes === undefined
     ? client.readRange(map.wTileMap, map.wTileMapLength)
     : Promise.resolve(options.tileMapBytes);
-  const [battle, textBoxId, letterDelay, curMap, coords, partyCount, walkCounter, joyIgnore, namingScreenType, tileMapBytes] = await Promise.all([
+  const [battle, textBoxId, letterDelay, curMap, coords, partyCount, walkCounter, joyIgnore, namingScreenType, windowY, tileMapBytes] = await Promise.all([
     client.read8(map.wIsInBattle),
     client.read8(map.wTextBoxID),
     client.read8(map.wLetterPrintingDelayFlags),
@@ -71,6 +81,7 @@ async function readModeFlags(client: RamClient, options: GameWorldReadOptions = 
     client.read8(map.wWalkCounter),
     client.read8(map.wJoyIgnore),
     client.read8(map.wNamingScreenType),
+    client.read8(RWY_ADDRESS),
     tileMapPromise,
   ]);
 
@@ -86,15 +97,13 @@ async function readModeFlags(client: RamClient, options: GameWorldReadOptions = 
       walkCounter,
       joyIgnore,
       namingScreenType,
-      screenText: decodeTileMapText(tileMapBytes),
+      screenText: decodeGen1Text(tileMapBytes),
+      windowY,
     },
     tileMapBytes,
   };
 }
 
-function decodeTileMapText(bytes: Uint8Array): string {
-  return decodeGen1Text(bytes);
-}
 
 function classifyMode(flags: ModeFlags): GameMode {
   if (isAllZeroState(flags)) {
@@ -113,7 +122,7 @@ function classifyMode(flags: ModeFlags): GameMode {
 }
 
 function isDialogActive(flags: ModeFlags): boolean {
-  return flags.joyIgnore !== 0 || flags.textBoxId !== 0;
+  return flags.windowY < WINDOW_HIDDEN_Y;
 }
 
 function isNamingScreen(flags: ModeFlags): boolean {

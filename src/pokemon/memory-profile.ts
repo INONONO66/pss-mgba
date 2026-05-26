@@ -19,6 +19,7 @@ export const REQUIRED_RED_BLUE_MEMORY_SYMBOLS = [
   "wEnemyMonHP",
   "wBattleResult",
   "wCurrentMenuItem",
+  "wMenuWatchedKeys",
   "wTileMap",
   "wTileMapLength",
   "wNamingScreenNameLength",

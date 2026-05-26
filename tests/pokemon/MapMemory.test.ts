@@ -137,6 +137,7 @@ function createWorld(overrides: {
       joyIgnore: 0,
       namingScreenType: 0,
       screenText: "",
+      windowY: 144,
     },
     tileMapBytes: tileMap(0x01),
     mapLayout: { mapId: 3, tilesetId: 0, height: 20, width: 20 },
@@ -173,8 +174,8 @@ function seedRecord(
   width: number,
   height: number,
   tileCount: number,
-  tiles: Array<[number, number, "walkable" | "wall" | "grass"]>,
-  npcPositions: Array<{ y: number; x: number }> = [],
+  tiles: [number, number, "walkable" | "wall" | "grass"][],
+  npcPositions: { y: number; x: number }[] = [],
 ): void {
   const record = {
     mapId,
@@ -186,7 +187,9 @@ function seedRecord(
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      if (record.tiles.size >= tileCount) break;
+      if (record.tiles.size >= tileCount) {
+        break;
+      }
       record.tiles.set(`${y},${x}`, { type: "walkable", tileId: 0 });
     }
   }
