@@ -62,7 +62,7 @@ export async function executeCommand(command: Command, ctx: ExecutionContext): P
       return dialogExecutor.execute(command);
     }
     case "battle":
-      return executeBattle(command, ctx.controller, ctx.fullState);
+      return executeBattle(command, ctx.controller, ctx.fullState, ctx.dialogStateReader);
     case "wait":
       await sleepFn(command.frames * (1000 / 60));
       return { status: "success", reason: "waited", details: `Waited ${command.frames} frames` };

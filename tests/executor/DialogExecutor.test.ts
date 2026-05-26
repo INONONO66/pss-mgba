@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { DialogCommand } from "../../src/control/CommandTypes";
-import { DialogExecutor, type DialogController, type DialogStateReader } from "../../src/executor/DialogExecutor";
+import {
+  DialogExecutor,
+  type DialogController,
+  type DialogStateReader,
+} from "../../src/executor/DialogExecutor";
 import type { MgbaButton } from "../../src/mgba/MgbaTypes";
 
 function createController() {
@@ -8,19 +12,23 @@ function createController() {
   const controller: DialogController = {
     pressButton: vi.fn(async (button: MgbaButton, frames?: number) => {
       presses.push({ button, frames });
-      await Promise.resolve();
     }),
   };
 
   return { controller, presses };
 }
 
-function createStateReader(overrides: Partial<DialogStateReader> = {}): DialogStateReader {
+function createStateReader(
+  overrides: Partial<DialogStateReader> = {}
+): DialogStateReader {
   return {
     readTextBoxId: vi.fn(async () => 0),
     readCurrentMenuItem: vi.fn(async () => 0),
     readScreenText: vi.fn(async () => ""),
+    readTileAt: vi.fn(async () => 0),
     isDialogActive: vi.fn(async () => false),
+    isWindowVisible: vi.fn(async () => false),
+    isInBattle: vi.fn(async () => false),
     isChoiceActive: vi.fn(async () => false),
     isNamingScreenActive: vi.fn(async () => false),
     ...overrides,
@@ -31,80 +39,132 @@ function dialogCommand(action: DialogCommand["action"]): DialogCommand {
   return { type: "dialog", action };
 }
 
+function trackAPresses(
+  controller: DialogController,
+  presses: Array<{ button: MgbaButton; frames?: number }>,
+  counter: { value: number }
+): void {
+  vi.mocked(controller.pressButton).mockImplementation(
+    async (button: MgbaButton, frames?: number) => {
+      presses.push({ button, frames });
+      if (button === "A") {
+        counter.value += 1;
+      }
+    }
+  );
+}
+
 describe("DialogExecutor", () => {
-  it("advance returns immediately when dialog is already ended", async () => {
+  it("advance returns dialog_ended when window is not visible", async () => {
     const { controller, presses } = createController();
     const stateReader = createStateReader();
 
     const executor = new DialogExecutor(controller, stateReader);
     const result = await executor.execute(dialogCommand({ kind: "advance" }));
 
-    expect(result).toEqual({ status: "success", reason: "dialog_ended" });
-    expect(presses).toEqual([]);
+    expect(result.status).toBe("success");
+    expect(result.reason).toBe("dialog_ended");
+    expect(presses).toHaveLength(1);
   });
 
-  it("advance ends dialog after 3 A presses", async () => {
+  it("advance collects transcript and ends when window hides", async () => {
     const { controller, presses } = createController();
-    let aPresses = 0;
+    const counter = { value: 0 };
     const stateReader = createStateReader({
-      readTextBoxId: vi.fn(async () => (aPresses >= 3 ? 0 : 1)),
-      readScreenText: vi.fn(async () => (aPresses >= 3 ? "" : `text ${aPresses}`)),
-      isDialogActive: vi.fn(async () => aPresses < 3),
+      readScreenText: vi.fn(async () => {
+        if (counter.value <= 1) {
+          return "Hello there!";
+        }
+        if (counter.value <= 3) {
+          return "Welcome!";
+        }
+        return "";
+      }),
+      isWindowVisible: vi.fn(async () => counter.value < 4),
     });
-    vi.mocked(controller.pressButton).mockImplementation(async (button, frames) => {
-      presses.push({ button, frames });
-      if (button === "A") {
-        aPresses += 1;
-      }
-      await Promise.resolve();
-    });
+    trackAPresses(controller, presses, counter);
 
     const executor = new DialogExecutor(controller, stateReader);
     const result = await executor.execute(dialogCommand({ kind: "advance" }));
 
-    expect(result).toEqual({ status: "success", reason: "dialog_ended" });
-    expect(presses).toEqual([
-      { button: "A", frames: 8 },
-      { button: "A", frames: 8 },
-      { button: "A", frames: 8 },
-    ]);
+    expect(result.status).toBe("success");
+    expect(result.reason).toBe("dialog_ended");
+    const details = result.details ?? "";
+    expect(details).toContain("Hello there!");
+    expect(details).toContain("Welcome!");
   });
 
-  it("advance stops when a choice appears after 2 A presses", async () => {
+  it("advance does not record duplicate pages", async () => {
     const { controller, presses } = createController();
-    let aPresses = 0;
+    const counter = { value: 0 };
     const stateReader = createStateReader({
-      readTextBoxId: vi.fn(async () => 1),
-      readScreenText: vi.fn(async () => (aPresses >= 2 ? "YES NO" : "Choose?")),
-      isDialogActive: vi.fn(async () => true),
-      isChoiceActive: vi.fn(async () => aPresses >= 2),
+      readScreenText: vi.fn(async () => {
+        if (counter.value < 3) {
+          return "Same text";
+        }
+        return "";
+      }),
+      isWindowVisible: vi.fn(async () => counter.value < 3),
     });
-    vi.mocked(controller.pressButton).mockImplementation(async (button, frames) => {
-      presses.push({ button, frames });
-      if (button === "A") {
-        aPresses += 1;
-      }
-      await Promise.resolve();
+    trackAPresses(controller, presses, counter);
+
+    const executor = new DialogExecutor(controller, stateReader);
+    const result = await executor.execute(dialogCommand({ kind: "advance" }));
+
+    expect(result.status).toBe("success");
+    expect(result.reason).toBe("dialog_ended");
+    const transcript = JSON.parse(
+      (result.details ?? "").replace("transcript=", "")
+    );
+    expect(transcript).toEqual(["Same text"]);
+  });
+
+  it("advance stops when a choice appears", async () => {
+    const { controller, presses } = createController();
+    const counter = { value: 0 };
+    const stateReader = createStateReader({
+      readScreenText: vi.fn(async () => {
+        if (counter.value >= 2) {
+          return "YES NO Do you want?";
+        }
+        return "Some dialog";
+      }),
+      isWindowVisible: vi.fn(async () => true),
+      isChoiceActive: vi.fn(async () => counter.value >= 2),
     });
+    trackAPresses(controller, presses, counter);
 
     const executor = new DialogExecutor(controller, stateReader);
     const result = await executor.execute(dialogCommand({ kind: "advance" }));
 
     expect(result.status).toBe("success");
     expect(result.reason).toBe("choice_appeared");
-    expect(result.details).toBe("choices=YES NO");
-    expect(presses).toEqual([
-      { button: "A", frames: 8 },
-      { button: "A", frames: 8 },
-    ]);
+    const details = result.details ?? "";
+    expect(details).toContain("YES NO Do you want?");
   });
 
-  it("advance fails as stuck when text never changes for 30 A presses", async () => {
+  it("advance stops when battle starts", async () => {
+    const { controller, presses } = createController();
+    const counter = { value: 0 };
+    const stateReader = createStateReader({
+      readScreenText: vi.fn(async () => "Trainer wants to fight!"),
+      isWindowVisible: vi.fn(async () => true),
+      isInBattle: vi.fn(async () => counter.value >= 2),
+    });
+    trackAPresses(controller, presses, counter);
+
+    const executor = new DialogExecutor(controller, stateReader);
+    const result = await executor.execute(dialogCommand({ kind: "advance" }));
+
+    expect(result.status).toBe("success");
+    expect(result.reason).toBe("battle_started");
+  });
+
+  it("advance fails as stuck when window stays visible for 120 presses", async () => {
     const { controller, presses } = createController();
     const stateReader = createStateReader({
-      readTextBoxId: vi.fn(async () => 1),
       readScreenText: vi.fn(async () => "same text"),
-      isDialogActive: vi.fn(async () => true),
+      isWindowVisible: vi.fn(async () => true),
     });
 
     const executor = new DialogExecutor(controller, stateReader);
@@ -112,9 +172,7 @@ describe("DialogExecutor", () => {
 
     expect(result.status).toBe("failed");
     expect(result.reason).toBe("dialog_stuck");
-    expect(result.details).toBe("max_presses=30; text_changed=false");
-    expect(presses).toHaveLength(30);
-    expect(presses.every((press) => press.button === "A" && press.frames === 8)).toBe(true);
+    expect(presses).toHaveLength(120);
   });
 
   it("choose(1) from currentMenuItem 0 presses Down once, then A", async () => {
@@ -124,13 +182,13 @@ describe("DialogExecutor", () => {
     });
 
     const executor = new DialogExecutor(controller, stateReader);
-    const result = await executor.execute(dialogCommand({ kind: "choose", index: 1 }));
+    const result = await executor.execute(
+      dialogCommand({ kind: "choose", index: 1 })
+    );
 
-    expect(result).toEqual({ status: "success", reason: "choice_made", details: "index=1" });
-    expect(presses).toEqual([
-      { button: "Down", frames: 8 },
-      { button: "A", frames: 8 },
-    ]);
+    expect(result).toMatchObject({ status: "success", reason: "choice_made" });
+    expect(presses[0]).toEqual({ button: "Down", frames: 16 });
+    expect(presses[1]).toEqual({ button: "A", frames: 16 });
   });
 
   it("choose(0) from currentMenuItem 2 presses Up twice, then A", async () => {
@@ -140,27 +198,33 @@ describe("DialogExecutor", () => {
     });
 
     const executor = new DialogExecutor(controller, stateReader);
-    const result = await executor.execute(dialogCommand({ kind: "choose", index: 0 }));
+    const result = await executor.execute(
+      dialogCommand({ kind: "choose", index: 0 })
+    );
 
-    expect(result).toEqual({ status: "success", reason: "choice_made", details: "index=0" });
-    expect(presses).toEqual([
-      { button: "Up", frames: 8 },
-      { button: "Up", frames: 8 },
-      { button: "A", frames: 8 },
-    ]);
+    expect(result).toMatchObject({ status: "success", reason: "choice_made" });
+    expect(presses[0]).toEqual({ button: "Up", frames: 16 });
+    expect(presses[1]).toEqual({ button: "Up", frames: 16 });
+    expect(presses[2]).toEqual({ button: "A", frames: 16 });
   });
 
-  it('input_name("RED") accepts the default character and confirms with Start', async () => {
+  it('input_name("RED") presses A then Start', async () => {
     const { controller, presses } = createController();
     const stateReader = createStateReader();
 
     const executor = new DialogExecutor(controller, stateReader);
-    const result = await executor.execute(dialogCommand({ kind: "input_name", name: "RED" }));
+    const result = await executor.execute(
+      dialogCommand({ kind: "input_name", name: "RED" })
+    );
 
-    expect(result).toEqual({ status: "success", reason: "name_entered", details: "name=RED" });
+    expect(result).toEqual({
+      status: "success",
+      reason: "name_entered",
+      details: "name=RED",
+    });
     expect(presses).toEqual([
-      { button: "A", frames: 8 },
-      { button: "Start", frames: 8 },
+      { button: "A", frames: 16 },
+      { button: "Start", frames: 16 },
     ]);
   });
 });

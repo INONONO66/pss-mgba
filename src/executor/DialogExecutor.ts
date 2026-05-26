@@ -1,8 +1,9 @@
 import type { DialogCommand, CommandResult } from "../control/CommandTypes.js";
 import type { MgbaButton } from "../mgba/MgbaTypes.js";
 
-const PRESS_FRAMES = 8;
-const MAX_DIALOG_PRESSES = 30;
+const PRESS_FRAMES = 16;
+const MAX_DIALOG_PRESSES = 120;
+const WINDOW_HIDDEN_CONFIRM_COUNT = 2;
 
 export interface DialogController {
   pressButton(button: MgbaButton, frames?: number): Promise<void>;
@@ -12,9 +13,20 @@ export interface DialogStateReader {
   readTextBoxId(): Promise<number>;
   readCurrentMenuItem(): Promise<number>;
   readScreenText(): Promise<string>;
+  readTileAt(offset: number): Promise<number>;
   isDialogActive(): Promise<boolean>;
+  isWindowVisible(): Promise<boolean>;
+  isInBattle(): Promise<boolean>;
   isChoiceActive(): Promise<boolean>;
   isNamingScreenActive(): Promise<boolean>;
+}
+
+interface DialogSnapshot {
+  readonly screenText: string;
+  readonly windowVisible: boolean;
+  readonly inBattle: boolean;
+  readonly choiceActive: boolean;
+  readonly namingScreenActive: boolean;
 }
 
 export class DialogExecutor {
@@ -40,36 +52,48 @@ export class DialogExecutor {
   }
 
   private async advance(): Promise<CommandResult> {
-    let previousText = await this.stateReader.readScreenText();
-    let textChanged = false;
+    const transcript: string[] = [];
+    let windowHiddenStreak = 0;
+    let previousText = "";
 
-    const initialState = await this.readDialogState();
-    const initialTerminalResult = this.resultForTerminalState(initialState);
-    if (initialTerminalResult !== undefined) {
-      return initialTerminalResult;
-    }
-
-    previousText = initialState.screenText;
-
-    for (let presses = 1; presses <= MAX_DIALOG_PRESSES; presses += 1) {
-      await this.controller.pressButton("A", PRESS_FRAMES);
-
+    for (let presses = 0; presses < MAX_DIALOG_PRESSES; presses += 1) {
       const state = await this.readDialogState();
-      if (state.screenText !== previousText) {
-        textChanged = true;
-      }
-      previousText = state.screenText;
 
-      const terminalResult = this.resultForTerminalState(state);
-      if (terminalResult !== undefined) {
-        return terminalResult;
+      if (state.inBattle) {
+        this.recordPage(transcript, state.screenText);
+        return { status: "success", reason: "battle_started", details: this.formatTranscript(transcript) };
       }
+
+      if (state.choiceActive) {
+        this.recordPage(transcript, state.screenText);
+        return { status: "success", reason: "choice_appeared", details: this.formatTranscript(transcript) };
+      }
+
+      if (state.namingScreenActive) {
+        this.recordPage(transcript, state.screenText);
+        return { status: "success", reason: "naming_screen", details: this.formatTranscript(transcript) };
+      }
+
+      if (state.windowVisible) {
+        windowHiddenStreak = 0;
+        if (state.screenText === previousText) {
+          this.recordPage(transcript, state.screenText);
+        }
+      } else {
+        windowHiddenStreak += 1;
+        if (windowHiddenStreak >= WINDOW_HIDDEN_CONFIRM_COUNT) {
+          return { status: "success", reason: "dialog_ended", details: this.formatTranscript(transcript) };
+        }
+      }
+
+      previousText = state.screenText;
+      await this.controller.pressButton("A", PRESS_FRAMES);
     }
 
     return {
       status: "failed",
       reason: "dialog_stuck",
-      details: `max_presses=${MAX_DIALOG_PRESSES}; text_changed=${textChanged}`,
+      details: `max_presses=${MAX_DIALOG_PRESSES}; pages=${transcript.length}`,
     };
   }
 
@@ -83,17 +107,17 @@ export class DialogExecutor {
     }
 
     await this.controller.pressButton("A", PRESS_FRAMES);
-    await this.advanceAfterChoice();
+
+    const transcript = await this.advanceAfterChoice();
 
     return {
       status: "success",
       reason: "choice_made",
-      details: `index=${index}`,
+      details: `index=${index}${transcript.length > 0 ? `; ${this.formatTranscript(transcript)}` : ""}`,
     };
   }
 
   private async inputName(name: string): Promise<CommandResult> {
-    // Full Gen1 keyboard navigation can be added here later.
     await this.controller.pressButton("A", PRESS_FRAMES);
     await this.controller.pressButton("Start", PRESS_FRAMES);
 
@@ -104,61 +128,68 @@ export class DialogExecutor {
     };
   }
 
-  private async advanceAfterChoice(): Promise<void> {
+  private async advanceAfterChoice(): Promise<string[]> {
+    const transcript: string[] = [];
+    let windowHiddenStreak = 0;
+    let previousText = "";
+
     for (let presses = 0; presses < MAX_DIALOG_PRESSES; presses += 1) {
       const state = await this.readDialogState();
-      const terminalResult = this.resultForTerminalState(state);
-      if (terminalResult !== undefined) {
-        return;
+
+      if (state.choiceActive || state.namingScreenActive || state.inBattle) {
+        this.recordPage(transcript, state.screenText);
+        return transcript;
       }
 
+      if (state.windowVisible) {
+        windowHiddenStreak = 0;
+        if (state.screenText === previousText) {
+          this.recordPage(transcript, state.screenText);
+        }
+      } else {
+        windowHiddenStreak += 1;
+        if (windowHiddenStreak >= WINDOW_HIDDEN_CONFIRM_COUNT) {
+          return transcript;
+        }
+      }
+
+      previousText = state.screenText;
       await this.controller.pressButton("A", PRESS_FRAMES);
     }
+
+    return transcript;
   }
 
-  private async readDialogState(): Promise<{
-    textBoxId: number;
-    screenText: string;
-    dialogActive: boolean;
-    choiceActive: boolean;
-    namingScreenActive: boolean;
-  }> {
-    const [textBoxId, screenText, dialogActive, choiceActive, namingScreenActive] =
+  private async readDialogState(): Promise<DialogSnapshot> {
+    const [screenText, windowVisible, inBattle, choiceActive, namingScreenActive] =
       await Promise.all([
-        this.stateReader.readTextBoxId(),
         this.stateReader.readScreenText(),
-        this.stateReader.isDialogActive(),
+        this.stateReader.isWindowVisible(),
+        this.stateReader.isInBattle(),
         this.stateReader.isChoiceActive(),
         this.stateReader.isNamingScreenActive(),
       ]);
 
-    return { textBoxId, screenText, dialogActive, choiceActive, namingScreenActive };
+    return { screenText, windowVisible, inBattle, choiceActive, namingScreenActive };
   }
 
-  private resultForTerminalState(state: {
-    textBoxId: number;
-    screenText: string;
-    dialogActive: boolean;
-    choiceActive: boolean;
-    namingScreenActive: boolean;
-  }): CommandResult | undefined {
-    if (state.choiceActive) {
-      return {
-        status: "success",
-        reason: "choice_appeared",
-        ...(state.screenText.length > 0 ? { details: `choices=${state.screenText}` } : {}),
-      };
+  private recordPage(transcript: string[], screenText: string): void {
+    const trimmed = screenText.trim();
+    if (trimmed.length === 0) {
+      return;
     }
-
-    if (state.namingScreenActive) {
-      return { status: "success", reason: "naming_screen" };
+    const last = transcript.at(-1);
+    if (last === trimmed) {
+      return;
     }
+    transcript.push(trimmed);
+  }
 
-    if (state.textBoxId === 0 && state.screenText.trim().length === 0 && !state.dialogActive) {
-      return { status: "success", reason: "dialog_ended" };
+  private formatTranscript(transcript: string[]): string {
+    if (transcript.length === 0) {
+      return "";
     }
-
-    return;
+    return `transcript=${JSON.stringify(transcript)}`;
   }
 }
 

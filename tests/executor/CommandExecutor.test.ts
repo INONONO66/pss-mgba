@@ -91,6 +91,7 @@ function createController() {
     pressed,
     pressButton: vi.fn(async (button: MgbaButton, frames?: number) => {
       pressed.push({ button, frames });
+      await Promise.resolve();
     }),
   };
 }
@@ -119,11 +120,14 @@ function createContext(overrides: Partial<ExecutionContext> = {}): ExecutionCont
       readTextBoxId: vi.fn(async () => 0),
       readCurrentMenuItem: vi.fn(async () => 0),
       readScreenText: vi.fn(async () => ""),
+      readTileAt: vi.fn(async () => 0),
       isDialogActive: vi.fn(async () => false),
+      isWindowVisible: vi.fn(async () => false),
+      isInBattle: vi.fn(async () => false),
       isChoiceActive: vi.fn(async () => false),
       isNamingScreenActive: vi.fn(async () => false),
     },
-    sleep: vi.fn(async () => {}),
+    sleep: vi.fn(async () => Promise.resolve()),
     ...overrides,
   };
 }
@@ -154,6 +158,7 @@ describe("CommandExecutor", () => {
       { type: "battle", action: { kind: "run" } },
       ctx.controller,
       ctx.fullState,
+      ctx.dialogStateReader,
     );
     expect(result.status).toBe("success");
   });
@@ -199,7 +204,7 @@ describe("CommandExecutor", () => {
   });
 
   it("wait sleeps correct duration and returns success", async () => {
-    const sleep = vi.fn(async () => {});
+    const sleep = vi.fn(async () => Promise.resolve());
     const ctx = createContext({ mode: "overworld", sleep });
     const result = await executeCommand({ type: "wait", frames: 60 }, ctx);
 

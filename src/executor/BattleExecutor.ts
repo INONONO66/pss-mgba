@@ -1,26 +1,30 @@
 import type { BattleCommand, CommandResult } from "../control/CommandTypes.js";
 import type { MgbaButton } from "../mgba/MgbaTypes.js";
 import type { FullGameState } from "../pokemon/PokemonTypes.js";
+import type { DialogStateReader } from "./DialogExecutor.js";
 
 const QUICK_FRAMES = 5;
 const MENU_TRANSITION_FRAMES = 15;
+const NARRATION_PRESS_FRAMES = 16;
+const MAX_NARRATION_PRESSES = 60;
+const TILE_FIGHT_ARROW = 0xed;
+
+// FIGHT arrow appears at row 14, col 9 (tilemap offset 14*20+9 = 289)
+const BATTLE_MENU_ARROW_OFFSET = 14 * 20 + 9;
 
 export interface BattleController {
   pressButton(button: MgbaButton, frames?: number): Promise<void>;
-}
-
-export interface BattleStateReader {
-  readBattleState(): Promise<{ inBattle: boolean; menuActive: boolean }>;
 }
 
 export async function executeBattle(
   command: BattleCommand,
   controller: BattleController,
   fullState: FullGameState,
+  dialogStateReader?: DialogStateReader,
 ): Promise<CommandResult> {
   switch (command.action.kind) {
     case "fight":
-      return executeFight(command.action.move, controller, fullState);
+      return executeFight(command.action.move, controller, fullState, dialogStateReader);
     case "item":
       return executeItem(command.action.item, controller, fullState);
     case "switch":
@@ -34,6 +38,7 @@ async function executeFight(
   moveName: string,
   controller: BattleController,
   fullState: FullGameState,
+  dialogStateReader?: DialogStateReader,
 ): Promise<CommandResult> {
   await navigateTopMenu(controller, ["Up", "Left"]);
 
@@ -49,11 +54,60 @@ async function executeFight(
   await controller.pressButton("A", MENU_TRANSITION_FRAMES);
 
   const selectedMove = activePokemon.moves[moveIndex];
+
+  if (dialogStateReader === undefined) {
+    return { status: "success", reason: "move_used", details: `Used ${selectedMove.name}` };
+  }
+
+  const narration = await advanceBattleNarration(controller, dialogStateReader);
+
+  const battleEnded = !(await dialogStateReader.isInBattle());
+  const reason = battleEnded ? "battle_ended" : "move_used";
+
   return {
     status: "success",
-    reason: "move_used",
-    details: `Used ${selectedMove.name}`,
+    reason,
+    details: `Used ${selectedMove.name}${narration.length > 0 ? `; transcript=${JSON.stringify(narration)}` : ""}`,
   };
+}
+
+async function advanceBattleNarration(
+  controller: BattleController,
+  stateReader: DialogStateReader,
+): Promise<string[]> {
+  const transcript: string[] = [];
+  let previousText = "";
+
+  for (let presses = 0; presses < MAX_NARRATION_PRESSES; presses += 1) {
+    const [windowVisible, inBattle, screenText] = await Promise.all([
+      stateReader.isWindowVisible(),
+      stateReader.isInBattle(),
+      stateReader.readScreenText(),
+    ]);
+
+    if (windowVisible && screenText === previousText) {
+      recordPage(transcript, screenText);
+    }
+    previousText = screenText;
+
+    if (!inBattle) {
+      recordPage(transcript, screenText);
+      return transcript;
+    }
+
+    if (await isBattleMenuVisible(stateReader)) {
+      return transcript;
+    }
+
+    await controller.pressButton("A", NARRATION_PRESS_FRAMES);
+  }
+
+  return transcript;
+}
+
+async function isBattleMenuVisible(stateReader: DialogStateReader): Promise<boolean> {
+  const tileMapByte = await stateReader.readTileAt(BATTLE_MENU_ARROW_OFFSET);
+  return tileMapByte === TILE_FIGHT_ARROW;
 }
 
 async function executeItem(
@@ -112,6 +166,17 @@ async function navigateTopMenu(controller: BattleController, buttons: readonly M
     await controller.pressButton(button, QUICK_FRAMES);
   }
   await controller.pressButton("A", MENU_TRANSITION_FRAMES);
+}
+
+function recordPage(transcript: string[], screenText: string): void {
+  const trimmed = screenText.trim();
+  if (trimmed.length === 0) {
+    return;
+  }
+  if (transcript.at(-1) === trimmed) {
+    return;
+  }
+  transcript.push(trimmed);
 }
 
 function sameName(left: string, right: string): boolean {
