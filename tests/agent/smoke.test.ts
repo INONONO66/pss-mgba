@@ -951,6 +951,7 @@ describe("agent integration smoke", () => {
       );
 
       const aborted = { value: false };
+      const turnLog = { reasoning: "", response: "", timeline: [], toolCalls: [] };
       let interruptCalls = 0;
       const status = await (runner as any).consumeRunEvents(
         interruptibleEvents(
@@ -977,9 +978,18 @@ describe("agent integration smoke", () => {
           interruptCalls += 1;
           aborted.value = true;
         },
-        {} as AgentTools
+        {} as AgentTools,
+        turnLog
       );
 
+      expect(turnLog.timeline).toEqual([
+        expect.objectContaining({ sequence: 1, type: "tool-result", toolName: "pokemon_memory_read" }),
+        expect.objectContaining({ sequence: 2, type: "tool-result", toolName: "pokemon_wait", isGameAction: true }),
+      ]);
+      expect(turnLog.toolCalls).toEqual([
+        expect.objectContaining({ toolCallId: "memory-1", output: { ok: true } }),
+        expect.objectContaining({ toolCallId: "wait-1", output: expect.objectContaining({ command: { type: "wait", frames: 1 } }) }),
+      ]);
       expect(status).toBe(expectedStatus);
       expect(interruptCalls).toBe(1);
       expect((runner as any).commandHistory).toEqual([

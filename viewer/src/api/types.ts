@@ -13,17 +13,45 @@ export type Action =
   | { type: "sequence"; actions?: Action[] }
   | { type: string; [key: string]: unknown };
 
+export interface ToolCallRecord {
+  toolCallId: string;
+  toolName: string;
+  input?: unknown;
+  output?: unknown;
+  isGameAction?: boolean;
+}
+
+export interface TurnTimelineEvent {
+  sequence?: number;
+  timestamp?: string;
+  type: string;
+  text?: string;
+  message?: string;
+  toolCallId?: string;
+  toolName?: string;
+  input?: unknown;
+  output?: unknown;
+  result?: unknown;
+  command?: unknown;
+  isGameAction?: boolean;
+  [key: string]: unknown;
+}
+
 export interface TurnRecord {
   turn: number;
   fileName?: string;
   startedAt?: string;
   finishedAt?: string;
+  frame?: { before?: number; after?: number };
+  run?: { status?: string; [key: string]: unknown };
   systemPrompt?: string;
   userPrompt?: string;
   reasoning?: string;
   response?: string;
   parsedCommand?: Command;
-  toolCalls?: Array<{ toolCallId: string; toolName: string; input?: unknown; output?: unknown; isGameAction?: boolean }>;
+  rationale?: string;
+  toolCalls?: ToolCallRecord[];
+  timeline?: TurnTimelineEvent[];
   gameState?: { before?: unknown; after?: unknown };
   agentMemory?: unknown;
   mapAscii?: string;
@@ -64,9 +92,6 @@ export interface RunSummary {
   lastAction?: { step?: number; frame?: number; command?: Command; action?: Action; confidence?: number; rationale?: string };
 }
 
-export interface RunEvent { sequence?: number; type: string; timestamp?: string; payload?: Record<string, unknown>; [key: string]: unknown; }
-export interface EventsResponse { runId: string; limit: number; count: number; events: RunEvent[]; }
-
 export interface AgentMemoryEntry { id: string; createdAt: string; content: string; }
 export interface AgentMemoryResponse {
   runId: string;
@@ -79,4 +104,16 @@ export interface AgentMemoryResponse {
   };
 }
 
-export interface MapMemoryResponse { runId: string; version?: number; updatedAt?: string; maps?: Record<string, unknown>; }
+export interface PersistedMapRecord {
+  mapId?: number;
+  name?: string;
+  width?: number;
+  height?: number;
+  tiles?: Record<string, unknown>;
+  npcPositions?: Array<{ y?: number; x?: number }>;
+  warps?: unknown[];
+  connections?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface MapMemoryResponse { runId: string; version?: number; updatedAt?: string; maps?: Record<string, PersistedMapRecord>; }

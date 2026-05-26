@@ -79,3 +79,25 @@ export function runTurnStatus(turn: TurnRecord): string {
 export function sortedTurns(payload: { turns?: TurnRecord[] } | null): TurnRecord[] {
   return [...(payload?.turns ?? [])].sort((a, b) => (b.turn ?? 0) - (a.turn ?? 0));
 }
+
+export function eventsForTurn(turn: TurnRecord): TurnTimelineEvent[] {
+  if ((turn.timeline?.length ?? 0) > 0) return turn.timeline ?? [];
+  return (turn.toolCalls ?? []).flatMap((call, index) => [
+    {
+      sequence: index * 2 + 1,
+      type: "tool-call",
+      toolCallId: call.toolCallId,
+      toolName: call.toolName,
+      input: call.input,
+      isGameAction: call.isGameAction,
+    },
+    {
+      sequence: index * 2 + 2,
+      type: "tool-result",
+      toolCallId: call.toolCallId,
+      toolName: call.toolName,
+      output: call.output,
+      isGameAction: call.isGameAction,
+    },
+  ]);
+}

@@ -109,6 +109,19 @@ interface TurnToolCallLog {
   readonly toolName: string;
 }
 
+interface TurnTimelineEventLog {
+  readonly input?: unknown;
+  readonly isGameAction?: boolean;
+  readonly message?: string;
+  readonly output?: unknown;
+  readonly sequence: number;
+  readonly text?: string;
+  readonly timestamp: string;
+  readonly toolCallId?: string;
+  readonly toolName?: string;
+  readonly type: string;
+}
+
 interface TurnLogDraft {
   agentMemory: unknown;
   detector: unknown;
@@ -121,8 +134,10 @@ interface TurnLogDraft {
   parsedCommand?: unknown;
   reasoning: string;
   response: string;
+  run: { status: HarnessStatus | "running" };
   startedAt: string;
   systemPrompt: string;
+  timeline: TurnTimelineEventLog[];
   toolCalls: TurnToolCallLog[];
   turn: number;
   userPrompt: string;
@@ -274,6 +289,8 @@ export class CommandAgentRunner {
               : JSON.stringify(userPrompt),
           reasoning: "",
           response: "",
+          run: { status: "running" },
+          timeline: [],
           toolCalls: [],
           gameState: { before: state.fullState },
           agentMemory: this.agentMemoryStore.snapshot(),
@@ -302,6 +319,7 @@ export class CommandAgentRunner {
         const afterState = await this.refreshState();
         const afterStatus = this.updateDetector(afterState);
         this.updateModeContext(afterState.mode, tools);
+        turnLog.run = { status: isDetectorComplete(afterStatus) ? "completed" : streamStatus };
         turnLog.finishedAt = this.nowIso();
         turnLog.frame.after = await this.safeCurrentFrame();
         turnLog.gameState.after = afterState.fullState;
@@ -366,7 +384,7 @@ export class CommandAgentRunner {
 
     for await (const event of events) {
       await this.options.onEvent?.(event, this.turn);
-      this.recordAgentEventEvidence(event, turnLog);
+      await this.recordAgentEventEvidence(event, turnLog);
       this.recordRuntimeEvent(event);
 
       if (
@@ -417,6 +435,36 @@ export class CommandAgentRunner {
     }
 
     this.recordCommand(command, result, this.turn);
+  }
+
+
+  private toTurnTimelineEvent(event: AgentEvent, sequence: number): TurnTimelineEventLog {
+    const base = { sequence, timestamp: this.nowIso(), type: event.type };
+    switch (event.type) {
+      case "tool-call":
+        return {
+          ...base,
+          input: event.input,
+          isGameAction: GAME_ACTION_TOOL_NAMES.has(event.toolName),
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+        };
+      case "tool-result":
+        return {
+          ...base,
+          isGameAction: GAME_ACTION_TOOL_NAMES.has(event.toolName),
+          output: unwrapToolOutput(event.output),
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+        };
+      case "assistant-reasoning":
+      case "assistant-text":
+        return { ...base, text: event.text };
+      case "turn-error":
+        return { ...base, message: event.message };
+      default:
+        return base;
+    }
   }
 
   private async autoAdvanceDialog(
@@ -487,6 +535,10 @@ export class CommandAgentRunner {
     event: AgentEvent,
     turnLog?: TurnLogDraft
   ): Promise<void> {
+    if (turnLog !== undefined) {
+      turnLog.timeline.push(this.toTurnTimelineEvent(event, turnLog.timeline.length + 1));
+    }
+
     switch (event.type) {
       case "tool-call":
         this.pendingToolCalls.set(event.toolCallId, {
