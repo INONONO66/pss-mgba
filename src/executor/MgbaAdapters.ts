@@ -80,9 +80,15 @@ export interface WarpSource {
   warpPositions(mapId: number): ReadonlyArray<{ y: number; x: number }>;
 }
 
+export interface NpcSource {
+  npcAt(mapId: number, y: number, x: number): { slot: number; movementType: string } | undefined;
+  refreshObstacles(mapId: number): Promise<void>;
+}
+
 export function createNavigateMapSource(
   source: WalkabilitySource,
-  warpSource?: WarpSource
+  warpSource?: WarpSource,
+  npcSource?: NpcSource,
 ): NavigateMapSource {
   return {
     walkabilityGrid(mapId) {
@@ -90,6 +96,12 @@ export function createNavigateMapSource(
     },
     warpPositions(mapId) {
       return warpSource?.warpPositions(mapId) ?? [];
+    },
+    npcAt(mapId, y, x) {
+      return npcSource?.npcAt(mapId, y, x);
+    },
+    async refreshObstacles(mapId) {
+      await npcSource?.refreshObstacles(mapId);
     },
   };
 }

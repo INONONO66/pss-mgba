@@ -110,9 +110,21 @@ export function createCommandAgentContext(config: HarnessConfig): CommandAgentCo
   const controller = createUnifiedController(ram);
   const navigateWorldReader = createNavigateWorldReader(ram);
   const currentWarps: CommandAgentWarps[] = [];
+  let lastWorld: GameWorldSnapshot | undefined;
+  let lastGameState: CommandAgentGameState | undefined;
   const navigateMapSource = createNavigateMapSource(mapMemory, {
     warpPositions() {
       return currentWarps;
+    },
+  }, {
+    npcAt(mapId, y, x) {
+      const knownNpcs = mapMemory.getKnownNpcs(mapId);
+      return knownNpcs.find((npc) => npc.mapY === y && npc.mapX === x && npc.onScreen);
+    },
+    async refreshObstacles(_mapId) {
+      const world = await readGameWorld(client);
+      lastWorld = world;
+      mapMemory.update(world, world.tileMapBytes);
     },
   });
   const interactStateReader = createInteractStateReader(ram);
@@ -129,9 +141,6 @@ export function createCommandAgentContext(config: HarnessConfig): CommandAgentCo
     interactStateReader,
     dialogStateReader,
   };
-
-  let lastWorld: GameWorldSnapshot | undefined;
-  let lastGameState: CommandAgentGameState | undefined;
 
   const readGameState = async (): Promise<CommandAgentGameState> => {
     const world = await readGameWorld(client);
