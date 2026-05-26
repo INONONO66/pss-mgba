@@ -39,7 +39,7 @@ function MapMemoryCard({ mapKey, record }: { mapKey: string; record: PersistedMa
   const explored = tileCount(record);
   const coverage = total > 0 ? `${Math.round((explored / total) * 100)}%` : "?";
   const chips = connectionChips(record);
-  const npcCount = Array.isArray(record.npcPositions) ? record.npcPositions.length : 0;
+  const npcCount = Array.isArray(record.knownNpcs) ? record.knownNpcs.length : 0;
 
   return (
     <article className="map-card">
