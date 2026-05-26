@@ -20,6 +20,7 @@ export interface TurnRecord {
   turn: number;
   run?: { runId?: string; runner?: string; objective?: string; sessionKey?: string; maxTurns?: number; startedAt?: string; status?: string };
   fileName?: string;
+  frame?: { before?: number; after?: number };
   startedAt?: string;
   finishedAt?: string;
   systemPrompt?: string;
@@ -69,4 +70,16 @@ export interface AgentMemoryResponse {
   };
 }
 
-export interface MapMemoryResponse { runId: string; version?: number; updatedAt?: string; maps?: Record<string, unknown>; }
+export type PersistedTileType = "walkable" | "wall" | "grass";
+export interface PersistedTile { type?: PersistedTileType | string; tileId?: number; }
+export interface PersistedWarp { y?: number; x?: number; destMapId?: number; destWarpId?: number; }
+export interface PersistedMapRecord {
+  mapId?: number;
+  width?: number;
+  height?: number;
+  tiles?: Record<string, PersistedTile>;
+  warps?: PersistedWarp[];
+  connections?: Partial<Record<"north" | "south" | "east" | "west", number>>;
+  [key: string]: unknown;
+}
+export interface MapMemoryResponse { runId: string; version?: number; updatedAt?: string; maps?: Record<string, PersistedMapRecord>; }
