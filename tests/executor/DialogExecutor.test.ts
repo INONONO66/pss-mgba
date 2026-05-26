@@ -8,6 +8,7 @@ function createController() {
   const controller: DialogController = {
     pressButton: vi.fn(async (button: MgbaButton, frames?: number) => {
       presses.push({ button, frames });
+      await Promise.resolve();
     }),
   };
 
@@ -31,6 +32,17 @@ function dialogCommand(action: DialogCommand["action"]): DialogCommand {
 }
 
 describe("DialogExecutor", () => {
+  it("advance returns immediately when dialog is already ended", async () => {
+    const { controller, presses } = createController();
+    const stateReader = createStateReader();
+
+    const executor = new DialogExecutor(controller, stateReader);
+    const result = await executor.execute(dialogCommand({ kind: "advance" }));
+
+    expect(result).toEqual({ status: "success", reason: "dialog_ended" });
+    expect(presses).toEqual([]);
+  });
+
   it("advance ends dialog after 3 A presses", async () => {
     const { controller, presses } = createController();
     let aPresses = 0;
@@ -41,7 +53,10 @@ describe("DialogExecutor", () => {
     });
     vi.mocked(controller.pressButton).mockImplementation(async (button, frames) => {
       presses.push({ button, frames });
-      if (button === "A") aPresses += 1;
+      if (button === "A") {
+        aPresses += 1;
+      }
+      await Promise.resolve();
     });
 
     const executor = new DialogExecutor(controller, stateReader);
@@ -66,7 +81,10 @@ describe("DialogExecutor", () => {
     });
     vi.mocked(controller.pressButton).mockImplementation(async (button, frames) => {
       presses.push({ button, frames });
-      if (button === "A") aPresses += 1;
+      if (button === "A") {
+        aPresses += 1;
+      }
+      await Promise.resolve();
     });
 
     const executor = new DialogExecutor(controller, stateReader);

@@ -12,6 +12,7 @@ describe("runMgbaPreflight", () => {
   it("runs every safe check in order and reports warning-only missing ROM config", async () => {
     const client = createFakeClient();
     const config = loadConfig({
+      OPENAI_API_KEY: "unit-test-key",
       MGBA_HTTP_BASE_URL: "http://127.0.0.1:5000",
       DEFAULT_TAP_FRAMES: "7"
     });
@@ -45,6 +46,7 @@ describe("runMgbaPreflight", () => {
   it("reports pass for configured ROM path without opening or loading it", async () => {
     const client = createFakeClient();
     const config = loadConfig({
+      OPENAI_API_KEY: "unit-test-key",
       MGBA_HTTP_BASE_URL: "http://127.0.0.1:5000",
       POKEMON_ROM_PATH: "/roms/pokemon-red.gb"
     });
@@ -60,23 +62,23 @@ describe("runMgbaPreflight", () => {
 
   it("continues after failures and includes setup guidance per failed check", async () => {
     const client = createFakeClient({
-      currentFrame: async () => {
+      currentFrame: () => {
         throw new HarnessError("MGBA_UNAVAILABLE", "mGBA-http request could not be completed", {
           context: { endpoint: "/core/currentframe" }
         });
       },
-      screenshot: async () => {
+      screenshot: () => {
         throw new HarnessError("SCREENSHOT_FAILED", "mGBA-http request failed", {
           context: { endpoint: "/core/screenshot", status: 500 }
         });
       },
-      tapButton: async () => {
+      tapButton: () => {
         throw new HarnessError("MGBA_UNAVAILABLE", "mGBA-http request failed", {
           context: { endpoint: "/mgba-http/button/tap", status: 404 }
         });
       }
     });
-    const config = loadConfig({ MGBA_HTTP_BASE_URL: "http://127.0.0.1:5000" });
+    const config = loadConfig({ OPENAI_API_KEY: "unit-test-key", MGBA_HTTP_BASE_URL: "http://127.0.0.1:5000" });
 
     const report = await runMgbaPreflight({ config, client });
 
@@ -113,32 +115,33 @@ function createFakeClient(overrides: Partial<MgbaPreflightClient> = {}): FakeCli
 
   return {
     calls,
-    async currentFrame() {
+    currentFrame() {
       calls.push("currentFrame");
       if (overrides.currentFrame !== undefined) {
         return overrides.currentFrame();
       }
-      return 123;
+      return Promise.resolve(123);
     },
-    async read8(address: number) {
+    read8(address: number) {
       calls.push(`read8:${address}`);
       if (overrides.read8 !== undefined) {
         return overrides.read8(address);
       }
-      return address & 0xff;
+      return Promise.resolve(address % 256);
     },
-    async screenshot(path?: string) {
+    screenshot(path?: string) {
       calls.push("screenshot");
       if (overrides.screenshot !== undefined) {
         return overrides.screenshot(path);
       }
-      return "/tmp/preflight.png";
+      return Promise.resolve("/tmp/preflight.png");
     },
-    async tapButton(button: "B", frames: number) {
+    tapButton(button: "B", frames: number) {
       calls.push(`tapButton:${button}:${frames}`);
       if (overrides.tapButton !== undefined) {
         return overrides.tapButton(button, frames);
       }
+      return Promise.resolve();
     }
   };
 }

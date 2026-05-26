@@ -39,14 +39,33 @@ describe("secret redaction and scanning", () => {
     const recorder = new EvidenceRecorder({ evidenceDir, runId: "redaction-check", now: fixedNow });
 
     await recorder.startRun({ OPENAI_API_KEY: fakeSecret });
-    await recorder.recordDecision({ output: `token ${fakeSecret}` });
+    await recorder.recordTurn({
+      version: 1,
+      turn: 1,
+      run: { runId: "redaction-check", runner: "test", objective: "test objective", sessionKey: "test-session", maxTurns: 1, startedAt: fixedNow().toISOString(), status: "running" },
+      startedAt: fixedNow().toISOString(),
+      finishedAt: fixedNow().toISOString(),
+      frame: { before: 1, after: 2 },
+      systemPrompt: "system",
+      userPrompt: "user",
+      reasoning: "",
+      response: `token ${fakeSecret}`,
+      timeline: [{ sequence: 1, timestamp: fixedNow().toISOString(), type: "assistant-text", text: `token ${fakeSecret}` }],
+      toolCalls: [],
+      gameState: { before: { mode: "overworld" }, after: { mode: "overworld" } },
+      agentMemory: { sections: { objectives: [], journal: [], notes: [], strategy: [] } },
+      mapAscii: "map ascii",
+      mapGraph: "map graph",
+      detector: { status: "running", checkpoints: {} },
+      history: [],
+    });
     await recorder.recordError(new Error(`failed with ${fakeSecret}`));
     await recorder.finishRun("failed_mgba", { reason: fakeSecret });
 
     const paths = buildRunPaths(evidenceDir, "redaction-check");
     const written = await Promise.all([
       readFile(paths.configFile, "utf8"),
-      readFile(paths.eventsFile, "utf8"),
+      readFile(paths.turnFile(1), "utf8"),
       readFile(paths.errorFile(1), "utf8"),
       readFile(paths.summaryFile, "utf8")
     ]);

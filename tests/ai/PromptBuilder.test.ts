@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import { buildSystemPrompt, buildUserMessage } from "../../src/ai/PromptBuilder.js";
 import type { FullGameState } from "../../src/pokemon/PokemonTypes.js";
 
-const identityLines = [
-  "You are a Pokemon Red/Blue game controller AI.",
-  "You observe game state and issue high-level commands.",
-  "The harness handles pathfinding and button execution for you.",
-  "- Output exactly one JSON object per turn"
+const gameKnowledgeLines = [
+  "World Rules",
+  "Progression Model",
+  "NPC Rules",
+  "Stuck Patterns",
+  "Output Rules"
 ];
 
 describe("PromptBuilder", () => {
@@ -31,12 +32,13 @@ describe("PromptBuilder", () => {
     expect(prompt).not.toContain("navigate(x, y)");
   });
 
-  it("all system prompts contain the identity block", () => {
+  it("all system prompts contain game knowledge instead of legacy identity", () => {
     for (const mode of ["overworld", "battle", "dialog"] as const) {
       const prompt = buildSystemPrompt(mode);
-      for (const line of identityLines) {
+      for (const line of gameKnowledgeLines) {
         expect(prompt).toContain(line);
       }
+      expect(prompt).not.toContain("You are a Pokemon Red/Blue game controller AI");
     }
   });
 
@@ -125,6 +127,24 @@ describe("PromptBuilder", () => {
 
     expect(message).toContain("[LAST RESULT]");
     expect(message).toContain("navigate(4,0) → partial: reached edge (unexplored ahead)");
+  });
+
+  it("buildUserMessage includes adviser hint section when present", () => {
+    const message = buildUserMessage({ adviserHint: "Try going north" });
+
+    expect(message).toContain("[ADVISER HINT]\nTry going north");
+  });
+
+  it("buildUserMessage omits adviser hint section when absent", () => {
+    const message = buildUserMessage({});
+
+    expect(message).not.toContain("[ADVISER HINT]");
+  });
+
+  it("buildUserMessage omits adviser hint section when empty", () => {
+    const message = buildUserMessage({ adviserHint: "" });
+
+    expect(message).not.toContain("[ADVISER HINT]");
   });
 
   it("buildUserMessage handles empty optional fields gracefully", () => {

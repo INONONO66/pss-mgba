@@ -1,3 +1,4 @@
+import { stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -27,5 +28,10 @@ if (!redBlueMemoryMap) {
 assertEqual("wCurMap", memoryMapModule.wCurMap, 0xd3_5e);
 assertEqual("RED_BLUE_MEMORY_MAP.wCurMap", redBlueMemoryMap.wCurMap, 0xd3_5e);
 assertEqual("HALL_OF_FAME_MAP_ID", memoryMapModule.HALL_OF_FAME_MAP_ID, 0x76);
+
+const promptAsset = await stat(path.join(repoRoot, "dist", "src", "ai", "prompts", "overworld.md"));
+if (!promptAsset.isFile()) {
+  throw new Error("Built prompt markdown asset is missing");
+}
 
 console.log("Built memory map import smoke passed");

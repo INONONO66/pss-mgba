@@ -2,14 +2,13 @@
 .env.*
 !.env.example
 
-.omo/
-
 runs/
 
 .playwright-mcp/
 node_modules/
 .local-tools/
 dist/
+viewer/dist/
 coverage/
 
 *.gb
@@ -20,3 +19,7 @@ coverage/
 *.png
 
 .pss-mgba/
+*.tsbuildinfo
+viewer/.tsbuild/
+viewer/vite.config.js
+viewer/vite.config.d.ts

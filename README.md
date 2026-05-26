@@ -1,6 +1,6 @@
 # TypeScript Pokemon Harness
 
-Stage 1 is the default bounded Pokemon Red and Blue harness mode for mGBA-http. It reads RAM state, records evidence, chooses safe controller actions, and stops at the Stage 1 contract described below. An opt-in full-game mode exists, but it only treats stable Hall of Fame map observation as completion.
+Full-game is the default Pokemon Red and Blue harness target for mGBA-http. It reads RAM state, records evidence, chooses safe controller actions, and treats stable Hall of Fame map observation as completion. Stage 1 remains available for early-game validation.
 
 This project does not bundle a ROM. You must provide your own legal Pokemon Red or Pokemon Blue ROM and load it in mGBA yourself.
 
@@ -8,7 +8,7 @@ This project does not bundle a ROM. You must provide your own legal Pokemon Red 
 
 If an API key was ever pasted into chat, rotate it now. Treat it as exposed. Put new keys only in `.env`, never in source, tests, shell history, README edits, or evidence files.
 
-Run `pnpm run check:secrets` before sharing changes. The scanner checks project text files for OpenAI-style `sk-` values while skipping generated, dependency, run, and orchestration evidence directories such as `node_modules`, `.git`, `runs`, `coverage`, `dist`, and `.omo`.
+Run `pnpm run check:secrets` before sharing changes. The scanner checks project text files for OpenAI-style `sk-` values while skipping generated, dependency, run, and evidence directories such as `node_modules`, `.git`, `runs`, `coverage`, and `dist`.
 
 The harness never writes emulator memory. It uses safe Game Boy inputs only: `A`, `B`, `Start`, `Select`, `Up`, `Down`, `Left`, and `Right`.
 
@@ -51,48 +51,18 @@ MGBA_HTTP_BASE_URL=http://127.0.0.1:5001
 POKEMON_VERSION=red
 POKEMON_ROM_PATH=/absolute/path/to/legal/rom.gb
 EVIDENCE_DIR=runs
-HARNESS_MODE=stage1
-AI_PROVIDER=heuristic
 ```
 
-`HARNESS_MODE` defaults to `stage1`. Set `HARNESS_MODE=full-game` or pass `--mode full-game` to opt into full-game detection. Full-game mode reads badge progress as a signal, but badges alone do not complete the run. Completion requires stable Hall of Fame observation, not a single transient frame.
-
-Set `AI_PROVIDER=heuristic` for local deterministic actions, or `AI_PROVIDER=openai` to select actions through the OpenAI-compatible Chat Completions policy. For CodexLB, keep `AI_PROVIDER=openai` and point `OPENAI_BASE_URL` at the CodexLB-compatible endpoint.
+The command agent runner uses the AI SDK with an OpenAI-compatible provider. Set the API key and endpoint in `.env`:
 
 ```text
-OPENAI_BASE_URL=https://codex.nekos.me/v1
+OPENAI_BASE_URL=http://127.0.0.1:3100/v1
 OPENAI_API_KEY=your-provider-key-in-dotenv-only
-OPENAI_MODEL=gpt-5.5
+OPENAI_MODEL=grok-4.3
 OPENAI_TEMPERATURE=0.2
 ```
 
-Heuristic mode does not need an API key. `AI_PROVIDER=openai` requires `OPENAI_API_KEY` and sends it only to `OPENAI_BASE_URL`. If `OPENAI_BASE_URL` points at a third-party OpenAI-compatible endpoint, put that provider's key in `OPENAI_API_KEY`; do not send a real OpenAI key to a third-party endpoint. `OPENAI_TEMPERATURE` is the non-secret sampling setting.
-
-### Optional Vision Input
-
-The harness is text-only by default. Set `LLM_VISION_ENABLED=true` only when the selected OpenAI-compatible provider and model support Chat Completions image inputs.
-
-When enabled, each runner step takes the raw screenshot already captured by `snapshot()`, creates a processed image under the run's `vision/` directory, and passes only the latest `LLM_VISION_MAX_IMAGES` processed images to the LLM. The default rolling window is 3 images to keep context and cost bounded.
-
-Vision settings:
-
-```text
-LLM_VISION_ENABLED=false
-LLM_VISION_MAX_IMAGES=3
-LLM_VISION_CROP_LEFT=0
-LLM_VISION_CROP_TOP=0
-LLM_VISION_CROP_WIDTH=0
-LLM_VISION_CROP_HEIGHT=0
-LLM_VISION_MAX_WIDTH=512
-LLM_VISION_MAX_HEIGHT=384
-LLM_VISION_FORMAT=jpeg
-LLM_VISION_QUALITY=70
-LLM_VISION_DETAIL=low
-```
-
-When crop width and height are `0`, the processor automatically trims black padding around the inner game image before resizing, falling back to the full screenshot only when the content area is ambiguous. Explicit crop settings override auto-crop and are applied before resizing. Processed images are resized to fit inside `LLM_VISION_MAX_WIDTH` by `LLM_VISION_MAX_HEIGHT` without enlargement, then encoded as `jpeg`, `webp`, or `png`. `LLM_VISION_QUALITY` applies to JPEG and WebP. Use explicit crop settings only when auto-crop cannot isolate the emulator core content cleanly.
-
-Evidence and policy metadata store only file paths, dimensions, crop rectangles, byte counts, frame, step, media type, and detail. Base64 data URLs are created transiently in memory inside `LLMPolicy` for the outgoing Chat Completions request and are not written to events, decisions, summaries, errors, or tests snapshots.
+Agent runs require `OPENAI_API_KEY`; it is sent only to `OPENAI_BASE_URL`. If `OPENAI_BASE_URL` points at a third-party OpenAI-compatible endpoint, put that provider's key in `OPENAI_API_KEY`; do not send a real OpenAI key to a third-party endpoint. `OPENAI_TEMPERATURE` is the non-secret sampling setting.
 
 ## CLI Commands
 
@@ -102,64 +72,40 @@ Show help:
 pnpm run harness --help
 ```
 
-Print a redacted config summary without constructing mGBA or OpenAI clients:
-
-```bash
-pnpm run harness snapshot --dry-run
-```
-
 Run mGBA preflight against your already running mGBA-http service:
 
 ```bash
 pnpm run harness preflight
 ```
 
-Start the Stage 1 harness loop with the local heuristic policy:
+Start the command agent loop:
 
 ```bash
-pnpm run harness run --policy heuristic --mode stage1 --max-steps 100 --run-id local-stage1
+pnpm run harness run --max-turns 100 --run-id local-agent
 ```
 
-Start a live Stage 1 LLM run through the configured OpenAI-compatible endpoint after setting `OPENAI_API_KEY` privately in `.env`:
+`run` and `agent` are equivalent commands. Both start the `CommandAgentRunner`, which uses the AI SDK to issue high-level game commands (navigate, interact, battle, dialog) through structured actions.
 
-```bash
-pnpm run harness run --policy openai --max-steps 100 --run-id local-stage1-openai
-```
-
-Add `--vision` to require processed screenshot images in each LLM request. With `--vision`, the runner writes the processed files under `runs/<runId>/vision/` and the LLM policy refuses to send a text-only request if no processed image is available for the current decision.
-
-```bash
-pnpm run harness run --policy openai --vision --max-steps 100 --run-id local-stage1-openai-vision
-```
-
-Start an opt-in full-game run. Completion is recorded only after observing Hall of Fame map id `0x76` through RAM-derived map state:
-
-```bash
-pnpm run harness run --mode full-game --policy openai --max-steps 1000 --run-id local-full-game
-```
-
-For the recommended full-game LLM+vision launch path, use:
+For the recommended full-game launch path:
 
 ```bash
 pnpm run harness:full-game --run-id local-full-game
 ```
 
-That script expands to `run --mode full-game --policy openai --vision --max-steps 1500`. It still requires mGBA-http, your own loaded ROM, and a private `OPENAI_API_KEY` when using the OpenAI-compatible policy.
+That script expands to `run --max-turns 1500`. It requires mGBA-http, your own loaded ROM, and `OPENAI_API_KEY` in `.env`.
 
-Start the integrated dev viewer and full-game vision loop together:
+Start the integrated dev viewer and agent together:
 
 ```bash
 pnpm run dev
 ```
 
-`pnpm run dev` starts a local viewer at `http://127.0.0.1:8787` and runs the harness as a shared `run --policy openai --mode full-game --vision --max-steps 1000` session. The page shows the live mGBA screenshot, raw game screenshot history, processed LLM context images, current RAM-derived game state, detailed run events, and the exact stored LLM prompt/response artifacts. It does not reprocess viewer screenshots, write emulator memory, bundle ROM assets, or persist base64 image data.
-
-The LLM policy prompt is player-only: it receives the live objective, detector progress, rich game state summary, map context, recent actions, and optional vision images. It does not inject a separate route supervisor plan into the player prompt.
+`pnpm run dev` starts a local viewer at `http://127.0.0.1:8787` and runs the command agent. The page shows the live mGBA screenshot, raw screenshot history, current RAM-derived game state, per-turn prompts/responses/actions, global memory, and map memory. It does not write emulator memory, bundle ROM assets, or persist base64 image data.
 
 You can override run options after the script name, for example:
 
 ```bash
-pnpm run dev --policy heuristic --max-steps 3 --run-id local-dev-viewer
+pnpm run dev --max-turns 3 --run-id local-dev-viewer
 ```
 
 Send one safe button press for manual smoke checks:
@@ -168,25 +114,12 @@ Send one safe button press for manual smoke checks:
 pnpm run harness press A --frames 5
 ```
 
-Run the opt-in real mGBA smoke workflow against an already running mGBA-http service:
-
-```bash
-RUN_MGBA_INTEGRATION=1 MGBA_HTTP_BASE_URL=http://127.0.0.1:5001 pnpm run smoke:mgba
-```
-
-`pnpm run smoke:mgba` refuses to contact mGBA unless both `RUN_MGBA_INTEGRATION=1` and `MGBA_HTTP_BASE_URL` are set. When enabled, it runs preflight, records a snapshot, presses safe `B` once, then records a second snapshot. It does not press `A`, start mGBA, open ROMs, load ROMs, or validate ROM files beyond the existing config summary showing whether `POKEMON_ROM_PATH` is present. Evidence is written under `runs/<runId>/` by default, or under `EVIDENCE_DIR/<runId>/` when configured.
-
 Supported common options:
 
 ```text
---dry-run              Snapshot only. Prints config summary and exits.
---policy heuristic     Use the local heuristic policy.
---policy openai        Use the OpenAI-compatible policy. Requires OPENAI_API_KEY.
---mode stage1          Use the default Stage 1 detector.
---mode full-game       Use the opt-in full-game detector.
---vision               Enable and require processed LLM image input for snapshot, preflight, or run.
---max-steps N          Override LOOP_MAX_STEPS for snapshot or run.
+--max-turns N          Maximum agent turns for the run.
 --run-id ID            Override HARNESS_RUN_ID for evidence paths.
+--reasoning MODE       Set reasoning effort: provider-default, none, minimal, low, medium, high, xhigh.
 DEV_VIEWER_PORT        Override the integrated dev viewer port; default is 8787.
 ```
 
@@ -210,22 +143,20 @@ If mGBA is absent, the command exits nonzero and prints setup guidance instead o
 
 Stage 1 means the harness attempts to progress from the Pallet start through Oak and starter flow, starter acquisition, Rival battle entry, and Rival battle exit.
 
-The runner must base each action on current observed RAM state and recent actions. It must not use a global hardcoded input timeline. Evidence includes states, decisions, actions, screenshots, errors, and a final summary under `EVIDENCE_DIR`.
-
-When an LLM-backed provider falls back to the local heuristic policy, the recorded decision rationale and citations are marked with `LLM fallback after <CODE>` so fallback-driven progress is distinguishable from LLM-selected actions.
+The agent must base each action on current observed RAM state and recent actions. It must not use a global hardcoded input timeline. Evidence is written under `EVIDENCE_DIR/<runId>/` with per-turn JSON in `turns/`, global memory and run summary in `global/`, raw screenshots, and errors.
 
 ## Full-Game Mode
 
-Full-game mode is opt in through `HARNESS_MODE=full-game` or `--mode full-game`. It preserves the same safe-input and read-only-RAM rules as Stage 1.
+Full-game mode is the default through `HARNESS_MODE=full-game`. It preserves the same safe-input and read-only-RAM rules as Stage 1. Set `HARNESS_MODE=stage1` for early-game validation.
 
 The detector tracks early Stage 1 milestones, badge observation, all-badges observation, and Hall of Fame observation. It does not complete on Rival battle exit or all badges alone. Completion requires two consecutive observations of Hall of Fame map id `0x76` or the derived `hallOfFameComplete` state field.
 
-The LLM full-game prompt treats badges as progress only, forbids memory writes and hardcoded global input timelines, and forbids route-facts-alone completion claims. The local heuristic policy remains a Stage 1-oriented fallback and does not claim reliable full-game clears.
+The agent full-game prompt treats badges as progress only, forbids emulator/RAM memory writes and hardcoded global input timelines, and forbids route-facts-alone completion claims.
 
 ## Upstream Runtime Utilities
 
 This fork keeps its richer Pokemon state reader and memory map as the authoritative
-LLM context source. The upstream runtime refresh has been pulled in as additive
+model context source. The upstream runtime refresh has been pulled in as additive
 utilities for future wiring: run traces, behavior metrics, token usage tracking,
 Prometheus/Grafana assets, stuck-movement memory, and screenshot normalization.
 Do not replace `src/pokemon/memoryMap.ts`, `src/pokemon/PokemonStateReader.ts`,
@@ -268,8 +199,6 @@ RUN_MGBA_INTEGRATION=1 MGBA_HTTP_BASE_URL=http://127.0.0.1:5001 pnpm run test:in
 
 Only enable integration tests when mGBA-http is already running with your ROM loaded.
 
-The fake smoke workflow test runs in the default suite and uses dependency injection only; it does not contact mGBA.
-
 ## Limitations
 
-This is an MVP harness for Pokemon Red and Blue. Stage 1 remains the default and best-supported mode. Full-game mode is an opt-in foundation with read-only progress signals and Hall of Fame-only completion detection; it does not include a full reliable game-clearing strategy. It does not bundle, download, or verify ROM files. It does not start emulator processes. It does not include OBS or Twitch integration. It does not write emulator memory.
+This is an MVP harness for Pokemon Red and Blue. Full-game mode is the default target, with Stage 1 still available for early-game validation. Completion requires read-only Hall of Fame observation; the project does not include a guaranteed full-game strategy. It does not bundle, download, or verify ROM files. It does not start emulator processes. It does not include OBS or Twitch integration. It does not write emulator memory.

@@ -5,28 +5,26 @@ export interface RunPaths {
   readonly runId: string;
   readonly runDir: string;
   readonly configFile: string;
-  readonly eventsFile: string;
-  readonly supervisorEventsFile: string;
   readonly summaryFile: string;
-  readonly statesDir: string;
-  readonly screenshotsDir: string;
+  readonly globalDir: string;
+  readonly turnsDir: string;
   readonly rawScreenshotsDir: string;
   readonly visionDir: string;
-  readonly llmConversationsDir: string;
   readonly errorsDir: string;
-  stateFile(sequence: number): string;
-  screenshotFile(sequence: number): string;
-  llmConversationFile(sequence: number): string;
+  readonly mapMemoryFile: string;
+  readonly agentMemoryFile: string;
+  turnFile(sequence: number): string;
   errorFile(sequence: number): string;
 }
 
 export function buildRunPaths(rootDir: string, runId: string): RunPaths {
+  assertSafeRunId(runId);
   const runDir = path.join(rootDir, runId);
-  const statesDir = path.join(runDir, "states");
-  const screenshotsDir = path.join(runDir, "screenshots");
+  assertRunDirInsideRoot(rootDir, runDir);
+  const globalDir = path.join(runDir, "global");
+  const turnsDir = path.join(runDir, "turns");
   const rawScreenshotsDir = path.join(runDir, "raw-screenshots");
   const visionDir = path.join(runDir, "vision");
-  const llmConversationsDir = path.join(runDir, "llm-conversations");
   const errorsDir = path.join(runDir, "errors");
 
   return {
@@ -34,20 +32,33 @@ export function buildRunPaths(rootDir: string, runId: string): RunPaths {
     runId,
     runDir,
     configFile: path.join(runDir, "config.json"),
-    eventsFile: path.join(runDir, "events.jsonl"),
-    supervisorEventsFile: path.join(runDir, "supervisor-events.jsonl"),
-    summaryFile: path.join(runDir, "summary.json"),
-    statesDir,
-    screenshotsDir,
+    summaryFile: path.join(globalDir, "run-summary.json"),
+    globalDir,
+    turnsDir,
     rawScreenshotsDir,
     visionDir,
-    llmConversationsDir,
     errorsDir,
-    stateFile: (sequence: number) => path.join(statesDir, `${formatSequence(sequence)}.json`),
-    screenshotFile: (sequence: number) => path.join(screenshotsDir, `${formatSequence(sequence)}.json`),
-    llmConversationFile: (sequence: number) => path.join(llmConversationsDir, `${formatSequence(sequence)}.json`),
+    mapMemoryFile: path.join(globalDir, "map-memory.json"),
+    agentMemoryFile: path.join(globalDir, "agent-memory.json"),
+    turnFile: (sequence: number) => path.join(turnsDir, `${formatSequence(sequence)}.json`),
     errorFile: (sequence: number) => path.join(errorsDir, `${formatSequence(sequence)}.json`)
   };
+}
+
+
+export function assertSafeRunId(runId: string): void {
+  if (!/^[A-Za-z0-9._-]+$/.test(runId) || runId === "." || runId === "..") {
+    throw new Error(`Run id must be a safe single path segment: ${runId}`);
+  }
+}
+
+function assertRunDirInsideRoot(rootDir: string, runDir: string): void {
+  const resolvedRoot = path.resolve(rootDir);
+  const resolvedRun = path.resolve(runDir);
+  const relative = path.relative(resolvedRoot, resolvedRun);
+  if (relative.length === 0 || relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error(`Run directory must stay inside evidence root: ${runDir}`);
+  }
 }
 
 export function formatSequence(sequence: number): string {

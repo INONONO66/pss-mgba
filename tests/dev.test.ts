@@ -3,66 +3,55 @@ import { buildDevHarnessArgs, formatDevRunBanner, runDev } from "../src/dev.js";
 import type { AiProvider, HarnessConfig, HarnessMode } from "../src/config.js";
 
 describe("dev command", () => {
-  it("builds a full-game OpenAI vision run by default", () => {
+  it("builds run args with a generated run id by default", () => {
     expect(buildDevHarnessArgs([], "dev-run")).toEqual([
       "run",
-      "--policy",
-      "openai",
-      "--mode",
-      "full-game",
-      "--max-steps",
-      "1000",
       "--run-id",
-      "dev-run",
-      "--vision"
+      "dev-run"
     ]);
   });
 
-  it("preserves explicit user run options while forcing vision", () => {
-    expect(buildDevHarnessArgs(["--policy", "heuristic", "--max-steps", "3", "--run-id", "manual"], "generated")).toEqual([
+  it("preserves explicit user run options", () => {
+    expect(buildDevHarnessArgs(["--max-turns", "3", "--run-id", "manual"], "generated")).toEqual([
       "run",
-      "--policy",
-      "heuristic",
-      "--max-steps",
+      "--max-turns",
       "3",
       "--run-id",
-      "manual",
-      "--mode",
-      "full-game",
-      "--vision"
+      "manual"
+    ]);
+  });
+
+  it("strips agent subcommand and routes to run", () => {
+    expect(buildDevHarnessArgs(["agent", "--run-id", "manual"], "generated")).toEqual([
+      "run",
+      "--run-id",
+      "manual"
     ]);
   });
 
   it("ignores a package-manager argument separator", () => {
-    expect(buildDevHarnessArgs(["--", "--policy", "heuristic", "--run-id", "manual"], "generated")).toEqual([
+    expect(buildDevHarnessArgs(["--", "--max-turns", "5", "--run-id", "manual"], "generated")).toEqual([
       "run",
-      "--policy",
-      "heuristic",
+      "--max-turns",
+      "5",
       "--run-id",
-      "manual",
-      "--mode",
-      "full-game",
-      "--max-steps",
-      "1000",
-      "--vision"
+      "manual"
     ]);
   });
 
   it("starts the viewer with the same run id and closes it after the harness exits", async () => {
     const events: string[] = [];
     const io = createIo();
-    const exitCode = await runDev(["--policy", "heuristic", "--max-steps", "2", "--run-id", "dev-test"], io, {
+    const exitCode = await runDev(["--max-turns", "2", "--run-id", "dev-test"], io, {
       loadConfig(env) {
         return fakeConfig({
           aiProvider: parseAiProvider(env.AI_PROVIDER),
           harnessMode: parseHarnessMode(env.HARNESS_MODE),
           harnessRunId: env.HARNESS_RUN_ID ?? "missing",
-          llmVisionEnabled: env.LLM_VISION_ENABLED === "true",
-          loopMaxSteps: Number(env.LOOP_MAX_STEPS ?? 0)
         });
       },
       async startViewer(config) {
-        events.push(`viewer:${config.harnessRunId}:${config.llmVisionEnabled}`);
+        events.push(`viewer:${config.harnessRunId}`);
         return {
           url: "http://127.0.0.1:8787",
           server: {} as never,
@@ -79,12 +68,12 @@ describe("dev command", () => {
 
     expect(exitCode).toBe(0);
     expect(events).toEqual([
-      "viewer:dev-test:true",
-      "run:run --policy heuristic --max-steps 2 --run-id dev-test --mode full-game --vision",
+      "viewer:dev-test",
+      "run:run --max-turns 2 --run-id dev-test",
       "viewer:closed"
     ]);
     expect(io.out.join("\n")).toContain("Dev viewer: http://127.0.0.1:8787");
-    expect(io.out.join("\n")).toContain("Completion: stable Hall of Fame state only");
+    expect(io.out.join("\n")).toContain("Policy: openai");
   });
 
   it("generates a run id when HARNESS_RUN_ID is blank", async () => {
@@ -95,7 +84,7 @@ describe("dev command", () => {
       const exitCode = await runDev([], createIo(), {
         now: () => new Date("2026-05-23T00:00:00.000Z"),
         loadConfig(env) {
-          return fakeConfig({ harnessRunId: env.HARNESS_RUN_ID ?? "missing", llmVisionEnabled: env.LLM_VISION_ENABLED === "true" });
+          return fakeConfig({ harnessRunId: env.HARNESS_RUN_ID ?? "missing" });
         },
         async startViewer(config) {
           events.push(`viewer:${config.harnessRunId}`);
@@ -114,7 +103,7 @@ describe("dev command", () => {
       expect(exitCode).toBe(0);
       expect(events).toEqual([
         "viewer:2026-05-23T00-00-00-000Z",
-        "run:run --policy openai --mode full-game --max-steps 1000 --run-id 2026-05-23T00-00-00-000Z --vision"
+        "run:run --run-id 2026-05-23T00-00-00-000Z"
       ]);
     } finally {
       if (previous === undefined) {
@@ -125,19 +114,10 @@ describe("dev command", () => {
     }
   });
 
-  it("prints a concise full-game completion banner", () => {
+  it("prints a concise banner", () => {
     expect(formatDevRunBanner(fakeConfig({
-      harnessMode: "full-game",
       aiProvider: "openai",
-      llmVisionEnabled: true,
-      loopMaxSteps: 1500
-    }))).toBe([
-      "Mode: full-game",
-      "Policy: openai",
-      "Vision: enabled",
-      "Max steps: 1500",
-      "Completion: stable Hall of Fame state only",
-    ].join("\n"));
+    }))).toBe("Policy: openai");
   });
 });
 
@@ -157,7 +137,7 @@ function createIo() {
 }
 
 function parseAiProvider(value: string | undefined): AiProvider {
-  return value === "openai" ? "openai" : "heuristic";
+  return "openai";
 }
 
 function parseHarnessMode(value: string | undefined): HarnessMode {
@@ -170,30 +150,16 @@ function fakeConfig(overrides: Partial<HarnessConfig>): HarnessConfig {
     pokemonVersion: "red",
     evidenceDir: "runs",
     harnessRunId: "dev-test",
-    harnessMode: "stage1",
+    harnessMode: "full-game",
     logLevel: "info",
-    loopMaxSteps: 1000,
+    loopMaxSteps: 999_999,
     loopStepDelayMs: 0,
-    maxLlmCalls: 400,
-    llmTimeoutMs: 20000,
-    llmMaxRetries: 1,
     defaultTapFrames: 5,
     defaultHoldFrames: 15,
-    aiProvider: "heuristic",
-    openaiBaseUrl: "https://example.invalid/v1",
-    openaiModel: "gpt-5.5",
+    aiProvider: "openai",
+    openaiBaseUrl: "http://127.0.0.1:3100/v1",
+    openaiModel: "grok-4.3",
     openaiTemperature: 0.2,
-    llmVisionEnabled: false,
-    llmVisionMaxImages: 3,
-    llmVisionCropLeft: 0,
-    llmVisionCropTop: 0,
-    llmVisionCropWidth: 0,
-    llmVisionCropHeight: 0,
-    llmVisionMaxWidth: 512,
-    llmVisionMaxHeight: 384,
-    llmVisionFormat: "jpeg",
-    llmVisionQuality: 70,
-    llmVisionDetail: "low",
     ...overrides
   };
 }

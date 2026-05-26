@@ -1,46 +1,29 @@
 import "dotenv/config";
-import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { inspect } from "node:util";
-import { HeuristicCommandPolicy } from "./ai/HeuristicPolicy.js";
-import { LLMCommandPolicy } from "./ai/LLMPolicy.js";
 import { Controller } from "./control/Controller.js";
 import type { MgbaButton } from "./mgba/MgbaTypes.js";
 import { MGBA_BUTTONS } from "./mgba/MgbaTypes.js";
 import { HarnessActionSchema } from "./control/ActionSchema.js";
-import { loadConfig, type AiProvider, type HarnessConfig } from "./config.js";
+import { loadConfig, type HarnessConfig } from "./config.js";
+import { CommandAgentRunner } from "./agent/CommandAgentRunner.js";
+import type { DynamicReasoningEffort } from "./agent/dynamic-llm.js";
 import { redactSecrets } from "./evidence/redaction.js";
-import { EvidenceRecorder } from "./evidence/EvidenceRecorder.js";
 import { HarnessError } from "./errors.js";
-import { CommandHarnessRunner, type CommandRunnerGameState, type CommandRunResult } from "./loop/CommandHarnessRunner.js";
 
 import { MgbaHttpClient } from "./mgba/MgbaHttpClient.js";
 import { runMgbaPreflight, type MgbaPreflightReport } from "./mgba/preflight.js";
-import { PokemonStateReader } from "./pokemon/PokemonStateReader.js";
-import { FullGameDetector } from "./pokemon/FullGameDetector.js";
-import { Stage1Detector } from "./pokemon/Stage1Detector.js";
-import { MapMemory } from "./pokemon/MapMemory.js";
-import { mapName } from "./pokemon/PokemonCatalog.js";
-import { MapGraph, type MapGraphInput } from "./pokemon/MapGraph.js";
-import { readGameWorld, type GameWorldSnapshot } from "./pokemon/GameWorld.js";
-import type { ExecutionContext } from "./executor/CommandExecutor.js";
-import {
-  createUnifiedController,
-  createNavigateWorldReader,
-  createNavigateMapSource,
-  createInteractStateReader,
-  createDialogStateReader,
-  toCommandGameMode,
-} from "./executor/MgbaAdapters.js";
 
-type HarnessCommand = "preflight" | "run" | "press";
+type HarnessCommand = "preflight" | "run" | "press" | "agent";
 
 export interface CliOptions {
   readonly command?: HarnessCommand;
   readonly help: boolean;
   readonly runId?: string;
+  readonly maxTurns?: number;
   readonly pressButton?: string;
   readonly pressFrames?: number;
+  readonly reasoning?: DynamicReasoningEffort;
 }
 
 export interface CliIo {
@@ -50,7 +33,7 @@ export interface CliIo {
 
 export interface CliFactories {
   readonly loadConfig?: (env: NodeJS.ProcessEnv) => HarnessConfig;
-  readonly createRunner?: (config: HarnessConfig) => CliRunner;
+  readonly createRunner?: (config: HarnessConfig, options: { maxTurns?: number; reasoning?: DynamicReasoningEffort }) => CliRunner;
   readonly runPreflight?: (config: HarnessConfig) => Promise<MgbaPreflightReport>;
   readonly executePress?: (config: HarnessConfig, action: unknown) => Promise<void>;
 }
@@ -75,12 +58,14 @@ export function getHarnessHelp(): string {
     "",
     "Usage:",
     "  pnpm run harness --help",
-    "  pnpm run harness run [--run-id ID]",
+    "  pnpm run harness run [--run-id ID] [--max-turns N] [--reasoning MODE]",
+    "  pnpm run harness agent [--run-id ID] [--max-turns N] [--reasoning MODE]",
     "  pnpm run harness preflight",
     "  pnpm run harness press BUTTON [--frames N]",
     "",
     "Commands:",
-    "  run        Start the harness loop. LLM issues high-level commands (navigate, battle, dialog).",
+    "  run        Start the command agent loop (default). Supports --max-turns, --run-id, and --reasoning.",
+    "  agent      Alias for run.",
     "  preflight  Run mGBA preflight against the running emulator.",
     "  press      Send one safe Game Boy button press.",
   ].join("\n");
@@ -100,6 +85,12 @@ export function parseCliArgs(args: readonly string[]): ParsedOptionResult {
         break;
       case "--run-id":
         options.runId = parseNonEmpty(args[++index], "--run-id", errors);
+        break;
+      case "--max-turns":
+        options.maxTurns = parsePositiveInteger(args[++index], "--max-turns", errors);
+        break;
+      case "--reasoning":
+        options.reasoning = parseReasoningEffort(args[++index], errors);
         break;
       case "--frames":
         options.pressFrames = parsePositiveInteger(args[++index], "--frames", errors);
@@ -155,11 +146,12 @@ export async function runCli(
       case "preflight":
         return await handlePreflight(parsed.options, io, factories);
       case "run":
+      case "agent":
         return await handleRun(parsed.options, io, factories);
       case "press":
         return await handlePress(parsed.options, io, factories);
       default:
-        io.stderr("Missing command.\n" + getHarnessHelp());
+        io.stderr(`Missing command.\n${getHarnessHelp()}`);
         return 1;
     }
   } catch (error) {
@@ -189,7 +181,10 @@ async function handlePreflight(options: CliOptions, io: CliIo, factories: CliFac
 
 async function handleRun(options: CliOptions, io: CliIo, factories: CliFactories): Promise<number> {
   const config = loadCommandConfig(options, factories);
-  const runner = (factories.createRunner ?? createRunner)(config);
+  const runnerOptions = { maxTurns: options.maxTurns, reasoning: options.reasoning };
+  const runner = factories.createRunner
+    ? factories.createRunner(config, runnerOptions)
+    : new CommandAgentRunner(config, runnerOptions);
   const result = await runner.run();
   io.stdout(redactSecrets({ command: "run", result }));
   return result.status === "completed" ? 0 : 1;
@@ -209,174 +204,6 @@ async function handlePress(options: CliOptions, io: CliIo, factories: CliFactori
   await (factories.executePress ?? executePress)(config, parsed.data);
   io.stdout(redactSecrets({ command: "press", action: parsed.data, status: "executed" }));
   return 0;
-}
-
-function createRunner(config: HarnessConfig): CliRunner {
-  const client = new MgbaHttpClient({ baseUrl: config.mgbaHttpBaseUrl });
-  const stateReader = new PokemonStateReader({ client, version: config.pokemonVersion });
-  const mapMemory = new MapMemory();
-  const mapGraph = new MapGraph();
-  const detector = createDetector(config);
-  const evidence = new EvidenceRecorder({ evidenceDir: config.evidenceDir, runId: config.harnessRunId });
-
-  const ram = { read8: (a: number) => client.read8(a), readRange: (a: number, l: number) => client.readRange(a, l), holdButton: (b: MgbaButton, f: number) => client.holdButton(b, f) };
-  const controller = createUnifiedController(ram);
-  const navigateWorldReader = createNavigateWorldReader(ram);
-  let currentWarps: Array<{ y: number; x: number }> = [];
-  const navigateMapSource = createNavigateMapSource(mapMemory, {
-    warpPositions() { return currentWarps; },
-  });
-  const interactStateReader = createInteractStateReader(ram);
-  const dialogStateReader = createDialogStateReader(ram);
-
-  const heuristicPolicy = new HeuristicCommandPolicy();
-  const policy = isLlmProvider(config.aiProvider)
-    ? LLMCommandPolicy.fromConfig(config, heuristicPolicy, {
-      onFallback: (error) => {
-        console.error(`[LLM fallback] ${error.code}: ${error.message}`);
-      },
-      onConversation: async (conversation) => {
-        await evidence.recordLlmConversation(conversation);
-      },
-    })
-    : heuristicPolicy;
-
-  const executionContext: ExecutionContext = {
-    mode: "overworld",
-    fullState: undefined as unknown as ExecutionContext["fullState"],
-    mapWidth: 0,
-    mapHeight: 0,
-    controller,
-    navigateWorldReader,
-    navigateMapSource,
-    interactStateReader,
-    dialogStateReader,
-  };
-
-  let lastWorld: GameWorldSnapshot | undefined;
-  let lastGameState: CommandRunnerGameState | undefined;
-
-  const readGameState = async (): Promise<CommandRunnerGameState> => {
-    const world = await readGameWorld(client);
-    lastWorld = world;
-    currentWarps = world.warps.warps.map((w) => ({ y: w.y, x: w.x }));
-    const menuText = await stateReader.readMenuTextState({ tileMapBytes: world.tileMapBytes });
-    const fullState = await stateReader.readFullState({ menuText });
-    const state: CommandRunnerGameState = {
-      fullState,
-      mode: toCommandGameMode(world.mode),
-      mapId: world.mapLayout.mapId,
-      playerY: world.playerCoords.y,
-      playerX: world.playerCoords.x,
-      facing: fullState.player.facing.direction,
-      mapWidth: world.mapLayout.width * 2,
-      mapHeight: world.mapLayout.height * 2,
-      warps: world.warps.warps.map((w) => ({
-        y: w.y,
-        x: w.x,
-        destWarpId: w.destWarpId,
-        destMapId: w.destMapId,
-        destMapName: mapName(w.destMapId),
-      })),
-      npcs: world.sprites.npcs.filter((n) => n.onScreen).map((n) => ({
-        slot: n.slot,
-        pictureId: n.pictureId,
-        mapY: n.mapY,
-        mapX: n.mapX,
-        facing: n.facing,
-        movementType: n.movementType,
-      })),
-    };
-    lastGameState = state;
-    return state;
-  };
-
-  const updateMapMemory = async () => {
-    if (lastWorld) {
-      mapMemory.update(lastWorld, lastWorld.tileMapBytes);
-    }
-  };
-
-  const updateMapGraph = () => {
-    const inputs: MapGraphInput[] = mapMemory.visitedMaps().map((mapId) => {
-      const warps = lastWorld?.mapLayout.mapId === mapId ? (lastWorld.warps?.warps ?? []) : [];
-      const connections: Partial<Record<"north" | "south" | "east" | "west", number>> = {};
-      if (lastWorld?.mapLayout.mapId === mapId && lastWorld.warps?.connections) {
-        const c = lastWorld.warps.connections;
-        if (c.north) connections.north = c.north.mapId;
-        if (c.south) connections.south = c.south.mapId;
-        if (c.west) connections.west = c.west.mapId;
-        if (c.east) connections.east = c.east.mapId;
-      }
-      return { mapId, warps, connections };
-    });
-    mapGraph.build(inputs);
-  };
-
-  const formatSequence = (n: number): string => n.toString().padStart(6, "0");
-
-  const runner = new CommandHarnessRunner({
-    policy,
-    executionContext,
-    mapMemory,
-    mapGraph,
-    detector,
-    stepDelayMs: config.loopStepDelayMs,
-    readGameState,
-    updateMapMemory,
-    updateMapGraph,
-    onStep: async (step, command, result) => {
-      const gs = lastGameState;
-      const loc = gs ? `${mapName(gs.mapId)}(${gs.mapId}) (${gs.playerX},${gs.playerY}) ${gs.facing}` : "?";
-      const mode = gs?.mode ?? "?";
-      console.log(`[step ${step}] [${mode}] ${loc} | ${JSON.stringify(command)} → ${result.status}: ${result.reason}${result.details ? ` (${result.details})` : ""}`);
-
-      const frame = lastWorld ? await client.currentFrame() : 0;
-
-      if (lastGameState) {
-        await evidence.recordState({ step, frame, state: lastGameState.fullState });
-      }
-
-      await evidence.recordDecision({ step, frame, command });
-
-      await evidence.recordAction({
-        step,
-        frame,
-        action: command,
-        result: { status: result.status, reason: result.reason },
-      });
-
-      const rawPath = path.resolve(evidence.paths.rawScreenshotsDir, `${formatSequence(step)}.png`);
-      try {
-        const savedPath = await client.screenshot(rawPath);
-        await evidence.recordScreenshot({ path: savedPath, frame, step, note: "runner_snapshot" });
-      } catch {
-        /* screenshot capture is best-effort; matches HarnessRunner convention */
-      }
-    },
-  });
-
-  return {
-    async run(): Promise<CommandRunResult> {
-      await evidence.startRun({
-        runId: config.harnessRunId,
-        aiProvider: config.aiProvider,
-        evidenceDir: config.evidenceDir,
-      });
-
-      let runResult: CommandRunResult;
-      try {
-        runResult = await runner.run();
-      } catch (error) {
-        await evidence.recordError(error);
-        await evidence.finishRun("failed_mgba");
-        throw error;
-      }
-
-      await evidence.finishRun(runResult.status, runResult);
-      return runResult;
-    },
-  };
 }
 
 async function executePress(config: HarnessConfig, action: { type: "press"; button: MgbaButton; frames: number }): Promise<void> {
@@ -423,14 +250,6 @@ function formatSafeError(error: unknown): string {
   return redactSecrets(inspect(error));
 }
 
-function createDetector(config: Pick<HarnessConfig, "harnessMode">): Stage1Detector | FullGameDetector {
-  return config.harnessMode === "full-game" ? new FullGameDetector() : new Stage1Detector();
-}
-
-function isLlmProvider(value: string | undefined): value is Extract<AiProvider, "openai"> {
-  return value === "openai";
-}
-
 function parsePositiveInteger(value: string | undefined, name: string, errors: string[]): number | undefined {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 1) {
@@ -448,18 +267,42 @@ function parseNonEmpty(value: string | undefined, name: string, errors: string[]
   return value;
 }
 
+function parseReasoningEffort(value: string | undefined, errors: string[]): DynamicReasoningEffort | undefined {
+  if (value === undefined || value.trim().length === 0) {
+    errors.push("--reasoning must not be empty");
+    return undefined;
+  }
+
+  if (
+    value === "provider-default" ||
+    value === "none" ||
+    value === "minimal" ||
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "xhigh"
+  ) {
+    return value;
+  }
+
+  errors.push("--reasoning must be one of: provider-default, none, minimal, low, medium, high, xhigh");
+  return undefined;
+}
+
 function isHarnessCommand(value: string): value is HarnessCommand {
-  return value === "preflight" || value === "run" || value === "press";
+  return value === "preflight" || value === "run" || value === "press" || value === "agent";
 }
 
 interface MutableCliOptions {
   command?: HarnessCommand;
   help: boolean;
   runId?: string;
+  maxTurns?: number;
   pressButton?: string;
   pressFrames?: number;
+  reasoning?: DynamicReasoningEffort;
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  void main();
+  main();
 }

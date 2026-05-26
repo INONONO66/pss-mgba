@@ -338,6 +338,10 @@ export class MapMemory {
   // Internal
   // -----------------------------------------------------------------------
 
+  loadRecord(record: MapRecord): void {
+    this.maps.set(record.mapId, record);
+  }
+
   private getOrCreate(mapId: number): MapRecord {
     let record = this.maps.get(mapId);
     if (record === undefined) {
@@ -352,13 +356,8 @@ export class MapMemory {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function classifyBlock(collision: TileCollisionData, t0: number, t1: number, t2: number, t3: number): TileType {
-  const types = [
-    classifyTile(collision, t0),
-    classifyTile(collision, t1),
-    classifyTile(collision, t2),
-    classifyTile(collision, t3),
-  ];
+export function classifyBlock(collision: TileCollisionData, _t0: number, _t1: number, t2: number, t3: number): TileType {
+  const types = [classifyTile(collision, t2), classifyTile(collision, t3)];
 
   if (types.includes("grass")) {
     return "grass";

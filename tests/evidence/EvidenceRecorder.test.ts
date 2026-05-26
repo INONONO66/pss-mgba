@@ -2,71 +2,61 @@ import { mkdtemp, readFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { EvidenceRecorder, redactSecrets } from "../../src/evidence/EvidenceRecorder.js";
+import { EvidenceRecorder, redactSecrets, type TurnLog } from "../../src/evidence/EvidenceRecorder.js";
 import { buildRunPaths } from "../../src/evidence/RunPaths.js";
 
 const fakeSecret = `s${"k"}-test-secret-value`;
 
 describe("EvidenceRecorder", () => {
-  it("creates the planned evidence layout with JSONL events", async () => {
+  it("creates the turn/global evidence layout without legacy event or LLM directories", async () => {
     const evidenceDir = await mkdtemp(path.join(os.tmpdir(), "evidence-layout-"));
     const recorder = new EvidenceRecorder({ evidenceDir, runId: "run-1", now: fixedNow });
 
     await recorder.startRun({ provider: "heuristic", OPENAI_API_KEY: fakeSecret });
-    const stateFile = await recorder.recordState({ map: "Pallet", coords: { x: 1, y: 2 } });
-    await recorder.recordDecision({ reason: "current state", action: "A" });
-    await recorder.recordAction({ type: "press", button: "A" });
-    const screenshotFile = await recorder.recordScreenshot({ path: "/tmp/frame.png", frame: 12, step: 1 });
-    const llmFile = await recorder.recordLlmConversation({ model: "grok", prompt: "state", response: "A" });
-    const errorFile = await recorder.recordError(new Error(`bad token ${fakeSecret}`));
+    const turnFile = await recorder.recordTurn(completeTurnLog({
+      runId: "run-1",
+      systemPrompt: `system ${fakeSecret}`,
+      userPrompt: "user",
+      response: "response",
+      toolCalls: [{ toolCallId: "call-1", toolName: "pokemon_wait", input: { frames: 1 }, output: { ok: true }, isGameAction: true }],
+      timeline: [{ sequence: 1, timestamp: fixedNow().toISOString(), type: "assistant-text", text: "response" }],
+    }));
+    await recorder.recordError(new Error(`bad token ${fakeSecret}`));
     const summary = await recorder.finishRun("completed", { checkpoint: "starter acquired" });
 
     const paths = buildRunPaths(evidenceDir, "run-1");
-    await expect(stat(paths.configFile)).resolves.toMatchObject({ isFile: expect.any(Function) });
-    await expect(stat(paths.eventsFile)).resolves.toMatchObject({ isFile: expect.any(Function) });
-    await expect(stat(paths.supervisorEventsFile)).resolves.toMatchObject({ isFile: expect.any(Function) });
-    await expect(stat(paths.summaryFile)).resolves.toMatchObject({ isFile: expect.any(Function) });
-    await expect(stat(paths.statesDir)).resolves.toMatchObject({ isDirectory: expect.any(Function) });
-    await expect(stat(paths.screenshotsDir)).resolves.toMatchObject({ isDirectory: expect.any(Function) });
-    await expect(stat(paths.rawScreenshotsDir)).resolves.toMatchObject({ isDirectory: expect.any(Function) });
-    await expect(stat(paths.visionDir)).resolves.toMatchObject({ isDirectory: expect.any(Function) });
-    await expect(stat(paths.llmConversationsDir)).resolves.toMatchObject({ isDirectory: expect.any(Function) });
-    await expect(stat(paths.errorsDir)).resolves.toMatchObject({ isDirectory: expect.any(Function) });
+    expect((await stat(paths.configFile)).isFile()).toBe(true);
+    expect((await stat(paths.globalDir)).isDirectory()).toBe(true);
+    expect((await stat(paths.turnsDir)).isDirectory()).toBe(true);
+    expect((await stat(paths.rawScreenshotsDir)).isDirectory()).toBe(true);
+    expect((await stat(paths.visionDir)).isDirectory()).toBe(true);
+    expect((await stat(paths.errorsDir)).isDirectory()).toBe(true);
 
-    expect(stateFile).toBe(paths.stateFile(1));
-    expect(screenshotFile).toBe(paths.screenshotFile(1));
-    expect(llmFile).toBe(paths.llmConversationFile(1));
-    expect(errorFile).toBe(paths.errorFile(1));
+    expect(turnFile).toBe(paths.turnFile(1));
     expect(summary.status).toBe("completed");
-    expect(summary.counts).toEqual({ states: 1, decisions: 1, actions: 1, screenshots: 1, llmConversations: 1, errors: 1, supervisorEvents: 0, events: 8 });
-
-    const events = await readJsonLines(paths.eventsFile);
-    expect(events).toHaveLength(8);
-    expect(events.map((event) => event.type)).toEqual([
-      "run_started",
-      "state",
-      "decision",
-      "action",
-      "screenshot",
-      "llm_conversation",
-      "error",
-      "run_finished"
-    ]);
+    expect(summary.counts).toEqual({ turns: 1, screenshots: 0, errors: 1 });
+    await expect(stat(path.join(paths.runDir, `events.${"jsonl"}`))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(stat(path.join(paths.runDir, `llm-${"conversations"}`))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(stat(path.join(paths.runDir, "states"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("redacts secret-like config, error, and event values before writing", async () => {
+  it("redacts secret-like config, turn, error, and summary values before writing", async () => {
     const evidenceDir = await mkdtemp(path.join(os.tmpdir(), "evidence-redaction-"));
     const recorder = new EvidenceRecorder({ evidenceDir, runId: "run-secret", now: fixedNow });
 
     await recorder.startRun({ nested: { apiKey: fakeSecret }, note: `inline ${fakeSecret}` });
-    await recorder.recordDecision({ modelOutput: `uses ${fakeSecret}` });
+    await recorder.recordTurn(completeTurnLog({
+      runId: "run-secret",
+      response: `uses ${fakeSecret}`,
+      timeline: [{ sequence: 1, timestamp: fixedNow().toISOString(), type: "assistant-text", text: `uses ${fakeSecret}` }],
+    }));
     await recorder.recordError({ message: `failed with ${fakeSecret}`, accessToken: "token-value" });
     await recorder.finishRun("failed_mgba", { reason: `contains ${fakeSecret}` });
 
     const paths = buildRunPaths(evidenceDir, "run-secret");
     const written = await Promise.all([
       readFile(paths.configFile, "utf8"),
-      readFile(paths.eventsFile, "utf8"),
+      readFile(paths.turnFile(1), "utf8"),
       readFile(paths.errorFile(1), "utf8"),
       readFile(paths.summaryFile, "utf8")
     ]);
@@ -84,71 +74,57 @@ describe("EvidenceRecorder", () => {
     });
   });
 
-  it("redacts inline image payloads from persisted LLM conversations", async () => {
-    const evidenceDir = await mkdtemp(path.join(os.tmpdir(), "evidence-llm-image-redaction-"));
-    const recorder = new EvidenceRecorder({ evidenceDir, runId: "run-images", now: fixedNow });
-    const echoedImage = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB";
-
-    await recorder.startRun({});
-    const llmFile = await recorder.recordLlmConversation({
-      model: "grok",
-      responseContent: `echoed ${echoedImage}`
-    });
-
-    const content = await readFile(llmFile, "utf8");
-    expect(content).toContain("data:image/[redacted];base64,[REDACTED]");
-    expect(content).not.toContain(echoedImage);
-    expect(content).not.toContain("iVBORw0KGgoAAAANS");
+  it("rejects unsafe run ids before creating paths", async () => {
+    expect(() => buildRunPaths("runs", "../escape")).toThrow(/safe single path segment/);
+    expect(() => buildRunPaths("runs", "bad/id")).toThrow(/safe single path segment/);
+    expect(() => buildRunPaths("runs", "safe-run_1.2")).not.toThrow();
   });
 
-  it("records supervisor events in a dedicated artifact and mirrors them to the run event stream", async () => {
-    const evidenceDir = await mkdtemp(path.join(os.tmpdir(), "evidence-supervisor-"));
-    const recorder = new EvidenceRecorder({ evidenceDir, runId: "run-supervisor", now: fixedNow });
+  it("rejects incomplete turn logs before writing", async () => {
+    const evidenceDir = await mkdtemp(path.join(os.tmpdir(), "evidence-invalid-turn-"));
+    const recorder = new EvidenceRecorder({ evidenceDir, runId: "invalid-turn", now: fixedNow });
 
-    await recorder.startRun({});
-    await recorder.recordSupervisorEvent({
-      schema: "openomni.supervisor.event.v1",
-      source: "pss-mgba",
-      type: "supervisor.improvement.recorded",
-      timestamp: fixedNow().toISOString(),
-      runId: "run-supervisor",
-      step: 4,
-      payload: {
-        id: "break-loop-1",
-        stuckReason: "same sign text",
-        hypothesis: "turn away before interacting again",
-        guidance: ["Do not press A on the same target."],
-      },
-    });
-    const summary = await recorder.finishRun("failed_timeout");
+    await recorder.startRun({ provider: "test" });
 
-    const paths = buildRunPaths(evidenceDir, "run-supervisor");
-    const supervisorEvents = await readJsonLines(paths.supervisorEventsFile);
-    const events = await readJsonLines(paths.eventsFile);
+    await expect(recorder.recordTurn({ turn: 1 } as never)).rejects.toThrow(/Turn log is missing required integrated fields/);
+  });
 
-    expect(summary.counts.supervisorEvents).toBe(1);
-    expect(supervisorEvents).toMatchObject([{
-      schema: "openomni.supervisor.event.v1",
-      source: "pss-mgba",
-      type: "supervisor.improvement.recorded",
-    }]);
-    expect(events.map((event) => event.type)).toEqual([
-      "run_started",
-      "supervisor_event",
-      "run_finished",
-    ]);
+  it("rejects turn logs with mismatched run metadata or malformed timeline", async () => {
+    const evidenceDir = await mkdtemp(path.join(os.tmpdir(), "evidence-bad-timeline-"));
+    const recorder = new EvidenceRecorder({ evidenceDir, runId: "timeline-run", now: fixedNow });
+    await recorder.startRun({ provider: "test" });
+
+    await expect(recorder.recordTurn(completeTurnLog({ runId: "other-run" }))).rejects.toThrow(/Turn log is missing required integrated fields/);
+    await expect(recorder.recordTurn(completeTurnLog({ runId: "timeline-run", timeline: [{ type: "tool-call" } as never] }))).rejects.toThrow(/Turn log is missing required integrated fields/);
   });
 });
 
-function fixedNow(): Date {
-  return new Date("2026-05-22T00:00:00.000Z");
+function completeTurnLog(overrides: Partial<TurnLog> & { runId?: string } = {}): TurnLog {
+  const runId = typeof overrides.runId === "string" ? overrides.runId : "run-1";
+  const base: TurnLog = {
+    version: 1,
+    turn: 1,
+    run: { runId, runner: "test", objective: "test objective", sessionKey: "test-session", maxTurns: 1, startedAt: fixedNow().toISOString(), status: "running" },
+    startedAt: fixedNow().toISOString(),
+    finishedAt: fixedNow().toISOString(),
+    frame: { before: 1, after: 2 },
+    systemPrompt: "system",
+    userPrompt: "user",
+    reasoning: "",
+    response: "response",
+    timeline: [],
+    toolCalls: [],
+    gameState: { before: { mode: "overworld" }, after: { mode: "overworld" } },
+    agentMemory: { sections: { objectives: [], journal: [], notes: [], strategy: [] } },
+    mapAscii: "map ascii",
+    mapGraph: "map graph",
+    detector: { status: "running", checkpoints: {} },
+    history: [],
+  };
+  const { runId: _runId, ...rest } = overrides;
+  return { ...base, ...rest } satisfies TurnLog;
 }
 
-async function readJsonLines(file: string): Promise<Array<Record<string, unknown> & { type: string }>> {
-  const content = await readFile(file, "utf8");
-  return content
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as Record<string, unknown> & { type: string });
+function fixedNow(): Date {
+  return new Date("2026-05-22T00:00:00.000Z");
 }

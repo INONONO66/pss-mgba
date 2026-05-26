@@ -173,6 +173,17 @@ describe('createApiRouter', () => {
     expect(fixture.messages).toEqual([])
   })
 
+  it('can route tokenless root requests to the only registered instance when enabled', async () => {
+    const socketMessage = formatMessage('core.currentFrame')
+    const fixture = createFixture(new Map([[socketMessage, '12345']]), { fallbackToSingleInstance: true })
+
+    const response = await fixture.app.request('/core/currentframe')
+
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe('12345')
+    expect(fixture.messages).toEqual([socketMessage])
+  })
+
   it('returns PNG bytes for /core/screenshot after reading the bind-mounted capture file', async () => {
     const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a])
     readFileMock.setResponse(pngBytes)
@@ -213,7 +224,10 @@ describe('createApiRouter', () => {
   })
 })
 
-function createFixture(responses: Map<string, string>): Fixture {
+function createFixture(
+  responses: Map<string, string>,
+  options: { readonly fallbackToSingleInstance?: boolean } = {},
+): Fixture {
   const messages: string[] = []
   const client = new MgbaSocketClient()
   const send = vi.fn<(message: string) => Promise<string>>((message) => {
@@ -247,6 +261,9 @@ function createFixture(responses: Map<string, string>): Fixture {
 
   const app = new Hono()
   app.route('/api/v1/:token', createApiRouter(registry))
+  if (options.fallbackToSingleInstance) {
+    app.route('/', createApiRouter(registry, { fallbackToSingleInstance: true }))
+  }
 
   return { app, messages }
 }

@@ -117,13 +117,20 @@ export async function executeNavigate(
   for (const next of pathResult.path) {
     const stepResult = await walkOneStep(current, next, controller, worldReader, mapId);
     if (stepResult.interrupt !== undefined) return stepResult.interrupt;
-    if (stepResult.blocked) return { status: "failed", reason: "blocked_by_npc" };
+    if (stepResult.blocked) {
+      return { status: "failed", reason: "blocked_by_npc" };
+    }
     current = stepResult.position;
   }
 
   if (isGoalWarp && !isGoalWalkable && isAdjacent(current, originalGoal)) {
     const pushResult = await tryPushIntoGoal(current, originalGoal, controller, worldReader, mapId, warps);
     if (pushResult !== undefined) return pushResult;
+  }
+
+  if (isGoalWarp && samePosition(current, originalGoal)) {
+    const exitResult = await tryStepOffEdgeWarp(current, map.width, map.height, controller, worldReader, mapId);
+    if (exitResult !== undefined) return exitResult;
   }
 
   if (pathResult.status === "partial") {
@@ -191,6 +198,50 @@ async function tryPushIntoGoal(
   if (interrupt !== undefined) return interrupt;
 
   return { status: "success", reason: "arrived" };
+}
+
+async function tryStepOffEdgeWarp(
+  current: WorldPosition,
+  width: number,
+  height: number,
+  controller: NavigateController,
+  worldReader: NavigateWorldReader,
+  expectedMapId: number,
+): Promise<CommandResult | undefined> {
+  const target = edgeExitTarget(current, width, height);
+  if (target === undefined) {
+    return undefined;
+  }
+
+  const button = directionButton(current, target);
+  await controller.pressButton(button, 5);
+  const moved = await waitForStep(worldReader, current);
+  if (moved === undefined) {
+    return undefined;
+  }
+
+  const interrupt = await interruptResult(worldReader, expectedMapId, moved.mapId);
+  if (interrupt !== undefined) {
+    return interrupt;
+  }
+
+  return { status: "success", reason: "arrived" };
+}
+
+function edgeExitTarget(pos: Position, width: number, height: number): Position | undefined {
+  if (pos.y === height - 1) {
+    return { y: pos.y + 1, x: pos.x };
+  }
+  if (pos.y === 0) {
+    return { y: pos.y - 1, x: pos.x };
+  }
+  if (pos.x === width - 1) {
+    return { y: pos.y, x: pos.x + 1 };
+  }
+  if (pos.x === 0) {
+    return { y: pos.y, x: pos.x - 1 };
+  }
+  return undefined;
 }
 
 function findAdjacentWalkable(grid: boolean[][], target: Position, width: number, height: number): Position | undefined {
