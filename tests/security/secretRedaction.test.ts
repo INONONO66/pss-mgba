@@ -39,26 +39,7 @@ describe("secret redaction and scanning", () => {
     const recorder = new EvidenceRecorder({ evidenceDir, runId: "redaction-check", now: fixedNow });
 
     await recorder.startRun({ OPENAI_API_KEY: fakeSecret });
-    await recorder.recordTurn({
-      version: 1,
-      turn: 1,
-      run: { runId: "redaction-check", runner: "test", objective: "test objective", sessionKey: "test-session", maxTurns: 1, startedAt: fixedNow().toISOString(), status: "running" },
-      startedAt: fixedNow().toISOString(),
-      finishedAt: fixedNow().toISOString(),
-      frame: { before: 1, after: 2 },
-      systemPrompt: "system",
-      userPrompt: "user",
-      reasoning: "",
-      response: `token ${fakeSecret}`,
-      timeline: [{ sequence: 1, timestamp: fixedNow().toISOString(), type: "assistant-text", text: `token ${fakeSecret}` }],
-      toolCalls: [],
-      gameState: { before: { mode: "overworld" }, after: { mode: "overworld" } },
-      agentMemory: { sections: { objectives: [], journal: [], notes: [], strategy: [] } },
-      mapAscii: "map ascii",
-      mapGraph: "map graph",
-      detector: { status: "running", checkpoints: {} },
-      history: [],
-    });
+    await recorder.recordTurn({ turn: 1, startedAt: fixedNow().toISOString(), finishedAt: fixedNow().toISOString(), response: `token ${fakeSecret}` });
     await recorder.recordError(new Error(`failed with ${fakeSecret}`));
     await recorder.finishRun("failed_mgba", { reason: fakeSecret });
 

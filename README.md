@@ -1,6 +1,6 @@
 # TypeScript Pokemon Harness
 
-Full-game is the default Pokemon Red and Blue harness target for mGBA-http. It reads RAM state, records evidence, chooses safe controller actions, and treats stable Hall of Fame map observation as completion. Stage 1 remains available for early-game validation.
+Stage 1 is the default bounded Pokemon Red and Blue harness mode for mGBA-http. It reads RAM state, records evidence, chooses safe controller actions, and stops at the Stage 1 contract described below. An opt-in full-game mode exists, but it only treats stable Hall of Fame map observation as completion.
 
 This project does not bundle a ROM. You must provide your own legal Pokemon Red or Pokemon Blue ROM and load it in mGBA yourself.
 
@@ -8,7 +8,7 @@ This project does not bundle a ROM. You must provide your own legal Pokemon Red 
 
 If an API key was ever pasted into chat, rotate it now. Treat it as exposed. Put new keys only in `.env`, never in source, tests, shell history, README edits, or evidence files.
 
-Run `pnpm run check:secrets` before sharing changes. The scanner checks project text files for OpenAI-style `sk-` values while skipping generated, dependency, run, and evidence directories such as `node_modules`, `.git`, `runs`, `coverage`, and `dist`.
+Run `pnpm run check:secrets` before sharing changes. The scanner checks project text files for OpenAI-style `sk-` values while skipping generated, dependency, run, and orchestration evidence directories such as `node_modules`, `.git`, `runs`, `coverage`, `dist`, and `.omo`.
 
 The harness never writes emulator memory. It uses safe Game Boy inputs only: `A`, `B`, `Start`, `Select`, `Up`, `Down`, `Left`, and `Right`.
 
@@ -56,13 +56,17 @@ EVIDENCE_DIR=runs
 The command agent runner uses the AI SDK with an OpenAI-compatible provider. Set the API key and endpoint in `.env`:
 
 ```text
-OPENAI_BASE_URL=http://127.0.0.1:3100/v1
+OPENAI_BASE_URL=https://codex.nekos.me/v1
 OPENAI_API_KEY=your-provider-key-in-dotenv-only
-OPENAI_MODEL=grok-4.3
+OPENAI_MODEL=gpt-5.5
 OPENAI_TEMPERATURE=0.2
 ```
 
-Agent runs require `OPENAI_API_KEY`; it is sent only to `OPENAI_BASE_URL`. If `OPENAI_BASE_URL` points at a third-party OpenAI-compatible endpoint, put that provider's key in `OPENAI_API_KEY`; do not send a real OpenAI key to a third-party endpoint. `OPENAI_TEMPERATURE` is the non-secret sampling setting.
+`OPENAI_API_KEY` is required and sent only to `OPENAI_BASE_URL`. If `OPENAI_BASE_URL` points at a third-party OpenAI-compatible endpoint, put that provider's key in `OPENAI_API_KEY`; do not send a real OpenAI key to a third-party endpoint. `OPENAI_TEMPERATURE` is the non-secret sampling setting.
+
+### Vision Support (Deferred)
+
+Vision input for the command agent runner is not yet implemented. The existing vision processing infrastructure (`ScreenshotProcessor`, vision image settings) remains available for future integration but is not wired into the agent loop.
 
 ## CLI Commands
 
@@ -84,7 +88,7 @@ Start the command agent loop:
 pnpm run harness run --max-turns 100 --run-id local-agent
 ```
 
-`run` and `agent` are equivalent commands. Both start the `CommandAgentRunner`, which uses the AI SDK to issue high-level game commands (navigate, interact, battle, dialog) through structured actions.
+`run` and `agent` are equivalent commands. Both start the `CommandAgentRunner`, which uses the AI SDK to issue high-level game commands (navigate, interact, battle, dialog) through tool calls.
 
 For the recommended full-game launch path:
 
@@ -100,7 +104,7 @@ Start the integrated dev viewer and agent together:
 pnpm run dev
 ```
 
-`pnpm run dev` starts a local viewer at `http://127.0.0.1:8787` and runs the command agent. The page shows the live mGBA screenshot, raw screenshot history, current RAM-derived game state, per-turn prompts/responses/actions, global memory, and map memory. It does not write emulator memory, bundle ROM assets, or persist base64 image data.
+`pnpm run dev` starts a local viewer at `http://127.0.0.1:8787` and runs the command agent. The page shows the live mGBA screenshot, raw game screenshot history, current RAM-derived game state, detailed run events with agent tool-call/tool-result evidence, and LLM conversation artifacts. It does not write emulator memory, bundle ROM assets, or persist base64 image data.
 
 You can override run options after the script name, for example:
 
@@ -143,20 +147,20 @@ If mGBA is absent, the command exits nonzero and prints setup guidance instead o
 
 Stage 1 means the harness attempts to progress from the Pallet start through Oak and starter flow, starter acquisition, Rival battle entry, and Rival battle exit.
 
-The agent must base each action on current observed RAM state and recent actions. It must not use a global hardcoded input timeline. Evidence is written under `EVIDENCE_DIR/<runId>/` with per-turn JSON in `turns/`, global memory and run summary in `global/`, raw screenshots, and errors.
+The agent must base each action on current observed RAM state and recent actions. It must not use a global hardcoded input timeline. Evidence includes states, decisions, actions, screenshots, errors, and a final summary under `EVIDENCE_DIR`.
 
 ## Full-Game Mode
 
-Full-game mode is the default through `HARNESS_MODE=full-game`. It preserves the same safe-input and read-only-RAM rules as Stage 1. Set `HARNESS_MODE=stage1` for early-game validation.
+Full-game mode is opt in through `HARNESS_MODE=full-game`. It preserves the same safe-input and read-only-RAM rules as Stage 1.
 
 The detector tracks early Stage 1 milestones, badge observation, all-badges observation, and Hall of Fame observation. It does not complete on Rival battle exit or all badges alone. Completion requires two consecutive observations of Hall of Fame map id `0x76` or the derived `hallOfFameComplete` state field.
 
-The agent full-game prompt treats badges as progress only, forbids emulator/RAM memory writes and hardcoded global input timelines, and forbids route-facts-alone completion claims.
+The agent full-game prompt treats badges as progress only, forbids memory writes and hardcoded global input timelines, and forbids route-facts-alone completion claims.
 
 ## Upstream Runtime Utilities
 
 This fork keeps its richer Pokemon state reader and memory map as the authoritative
-model context source. The upstream runtime refresh has been pulled in as additive
+LLM context source. The upstream runtime refresh has been pulled in as additive
 utilities for future wiring: run traces, behavior metrics, token usage tracking,
 Prometheus/Grafana assets, stuck-movement memory, and screenshot normalization.
 Do not replace `src/pokemon/memoryMap.ts`, `src/pokemon/PokemonStateReader.ts`,
@@ -201,4 +205,4 @@ Only enable integration tests when mGBA-http is already running with your ROM lo
 
 ## Limitations
 
-This is an MVP harness for Pokemon Red and Blue. Full-game mode is the default target, with Stage 1 still available for early-game validation. Completion requires read-only Hall of Fame observation; the project does not include a guaranteed full-game strategy. It does not bundle, download, or verify ROM files. It does not start emulator processes. It does not include OBS or Twitch integration. It does not write emulator memory.
+This is an MVP harness for Pokemon Red and Blue. Stage 1 remains the default and best-supported mode. Full-game mode is an opt-in foundation with read-only progress signals and Hall of Fame-only completion detection; it does not include a full reliable game-clearing strategy. It does not bundle, download, or verify ROM files. It does not start emulator processes. It does not include OBS or Twitch integration. It does not write emulator memory.

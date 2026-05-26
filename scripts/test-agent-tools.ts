@@ -5,6 +5,10 @@ import type {
 } from "../src/agent/CommandAgentContext.js";
 import { createCommandTools } from "../src/agent/command-tools.js";
 import { createMemoryTools } from "../src/agent/memory-tools.js";
+import {
+  createSaveLoadTools,
+  type SaveLoadJournalEntry,
+} from "../src/agent/saveload-tools.js";
 import type { GameMode } from "../src/control/CommandTypes.js";
 import type { MgbaButton } from "../src/mgba/MgbaTypes.js";
 
@@ -24,6 +28,8 @@ const pressedButtons: Array<{
   readonly button: MgbaButton;
   readonly frames?: number;
 }> = [];
+const saveSlots: number[] = [];
+const loadSlots: number[] = [];
 const memoryEntries: MemoryEntry[] = [];
 
 async function main(): Promise<void> {
@@ -82,8 +88,33 @@ async function main(): Promise<void> {
     })
   );
 
+  const journal: SaveLoadJournalEntry[] = [];
+  const saveLoadTools = createSaveLoadTools(
+    {
+      loadStateSlot: async (slot: number) => {
+        loadSlots.push(slot);
+        await Promise.resolve();
+      },
+      saveStateSlot: async (slot: number) => {
+        saveSlots.push(slot);
+        await Promise.resolve();
+      },
+    } as never,
+    () => "overworld",
+    { journal }
+  );
+  results.push(
+    await runTool("pokemon_save", saveLoadTools.pokemon_save, {
+      label: "tool smoke",
+      slot: 0,
+    })
+  );
+  results.push(
+    await runTool("pokemon_load", saveLoadTools.pokemon_load, { slot: 0 })
+  );
+
   console.log(
-    JSON.stringify({ pressedButtons, results }, null, 2)
+    JSON.stringify({ loadSlots, pressedButtons, results, saveSlots }, null, 2)
   );
 }
 
@@ -127,6 +158,14 @@ function createCommandContext(mode: GameMode): CommandAgentContext {
         async isDialogActive() {
           await Promise.resolve();
           return dialogReads === 0;
+        },
+        async isWindowVisible() {
+          await Promise.resolve();
+          return dialogReads === 0;
+        },
+        async isInBattle() {
+          await Promise.resolve();
+          return false;
         },
         async isNamingScreenActive() {
           await Promise.resolve();
