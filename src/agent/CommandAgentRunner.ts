@@ -10,31 +10,30 @@ import type {
   CommandResult,
   GameMode,
 } from "../control/CommandTypes.js";
-import {
-  EvidenceRecorder,
-  type TurnTimelineEvent,
-  type TurnToolCallLog,
-} from "../evidence/EvidenceRecorder.js";
+import { EvidenceRecorder } from "../evidence/EvidenceRecorder.js";
 import { executeCommand } from "../executor/CommandExecutor.js";
 import type { DetectorStatus } from "../pokemon/Detector.js";
 import type { HarnessStatus } from "../types.js";
-import { AgentMemoryStore } from "./AgentMemoryStore.js";
+import { AgentMemoryStore } from "./AgentMemoryStore";
 import {
   type CommandAgentContext,
   type CommandAgentGameState,
   createCommandAgentContext,
-} from "./CommandAgentContext.js";
-import { buildAgentObservation } from "./command-observation.js";
-import { createCommandTools } from "./command-tools.js";
+} from "./CommandAgentContext";
+import { buildAgentObservation } from "./command-observation";
+import { createCommandTools } from "./command-tools";
 import {
   buildInstructions,
   createDynamicLlm,
   type DynamicLlmContext,
   type DynamicReasoningEffort,
-} from "./dynamic-llm.js";
-import { createMemoryTools } from "./memory-tools.js";
+} from "./dynamic-llm";
+import { createMemoryTools } from "./memory-tools";
+import { createSaveLoadTools } from "./saveload-tools";
 
 const HISTORY_LIMIT = 10;
+const AUTO_CHECKPOINT_SLOT = 8;
+const AUTO_CHECKPOINT_INTERVAL_TURNS = 20;
 const SESSION_DIRECTORY = "agent-sessions";
 const AGENT_SCREENSHOT_NOTE = "command_agent_turn_snapshot";
 
@@ -46,6 +45,9 @@ const WAIT_TOOL_NAMES = ["pokemon_wait"] as const;
 const OVERWORLD_TOOL_NAMES = [
   "pokemon_navigate",
   "pokemon_interact",
+  "pokemon_save",
+  "pokemon_load",
+  "pokemon_load_rollback",
 ] as const;
 const DIALOG_TOOL_NAMES = ["pokemon_dialog"] as const;
 const BATTLE_TOOL_NAMES = ["pokemon_battle"] as const;
@@ -65,6 +67,7 @@ export interface CommandAgentRunnerOptions {
   readonly model?: LanguageModel;
   readonly now?: () => Date;
   readonly objective?: string;
+  readonly onAutoCheckpoint?: (turn: number) => void | Promise<void>;
   readonly onEvent?: (event: AgentEvent, turn: number) => void | Promise<void>;
   readonly onTurnEnd?: (
     turn: number,
@@ -98,6 +101,14 @@ interface PendingToolCallEvidence {
   readonly toolName: string;
 }
 
+interface TurnToolCallLog {
+  readonly input: unknown;
+  readonly isGameAction: boolean;
+  output?: unknown;
+  readonly toolCallId: string;
+  readonly toolName: string;
+}
+
 interface TurnLogDraft {
   agentMemory: unknown;
   detector: unknown;
@@ -105,27 +116,16 @@ interface TurnLogDraft {
   frame: { before?: number; after?: number };
   gameState: { before: unknown; after?: unknown };
   history: readonly CommandHistoryEntry[];
-  mapAscii: string;
-  mapGraph: string;
+  mapAscii?: string;
+  mapGraph?: string;
   parsedCommand?: unknown;
   reasoning: string;
   response: string;
-  run: {
-    runId: string;
-    runner: string;
-    objective: string;
-    sessionKey: string;
-    maxTurns: number;
-    startedAt: string;
-    status: HarnessStatus | "running";
-  };
   startedAt: string;
   systemPrompt: string;
-  timeline: TurnTimelineEvent[];
   toolCalls: TurnToolCallLog[];
   turn: number;
   userPrompt: string;
-  version: 1;
 }
 
 export class CommandAgentRunner {
@@ -146,6 +146,7 @@ export class CommandAgentRunner {
   private finalFrame: number | undefined;
   private llmCalls = 0;
   private lastResult: CommandResult | undefined;
+  private rollbackProgressSequence = 0;
   private turn = 0;
 
   constructor(config: HarnessConfig, options: CommandAgentRunnerOptions = {}) {
@@ -180,7 +181,6 @@ export class CommandAgentRunner {
   async run(): Promise<CommandAgentRunResult> {
     const startedAt = this.nowIso();
     let runResult: CommandAgentRunResult | undefined;
-    let failureStatus: HarnessStatus = "failed_mgba";
 
     await this.evidence.startRun({
       aiProvider: this.context.config.aiProvider,
@@ -264,17 +264,7 @@ export class CommandAgentRunner {
         );
         const userPrompt = normalizeMessageContent(observation);
         const turnLog: TurnLogDraft = {
-          version: 1,
           turn: this.turn,
-          run: {
-            runId: this.evidence.paths.runId,
-            runner: "CommandAgentRunner",
-            objective: this.objective,
-            sessionKey: this.sessionKey,
-            maxTurns: this.maxTurns,
-            startedAt,
-            status: "running",
-          },
           startedAt: this.nowIso(),
           frame: { before: beforeFrame },
           systemPrompt: buildInstructions(this.modeContext),
@@ -284,7 +274,6 @@ export class CommandAgentRunner {
               : JSON.stringify(userPrompt),
           reasoning: "",
           response: "",
-          timeline: [],
           toolCalls: [],
           gameState: { before: state.fullState },
           agentMemory: this.agentMemoryStore.snapshot(),
@@ -299,32 +288,28 @@ export class CommandAgentRunner {
           history: [...this.commandHistory],
         };
 
-        let streamStatus: HarnessStatus;
-        try {
-          const run = await session.send({
-            type: "user-message",
-            content: observation,
-          });
+        const run = await session.send({
+          type: "user-message",
+          content: observation,
+        });
 
-          streamStatus = await this.consumeRunEvents(
-            run.stream(),
-            () => session.interrupt(),
-            tools,
-            turnLog
-          );
-        } catch (error) {
-          failureStatus = "failed_llm";
-          turnLog.timeline.push({
-            sequence: turnLog.timeline.length + 1,
-            timestamp: this.nowIso(),
-            type: "turn-error",
-            message: formatErrorMessage(error),
-          });
-          await this.finalizeAndRecordTurnLog(turnLog, "failed_llm", tools);
-          throw error;
-        }
-
-        const afterStatus = await this.finalizeAndRecordTurnLog(turnLog, streamStatus, tools);
+        const streamStatus = await this.consumeRunEvents(
+          run.stream(),
+          () => session.interrupt(),
+          tools,
+          turnLog
+        );
+        const afterState = await this.refreshState();
+        const afterStatus = this.updateDetector(afterState);
+        this.updateModeContext(afterState.mode, tools);
+        turnLog.finishedAt = this.nowIso();
+        turnLog.frame.after = await this.safeCurrentFrame();
+        turnLog.gameState.after = afterState.fullState;
+        turnLog.detector = afterStatus;
+        turnLog.history = [...this.commandHistory];
+        await this.evidence.recordTurn(
+          turnLog as Required<Pick<TurnLogDraft, "finishedAt">> & TurnLogDraft
+        );
         await this.options.onTurnEnd?.(this.turn, afterStatus);
 
         if (streamStatus !== "running") {
@@ -336,6 +321,7 @@ export class CommandAgentRunner {
           break;
         }
 
+        await this.maybeAutoCheckpoint();
         if (this.context.config.loopStepDelayMs > 0) {
           await this.sleep(this.context.config.loopStepDelayMs);
         }
@@ -345,11 +331,10 @@ export class CommandAgentRunner {
       await this.evidence.finishRun(runResult.status, runResult);
       return runResult;
     } catch (error) {
-      const status = classifyRunFailure(error, failureStatus);
       await this.evidence.recordError(error);
-      await this.evidence.finishRun(status, {
+      await this.evidence.finishRun("failed_mgba", {
         startedAt,
-        status,
+        status: "failed_mgba",
       });
       throw error;
     } finally {
@@ -357,48 +342,16 @@ export class CommandAgentRunner {
     }
   }
 
-
-  private async finalizeAndRecordTurnLog(
-    turnLog: TurnLogDraft,
-    streamStatus: HarnessStatus | "running",
-    tools: AgentTools
-  ): Promise<DetectorStatus> {
-    let afterState: CommandAgentGameState | undefined;
-    try {
-      afterState = await this.refreshState();
-    } catch {
-      afterState = undefined;
-    }
-
-    const afterStatus = afterState === undefined
-      ? this.detectorStatus()
-      : this.updateDetector(afterState);
-    if (afterState !== undefined) {
-      this.updateModeContext(afterState.mode, tools);
-    }
-
-    turnLog.finishedAt = this.nowIso();
-    turnLog.frame.after = await this.safeCurrentFrame();
-    if (afterState !== undefined) {
-      turnLog.gameState.after = afterState.fullState;
-    }
-    turnLog.detector = afterStatus;
-    turnLog.history = [...this.commandHistory];
-    turnLog.run.status = streamStatus !== "running"
-      ? streamStatus
-      : isDetectorComplete(afterStatus)
-        ? "completed"
-        : "running";
-    await this.evidence.recordTurn(
-      turnLog as Required<Pick<TurnLogDraft, "finishedAt">> & TurnLogDraft
-    );
-    return afterStatus;
-  }
-
   private createTools(): AgentTools {
     return {
       ...createCommandTools(this.context),
       ...createMemoryTools(this.agentMemoryStore),
+      ...createSaveLoadTools(
+        this.context.client,
+        () => this.modeContext.mode,
+        this.agentMemoryStore,
+        () => this.rollbackProgressSequence
+      ),
     } satisfies AgentTools;
   }
 
@@ -413,7 +366,7 @@ export class CommandAgentRunner {
 
     for await (const event of events) {
       await this.options.onEvent?.(event, this.turn);
-      await this.recordAgentEventEvidence(event, turnLog);
+      this.recordAgentEventEvidence(event, turnLog);
       this.recordRuntimeEvent(event);
 
       if (
@@ -430,7 +383,7 @@ export class CommandAgentRunner {
       }
 
       if (event.type === "turn-abort") {
-        return interruptedAfterTool ? "running" : "failed_llm";
+        return interruptedAfterTool ? "running" : "failed_budget";
       }
       if (event.type === "turn-error") {
         if (interruptedAfterTool) {
@@ -439,11 +392,11 @@ export class CommandAgentRunner {
             this.turn
           );
         }
-        return interruptedAfterTool ? "running" : "failed_llm";
+        return interruptedAfterTool ? "failed_budget" : "failed_llm";
       }
     }
 
-    return toolExecuted ? "running" : "failed_llm";
+    return "running";
   }
 
   private recordRuntimeEvent(event: AgentEvent): void {
@@ -497,6 +450,9 @@ export class CommandAgentRunner {
     step: number
   ): void {
     this.lastResult = result;
+    if (isProgressResult(result)) {
+      this.rollbackProgressSequence += 1;
+    }
     this.commandHistory.push({ command, result, step });
     if (this.commandHistory.length > HISTORY_LIMIT) {
       this.commandHistory.splice(0, this.commandHistory.length - HISTORY_LIMIT);
@@ -531,8 +487,6 @@ export class CommandAgentRunner {
     event: AgentEvent,
     turnLog?: TurnLogDraft
   ): Promise<void> {
-    const sequence = this.appendTimelineEvent(turnLog, event);
-
     switch (event.type) {
       case "tool-call":
         this.pendingToolCalls.set(event.toolCallId, {
@@ -551,7 +505,6 @@ export class CommandAgentRunner {
         this.pendingToolCalls.delete(event.toolCallId);
         const output = unwrapToolOutput(event.output);
         if (turnLog !== undefined) {
-          this.patchTimelineToolResult(turnLog, sequence, output);
           const toolCall = turnLog.toolCalls.find(
             (entry) => entry.toolCallId === event.toolCallId
           );
@@ -593,48 +546,6 @@ export class CommandAgentRunner {
       default:
         return;
     }
-  }
-
-
-  private appendTimelineEvent(
-    turnLog: TurnLogDraft | undefined,
-    event: AgentEvent
-  ): number | undefined {
-    if (turnLog === undefined) {
-      return undefined;
-    }
-
-    const entry = timelineEventFromAgentEvent(
-      event,
-      turnLog.timeline.length + 1,
-      this.nowIso()
-    );
-    turnLog.timeline.push(entry);
-    return entry.sequence;
-  }
-
-  private patchTimelineToolResult(
-    turnLog: TurnLogDraft,
-    sequence: number | undefined,
-    output: unknown
-  ): void {
-    if (sequence === undefined) {
-      return;
-    }
-
-    const index = turnLog.timeline.findIndex((entry) => entry.sequence === sequence);
-    if (index < 0) {
-      return;
-    }
-
-    const command = extractCommand(output);
-    const result = extractCommandResult(output);
-    turnLog.timeline[index] = {
-      ...turnLog.timeline[index],
-      output,
-      ...(command === undefined ? {} : { command }),
-      ...(result === undefined ? {} : { result }),
-    };
   }
 
   private async recordToolScreenshot(
@@ -701,6 +612,15 @@ export class CommandAgentRunner {
     return activeTools;
   }
 
+  private async maybeAutoCheckpoint(): Promise<void> {
+    if (this.turn % AUTO_CHECKPOINT_INTERVAL_TURNS !== 0) {
+      return;
+    }
+
+    await this.context.client.saveStateSlot(AUTO_CHECKPOINT_SLOT);
+    await this.options.onAutoCheckpoint?.(this.turn);
+  }
+
   private async readAdviserHint(): Promise<string | undefined> {
     if (this.options.adviserHintProvider === undefined) {
       return;
@@ -743,48 +663,6 @@ export class CommandAgentRunner {
   private nowIso(): string {
     return this.now().toISOString();
   }
-}
-
-
-function timelineEventFromAgentEvent(
-  event: AgentEvent,
-  sequence: number,
-  timestamp: string
-): TurnTimelineEvent {
-  switch (event.type) {
-    case "tool-call":
-      return {
-        sequence,
-        timestamp,
-        type: event.type,
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-        isGameAction: GAME_ACTION_TOOL_NAMES.has(event.toolName),
-        input: event.input,
-      };
-    case "tool-result":
-      return {
-        sequence,
-        timestamp,
-        type: event.type,
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-        isGameAction: GAME_ACTION_TOOL_NAMES.has(event.toolName),
-      };
-    case "assistant-reasoning":
-      return { sequence, timestamp, type: event.type, text: event.text };
-    case "assistant-text":
-      return { sequence, timestamp, type: event.type, text: event.text };
-    case "turn-error":
-      return { sequence, timestamp, type: event.type, message: event.message };
-    default:
-      return { sequence, timestamp, type: event.type };
-  }
-}
-
-function classifyRunFailure(error: unknown, fallback: HarnessStatus): HarnessStatus {
-  const message = error instanceof Error ? error.message : String(error);
-  return /openai|api[_ -]?key|llm|language model|session/i.test(message) ? "failed_llm" : fallback;
 }
 
 function createDefaultModel(config: HarnessConfig): LanguageModel {

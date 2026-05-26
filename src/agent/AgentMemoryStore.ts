@@ -1,7 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { redactSecrets } from "../evidence/EvidenceRecorder.js";
-import { buildRunPaths } from "../evidence/RunPaths.js";
+import { buildRunPaths } from "../evidence/RunPaths";
 
 export const AGENT_MEMORY_SECTIONS = [
   "objectives",
@@ -97,7 +96,7 @@ export class AgentMemoryStore {
     const entry: AgentMemoryEntry = {
       id: formatEntryId(this.data.nextEntryId),
       createdAt: this.timestamp(),
-      content: redactMemoryContent(content),
+      content,
     };
 
     this.data.nextEntryId += 1;
@@ -238,13 +237,8 @@ function normalizeEntry(entry: unknown): AgentMemoryEntry | null {
   return {
     id: record.id,
     createdAt: record.createdAt,
-    content: redactMemoryContent(record.content).slice(0, AGENT_MEMORY_MAX_ENTRY_CHARS),
+    content: record.content.slice(0, AGENT_MEMORY_MAX_ENTRY_CHARS),
   };
-}
-
-function redactMemoryContent(content: string): string {
-  const redacted = redactSecrets(content);
-  return typeof redacted === "string" ? redacted : String(redacted);
 }
 
 function cloneFile(file: AgentMemoryFile): AgentMemoryFile {

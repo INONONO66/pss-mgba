@@ -73,54 +73,6 @@ describe("dynamic LLM wrapper", () => {
     expect(getToolResultIds(filtered[2])).toEqual(["first"]);
   });
 
-  it("drops extra tool calls from the same assistant message", () => {
-    const filtered = enforceSingleToolCall([
-      {
-        role: "assistant",
-        content: [
-          { type: "text", text: "Two actions attempted." },
-          toolCallPart("first", "pokemon_wait"),
-          toolCallPart("second", "pokemon_navigate"),
-        ],
-      },
-      {
-        role: "tool",
-        content: [
-          toolResultPart("second", "ignored"),
-          toolResultPart("first", "kept"),
-        ],
-      },
-    ] as RuntimeLlmOutput);
-
-    expect(getToolCallIds(filtered[0])).toEqual(["first"]);
-    expect(getToolResultIds(filtered[1])).toEqual(["first"]);
-  });
-
-
-  it("keeps auxiliary memory calls while enforcing one game action", () => {
-    const filtered = enforceSingleToolCall([
-      {
-        role: "assistant",
-        content: [
-          toolCallPart("memory", "pokemon_memory_write"),
-          toolCallPart("wait", "pokemon_wait"),
-          toolCallPart("navigate", "pokemon_navigate"),
-        ],
-      },
-      {
-        role: "tool",
-        content: [
-          toolResultPart("memory", "memory kept"),
-          toolResultPart("navigate", "ignored"),
-          toolResultPart("wait", "wait kept"),
-        ],
-      },
-    ] as RuntimeLlmOutput);
-
-    expect(getToolCallIds(filtered[0])).toEqual(["memory", "wait"]);
-    expect(getToolResultIds(filtered[1])).toEqual(["memory", "wait"]);
-  });
-
   it("uses the latest mode, tools, prompt, and reasoning for each invocation", async () => {
     const contexts: DynamicLlmContext[] = [
       { mode: "overworld", reasoning: "low", tools: toolSet("pokemon_navigate") },

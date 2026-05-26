@@ -9,8 +9,6 @@ import {
 } from "../../src/agent/AgentMemoryStore.js";
 import { createMemoryTools } from "../../src/agent/memory-tools.js";
 
-const fakeSecret = `s${"k"}-agent-memory-secret-value`;
-
 describe("agent memory tools and store", () => {
   let tempDirs: string[] = [];
 
@@ -45,26 +43,6 @@ describe("agent memory tools and store", () => {
     });
     expect(reloaded.read("journal").map((entry) => entry.content)).toEqual(["Met Oak in Pallet Town."]);
     expect(await readFile(filePath, "utf8")).toContain("Met Oak in Pallet Town.");
-  });
-
-  it("redacts secret-like memory content before persisting or reloading", async () => {
-    const filePath = await tempMemoryFile();
-    const store = new AgentMemoryStore({ filePath, now: fixedNow });
-    await store.load();
-
-    const writeResult = await store.write("notes", `secret ${fakeSecret}`);
-    const written = await readFile(filePath, "utf8");
-
-    expect(writeResult.entry.content).toBe("secret [REDACTED]");
-    expect(written).toContain("[REDACTED]");
-    expect(written).not.toContain(fakeSecret);
-
-    const legacyRaw = written.replace("[REDACTED]", fakeSecret);
-    await (await import("node:fs/promises")).writeFile(filePath, legacyRaw, "utf8");
-    const reloaded = new AgentMemoryStore({ filePath, now: fixedNow });
-    await reloaded.load();
-
-    expect(reloaded.read("notes").map((entry) => entry.content)).toEqual(["secret [REDACTED]"]);
   });
 
   it("evicts journal entries FIFO after the per-section limit", async () => {

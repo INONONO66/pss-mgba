@@ -6,7 +6,7 @@ import {
   AGENT_MEMORY_SECTIONS,
   type AgentMemoryEntry,
   type AgentMemoryStore,
-} from "./AgentMemoryStore.js";
+} from "./AgentMemoryStore";
 
 const MEMORY_TOOL_RESULT_CHAR_LIMIT = 2000;
 const MEMORY_ENTRY_CONTENT_CHAR_LIMIT = 220;
@@ -117,5 +117,5 @@ function truncate(value: string, maxChars: number): string {
   return `${value.slice(0, Math.max(0, maxChars - 1))}…`;
 }
 
-export type { AgentMemorySection } from "./AgentMemoryStore.js";
+export type { AgentMemorySection } from "./AgentMemoryStore";
 export { MEMORY_TOOL_RESULT_CHAR_LIMIT as POKEMON_MEMORY_TOOL_RESULT_CHAR_LIMIT };

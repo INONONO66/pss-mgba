@@ -121,6 +121,10 @@ describe("command tools", () => {
       states: [
         gameState({ mode: "battle", enemyHp: 12 }),
         gameState({ mode: "battle", enemyHp: 5 }),
+        gameState({ mode: "battle", enemyHp: 5 }),
+        gameState({ mode: "battle", enemyHp: 5 }),
+        gameState({ mode: "battle", enemyHp: 5 }),
+        gameState({ mode: "battle", enemyHp: 5 }),
       ],
     });
     const result = await executeTool(
@@ -165,6 +169,20 @@ function createContext(
     fullState: states[0]?.fullState,
     mapWidth: 0,
     mapHeight: 0,
+    controller: {
+      pressButton: vi.fn(async () => undefined),
+    },
+    dialogStateReader: {
+      readTextBoxId: vi.fn(async () => 0),
+      readCurrentMenuItem: vi.fn(async () => 0),
+      readScreenText: vi.fn(async () => ""),
+      readTileAt: vi.fn(async () => 0),
+      isDialogActive: vi.fn(async () => false),
+      isWindowVisible: vi.fn(async () => false),
+      isInBattle: vi.fn(async () => false),
+      isChoiceActive: vi.fn(async () => false),
+      isNamingScreenActive: vi.fn(async () => false),
+    },
   };
 
   return {

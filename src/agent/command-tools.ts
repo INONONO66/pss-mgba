@@ -9,15 +9,17 @@ import type {
   GameMode,
 } from "../control/CommandTypes.js";
 import { executeCommand } from "../executor/CommandExecutor.js";
+import { DialogExecutor } from "../executor/DialogExecutor.js";
 import { mapName } from "../pokemon/PokemonCatalog.js";
 import type {
   CommandAgentContext,
   CommandAgentGameState,
-} from "./CommandAgentContext.js";
+} from "./CommandAgentContext";
 
 const TOOL_RESULT_CHAR_LIMIT = 2000;
 const DETAILS_CHAR_LIMIT = 420;
 const MAP_SNIPPET_CHAR_LIMIT = 700;
+const TRANSCRIPT_PATTERN = /transcript=(\[.*\])/;
 const HINT_CHAR_LIMIT = 300;
 
 const directionSchema = z.enum(["up", "down", "left", "right"] satisfies [
@@ -135,6 +137,7 @@ export interface PokemonCommandToolResult {
   readonly mapSnippet?: string;
   readonly ok: boolean;
   readonly result: CommandResult;
+  readonly transcript?: readonly string[];
 }
 
 export function createCommandTools(context: CommandAgentContext): AgentTools {
@@ -233,19 +236,115 @@ async function runCommandTool(
     ...context.executionContext,
     mode: executionMode,
   });
-  const afterState = await refreshState(context);
+
+  const postCommand = await handlePostCommand(context, command, result);
+  const afterState = postCommand.finalState;
 
   return capToolResult({
-    ok: result.status === "success" || result.status === "partial",
+    ok: result.status === "success" || result.status === "partial" || result.status === "interrupted",
     command,
-    result: capCommandResult(result),
+    result: capCommandResult(postCommand.result),
     before: summarizeState(beforeState),
     after: summarizeState(afterState),
-    ...(command.type === "battle"
+    ...(afterState.mode === "battle" || command.type === "battle"
       ? { battle: buildBattleContext(beforeState, afterState) }
       : {}),
-    ...buildOptionalContext(context, afterState, result),
+    ...(postCommand.transcript.length > 0
+      ? { transcript: postCommand.transcript }
+      : {}),
+    ...buildOptionalContext(context, afterState, postCommand.result),
   });
+}
+
+interface PostCommandResult {
+  readonly result: CommandResult;
+  readonly transcript: string[];
+  readonly finalState: CommandAgentGameState;
+}
+
+async function handlePostCommand(
+  context: CommandAgentContext,
+  command: Command,
+  originalResult: CommandResult
+): Promise<PostCommandResult> {
+  const transcript: string[] = [];
+  let state = await refreshState(context);
+  let result = { ...originalResult };
+
+  if (state.mode === "dialog" && command.type !== "dialog") {
+    const dialogExecutor = new DialogExecutor(
+      context.executionContext.controller,
+      context.executionContext.dialogStateReader
+    );
+    const dialogResult = await dialogExecutor.execute({ type: "dialog", action: { kind: "advance" } });
+    const pages = parseTranscript(dialogResult.details);
+    transcript.push(...pages);
+
+    if (dialogResult.reason === "choice_appeared") {
+      result = {
+        ...result,
+        status: "interrupted",
+        reason: "choice_appeared",
+        details: combineDetails(result.details, dialogResult.details),
+      };
+    } else if (dialogResult.reason === "battle_started") {
+      result = {
+        ...result,
+        status: "interrupted",
+        reason: "battle_started",
+        details: combineDetails(result.details, dialogResult.details),
+      };
+    } else {
+      result = {
+        ...result,
+        details: combineDetails(result.details, dialogResult.details),
+      };
+    }
+
+    state = await refreshState(context);
+  }
+
+  if (state.mode === "battle" && command.type === "battle") {
+    const dialogExecutor = new DialogExecutor(
+      context.executionContext.controller,
+      context.executionContext.dialogStateReader
+    );
+    const battleDialog = await dialogExecutor.execute({ type: "dialog", action: { kind: "advance" } });
+    const pages = parseTranscript(battleDialog.details);
+    transcript.push(...pages);
+
+    state = await refreshState(context);
+    if (!state.fullState.battle.inBattle) {
+      result = { status: "success", reason: "battle_ended", details: combineDetails(result.details, battleDialog.details) };
+    }
+  }
+
+  return { result, transcript, finalState: state };
+}
+
+function parseTranscript(details: string | undefined): string[] {
+  if (details === undefined) {
+    return [];
+  }
+  const match = details.match(TRANSCRIPT_PATTERN);
+  if (match === null) {
+    return [];
+  }
+  try {
+    return JSON.parse(match[1]) as string[];
+  } catch {
+    return [];
+  }
+}
+
+function combineDetails(original: string | undefined, additional: string | undefined): string {
+  if (original === undefined) {
+    return additional ?? "";
+  }
+  if (additional === undefined || additional.length === 0) {
+    return original;
+  }
+  return `${original}; ${additional}`;
 }
 
 async function refreshState(

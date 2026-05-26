@@ -51,11 +51,6 @@ export interface CreateDynamicLlmOptions {
 
 type ResponseMessage = RuntimeLlmOutput[number];
 
-const AUXILIARY_TOOL_NAMES = new Set([
-  "pokemon_memory_read",
-  "pokemon_memory_write",
-]);
-
 export function createDynamicLlm({
   compaction,
   generateTextImpl = generateText,
@@ -203,22 +198,14 @@ function formatMessageForSummary(message: ModelMessage): string {
 }
 
 export function enforceSingleToolCall(messages: readonly ResponseMessage[]): RuntimeLlmOutput {
-  const allowedToolCallIds = new Set<string>();
-  let allowedGameActionToolCallId: string | undefined;
+  let allowedToolCallId: string | undefined;
   const filtered: ResponseMessage[] = [];
 
   for (const message of messages) {
     if (message.role === "assistant") {
-      const content = filterAssistantContent(
-        message.content,
-        allowedGameActionToolCallId,
-        (toolCallId, toolName) => {
-          allowedToolCallIds.add(toolCallId);
-          if (!isAuxiliaryToolName(toolName)) {
-            allowedGameActionToolCallId = toolCallId;
-          }
-        }
-      );
+      const content = filterAssistantContent(message.content, allowedToolCallId, (toolCallId) => {
+        allowedToolCallId = toolCallId;
+      });
       filtered.push({ ...message, content });
       continue;
     }
@@ -227,7 +214,7 @@ export function enforceSingleToolCall(messages: readonly ResponseMessage[]): Run
       if (part.type !== "tool-result") {
         return true;
       }
-      return allowedToolCallIds.has(part.toolCallId);
+      return allowedToolCallId !== undefined && part.toolCallId === allowedToolCallId;
     });
 
     if (content.length > 0) {
@@ -323,15 +310,14 @@ function removeOrphanToolParts(messages: readonly ModelMessage[]): ModelMessage[
 
 function filterAssistantContent(
   content: AssistantModelMessage["content"],
-  allowedGameActionToolCallId?: string,
-  recordAllowedToolCall?: (toolCallId: string, toolName: string) => void,
+  allowedToolCallId?: string,
+  setAllowedToolCallId?: (toolCallId: string) => void,
   pairedToolCallIds?: ReadonlySet<string>,
 ): AssistantModelMessage["content"] {
   if (typeof content === "string") {
     return content;
   }
 
-  let selectedGameActionToolCallId = allowedGameActionToolCallId;
   return content.filter((part) => {
     if (part.type !== "tool-call") {
       return true;
@@ -341,23 +327,13 @@ function filterAssistantContent(
       return pairedToolCallIds.has(part.toolCallId);
     }
 
-    if (isAuxiliaryToolName(part.toolName)) {
-      recordAllowedToolCall?.(part.toolCallId, part.toolName);
-      return true;
+    if (allowedToolCallId !== undefined) {
+      return part.toolCallId === allowedToolCallId;
     }
 
-    if (selectedGameActionToolCallId !== undefined) {
-      return part.toolCallId === selectedGameActionToolCallId;
-    }
-
-    selectedGameActionToolCallId = part.toolCallId;
-    recordAllowedToolCall?.(part.toolCallId, part.toolName);
+    setAllowedToolCallId?.(part.toolCallId);
     return true;
   });
-}
-
-function isAuxiliaryToolName(toolName: string): boolean {
-  return AUXILIARY_TOOL_NAMES.has(toolName);
 }
 
 function getToolCallIds(message: ModelMessage): string[] {
