@@ -1,7 +1,7 @@
 import { MgbaHttpClient } from "../src/mgba/MgbaHttpClient.js";
 import { PokemonStateReader } from "../src/game/PokemonStateReader.js";
 import { readGameWorld } from "../src/game/GameWorld.js";
-import { MapMemory } from "../src/game/MapMemory.js";
+import { MapMemory, type KnownNpc } from "../src/game/MapMemory.js";
 import { mapName } from "../src/game/PokemonCatalog.js";
 
 const client = new MgbaHttpClient({ baseUrl: "http://127.0.0.1:5001" });
@@ -12,60 +12,91 @@ const world = await readGameWorld(client);
 memory.update(world, world.tileMapBytes);
 
 const state = await stateReader.readState();
-const mapId = state.wCurMap;
-const record = memory.get(mapId);
-
-if (!record) {
-  console.log("No map data");
-  process.exit(1);
-}
-
+const currentMapId = state.wCurMap;
 const py = state.wYCoord;
 const px = state.wXCoord;
 
-console.log("Map: " + mapName(mapId) + " (id=" + mapId + ")");
-console.log("Player: (" + px + ", " + py + ")");
-console.log("Size: " + record.width + "x" + record.height);
-console.log("Tiles recorded: " + record.tiles.size);
-
-const conns = world.warps?.connections;
-if (conns) {
-  const dirs: string[] = [];
-  if (conns.north) { dirs.push("N->" + mapName(conns.north.mapId)); }
-  if (conns.south) { dirs.push("S->" + mapName(conns.south.mapId)); }
-  if (conns.east) { dirs.push("E->" + mapName(conns.east.mapId)); }
-  if (conns.west) { dirs.push("W->" + mapName(conns.west.mapId)); }
-  if (dirs.length > 0) { console.log("Connections: " + dirs.join(", ")); }
+function tileChar(
+  tile: { terrain?: string; features?: readonly string[] } | undefined,
+  npc: KnownNpc | undefined,
+): string {
+  if (npc) {
+    return npc.onScreen ? "N" : "n";
+  }
+  if (tile === undefined) {
+    return " ";
+  }
+  const terrain = tile.terrain ?? "wall";
+  const features = tile.features ?? [];
+  if (features.includes("door")) { return "D"; }
+  if (features.includes("warp")) { return "W"; }
+  if (features.includes("cuttable") && terrain === "wall") { return "C"; }
+  if (features.includes("ledge")) { return "L"; }
+  if (features.includes("counter")) { return "K"; }
+  if (terrain === "water") { return "~"; }
+  if (terrain === "grass") { return features.includes("cuttable") ? ";" : ","; }
+  if (terrain === "wall") { return "#"; }
+  return ".";
 }
 
-console.log("\nLegend: @=player .=walkable #=wall ~=water ,=grass C=cuttable L=ledge K=counter D=door W=warp  =unexplored");
+function renderMap(mapId: number, playerY?: number, playerX?: number): void {
+  const record = memory.get(mapId);
+  if (!record) {
+    return;
+  }
+
+  const knownNpcs = memory.getKnownNpcs(mapId);
+  const npcMap = new Map<string, KnownNpc>();
+  for (const npc of knownNpcs) {
+    npcMap.set(npc.mapY + "," + npc.mapX, npc);
+  }
+
+  const isCurrentMap = mapId === currentMapId;
+  const tag = isCurrentMap ? " *** CURRENT ***" : "";
+  console.log("=".repeat(50));
+  console.log(mapName(mapId) + " (id=" + mapId + ", " + record.width + "x" + record.height + ", " + record.tiles.size + " tiles)" + tag);
+
+  if (isCurrentMap) {
+    const conns = world.warps?.connections;
+    if (conns) {
+      const dirs: string[] = [];
+      if (conns.north) { dirs.push("N->" + mapName(conns.north.mapId)); }
+      if (conns.south) { dirs.push("S->" + mapName(conns.south.mapId)); }
+      if (conns.east) { dirs.push("E->" + mapName(conns.east.mapId)); }
+      if (conns.west) { dirs.push("W->" + mapName(conns.west.mapId)); }
+      if (dirs.length > 0) { console.log("Connections: " + dirs.join(", ")); }
+    }
+  }
+
+  if (knownNpcs.length > 0) {
+    console.log("NPCs: " + knownNpcs.map((n) =>
+      "slot" + n.slot + "(pic" + n.pictureId + " " + n.movementType + " " + n.mapX + "," + n.mapY + (n.onScreen ? "" : " off") + ")"
+    ).join(" "));
+  }
+
+  console.log("");
+  for (let y = 0; y < record.height; y++) {
+    let row = "";
+    for (let x = 0; x < record.width; x++) {
+      if (y === playerY && x === playerX) {
+        row += "@";
+        continue;
+      }
+      const tile = record.tiles.get(y + "," + x);
+      const npc = npcMap.get(y + "," + x);
+      row += tileChar(tile, npc);
+    }
+    console.log(String(y).padStart(3) + " " + row);
+  }
+  console.log("");
+}
+
+console.log("Legend: @=player N=NPC(visible) n=NPC(last known) .=walkable #=wall ~=water ,=grass ;=grass(cuttable) C=cuttable L=ledge K=counter D=door W=warp  =unexplored");
+console.log("Player: " + mapName(currentMapId) + " (" + px + ", " + py + ")");
+console.log("Visited maps: " + memory.visitedMaps().length);
 console.log("");
 
-for (let y = 0; y < record.height; y++) {
-  let row = "";
-  for (let x = 0; x < record.width; x++) {
-    if (y === py && x === px) {
-      row += "@";
-      continue;
-    }
-    const tile = record.tiles.get(y + "," + x);
-    if (tile === undefined) {
-      row += " ";
-      continue;
-    }
-    const terrain = tile.terrain ?? "wall";
-    const features: readonly string[] = tile.features ?? [];
-
-    if (features.includes("door")) { row += "D"; }
-    else if (features.includes("warp")) { row += "W"; }
-    else if (features.includes("cuttable") && terrain === "wall") { row += "C"; }
-    else if (features.includes("cuttable") && terrain === "grass") { row += ","; }
-    else if (features.includes("ledge")) { row += "L"; }
-    else if (features.includes("counter")) { row += "K"; }
-    else if (terrain === "water") { row += "~"; }
-    else if (terrain === "grass") { row += ","; }
-    else if (terrain === "wall") { row += "#"; }
-    else { row += "."; }
-  }
-  console.log(String(y).padStart(3) + " " + row);
+for (const mapId of memory.visitedMaps()) {
+  const isCurrentMap = mapId === currentMapId;
+  renderMap(mapId, isCurrentMap ? py : undefined, isCurrentMap ? px : undefined);
 }

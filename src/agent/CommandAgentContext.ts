@@ -21,7 +21,7 @@ fromPersistedMap,
 toPersistedMap,
 type MapMemoryFile, } from "../game/MapMemoryStore.js";
 import { mapName } from "../game/PokemonCatalog.js";
-import { FullGameDetector } from "../game/FullGameDetector.js";
+import { FullGameDetector, type FullGameObservableState } from "../game/FullGameDetector.js";
 
 import type { DetectorStatus, ProgressDetector } from "../game/Detector.js";
 import { PokemonStateReader } from "../game/PokemonStateReader.js";
@@ -68,7 +68,7 @@ export interface CommandAgentMapMemoryStore {
   flush(memory: MapMemory): Promise<void>;
 }
 
-export type CommandAgentDetector = ProgressDetector<Record<string, unknown>, DetectorStatus>;
+export type CommandAgentDetector = ProgressDetector<FullGameObservableState, DetectorStatus>;
 
 export interface CommandAgentContext {
   readonly config: HarnessConfig;
@@ -224,7 +224,10 @@ export function createCommandAgentContext(config: HarnessConfig): CommandAgentCo
           assignConnections(connections, lastWorld.warps.connections);
         }
 
-        mapStoreData.maps[String(mapId)] = toPersistedMap(record, warps, connections);
+        const playerPos = lastGameState?.mapId === mapId
+          ? { y: lastGameState.playerY, x: lastGameState.playerX }
+          : undefined;
+        mapStoreData.maps[String(mapId)] = toPersistedMap(record, warps, connections, playerPos);
       }
 
       mapStore.markDirty(mapStoreData);

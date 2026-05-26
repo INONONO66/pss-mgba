@@ -14,6 +14,16 @@ export interface MapMemoryFile {
   maps: Record<string, PersistedMapRecord>;
 }
 
+export interface PersistedNpc {
+  slot: number;
+  pictureId: number;
+  mapY: number;
+  mapX: number;
+  movementType: string;
+  onScreen: boolean;
+  lastSeenTurn: number;
+}
+
 export interface PersistedMapRecord {
   mapId: number;
   width: number;
@@ -21,6 +31,8 @@ export interface PersistedMapRecord {
   tiles: Record<string, PersistedTile>;
   warps: PersistedWarp[];
   connections: Partial<Record<"north" | "south" | "east" | "west", number>>;
+  knownNpcs?: PersistedNpc[];
+  playerPosition?: { y: number; x: number };
 }
 
 export interface PersistedTile {
@@ -143,14 +155,11 @@ export class MapMemoryStore {
 // Conversion Functions
 // ---------------------------------------------------------------------------
 
-/**
- * Convert runtime MapRecord + warps + connections to PersistedMapRecord.
- * NPC positions are intentionally NOT persisted.
- */
 export function toPersistedMap(
   record: MapRecord,
   warps: WarpEntry[],
   connections: Partial<Record<"north" | "south" | "east" | "west", number>>,
+  playerPosition?: { y: number; x: number },
 ): PersistedMapRecord {
   const tiles: Record<string, PersistedTile> = {};
   for (const [key, tile] of record.tiles) {
@@ -168,6 +177,16 @@ export function toPersistedMap(
     destWarpId: w.destWarpId,
   }));
 
+  const knownNpcs: PersistedNpc[] = [...record.knownNpcs.values()].map((npc) => ({
+    slot: npc.slot,
+    pictureId: npc.pictureId,
+    mapY: npc.mapY,
+    mapX: npc.mapX,
+    movementType: npc.movementType,
+    onScreen: npc.onScreen,
+    lastSeenTurn: npc.lastSeenTurn,
+  }));
+
   return {
     mapId: record.mapId,
     width: record.width,
@@ -175,16 +194,15 @@ export function toPersistedMap(
     tiles,
     warps: persistedWarps,
     connections,
+    knownNpcs,
+    playerPosition,
   };
 }
 
-/**
- * Convert PersistedMapRecord back to runtime MapRecord + warps.
- * npcPositions and knownNpcs are initialized to empty (not persisted).
- */
 export function fromPersistedMap(persisted: PersistedMapRecord): {
   mapRecord: MapRecord;
   warps: WarpEntry[];
+  playerPosition?: { y: number; x: number };
 } {
   const tiles = new Map<string, { terrain: TileTerrain; features: readonly TileFeature[]; tileId: number }>();
 
@@ -197,13 +215,28 @@ export function fromPersistedMap(persisted: PersistedMapRecord): {
     });
   }
 
+  const knownNpcs = new Map<number, { slot: number; pictureId: number; mapY: number; mapX: number; movementType: string; onScreen: boolean; lastSeenTurn: number }>();
+  if (persisted.knownNpcs) {
+    for (const npc of persisted.knownNpcs) {
+      knownNpcs.set(npc.slot, {
+        slot: npc.slot,
+        pictureId: npc.pictureId,
+        mapY: npc.mapY,
+        mapX: npc.mapX,
+        movementType: npc.movementType,
+        onScreen: false,
+        lastSeenTurn: npc.lastSeenTurn,
+      });
+    }
+  }
+
   const mapRecord: MapRecord = {
     mapId: persisted.mapId,
     width: persisted.width,
     height: persisted.height,
     tiles,
     npcPositions: [],
-    knownNpcs: new Map(),
+    knownNpcs,
   };
 
   const warps: WarpEntry[] = persisted.warps.map((w) => ({
@@ -213,7 +246,7 @@ export function fromPersistedMap(persisted: PersistedMapRecord): {
     destWarpId: w.destWarpId,
   }));
 
-  return { mapRecord, warps };
+  return { mapRecord, warps, playerPosition: persisted.playerPosition };
 }
 
 // ---------------------------------------------------------------------------
