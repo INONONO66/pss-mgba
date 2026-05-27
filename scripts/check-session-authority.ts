@@ -16,6 +16,7 @@ export interface AuthorityViolation {
 
 interface AuthorityRule {
   readonly allowlist: ReadonlyMap<string, string>;
+  readonly legacyLimits?: ReadonlyMap<string, number>;
   readonly name: string;
   readonly pattern: RegExp;
 }
@@ -123,6 +124,29 @@ const REFRESH_ALLOWLIST = new Map<string, string>([
   ],
 ]);
 
+const AUTO_LOOP_ALLOWLIST = new Map<string, string>([
+  [
+    "scripts/check-session-authority.ts",
+    "Guard rule definitions necessarily mention guarded symbols.",
+  ],
+  ["src/session/auto-handler.ts", "AutoHandler owns automatic progression."],
+  ["src/agent/README.md", "Documentation."],
+  ["src/executor/README.md", "Documentation."],
+  [
+    "src/agent/CommandAgentRunner.ts",
+    "Legacy runner auto loops expire when GameSession owns turn preparation.",
+  ],
+  [
+    "src/agent/command-tools.ts",
+    "Legacy tool post-command auto loops expire when command routing uses AutoHandler.",
+  ],
+]);
+
+const AUTO_LOOP_LEGACY_LIMITS = new Map<string, number>([
+  ["src/agent/CommandAgentRunner.ts", 4],
+  ["src/agent/command-tools.ts", 8],
+]);
+
 const RULES: readonly AuthorityRule[] = [
   {
     name: "low-level-input",
@@ -140,6 +164,13 @@ const RULES: readonly AuthorityRule[] = [
     name: "duplicate-refresh-state",
     pattern: /\brefreshState\b/g,
     allowlist: REFRESH_ALLOWLIST,
+  },
+  {
+    name: "auto-loop-authority",
+    pattern:
+      /\b(?:autoAdvanceDialog|autoAdvanceBattleLoss|advanceDialog|advanceBattleEnd|handlePostBattle|handlePostBattleCommand|handlePostWarp|waitForBattleExit)\b/g,
+    allowlist: AUTO_LOOP_ALLOWLIST,
+    legacyLimits: AUTO_LOOP_LEGACY_LIMITS,
   },
 ];
 
@@ -168,23 +199,45 @@ export function findSessionAuthorityViolations(
     }
 
     for (const rule of RULES) {
+      const matches = Array.from(file.text.matchAll(rule.pattern));
+      const lineStarts = collectLineStarts(file.text);
       if (rule.allowlist.has(normalizedPath)) {
+        const legacyLimit = rule.legacyLimits?.get(normalizedPath);
+        if (legacyLimit !== undefined && matches.length > legacyLimit) {
+          violations.push(
+            ...matches
+              .slice(legacyLimit)
+              .map((match) =>
+                createViolation(normalizedPath, lineStarts, match, rule)
+              )
+          );
+        }
         continue;
       }
 
-      const lineStarts = collectLineStarts(file.text);
-      for (const match of file.text.matchAll(rule.pattern)) {
-        violations.push({
-          file: normalizedPath,
-          line: offsetToLine(lineStarts, match.index ?? 0),
-          match: match[0],
-          rule: rule.name,
-        });
+      for (const match of matches) {
+        violations.push(
+          createViolation(normalizedPath, lineStarts, match, rule)
+        );
       }
     }
   }
 
   return violations;
+}
+
+function createViolation(
+  file: string,
+  lineStarts: readonly number[],
+  match: RegExpMatchArray,
+  rule: AuthorityRule
+): AuthorityViolation {
+  return {
+    file,
+    line: offsetToLine(lineStarts, match.index ?? 0),
+    match: match[0],
+    rule: rule.name,
+  };
 }
 
 export function formatAuthorityViolations(
