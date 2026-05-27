@@ -11,10 +11,8 @@ import {
   createCommandAgentContext,
 } from "../../src/agent/CommandAgentContext.js";
 import { CommandAgentRunner } from "../../src/agent/CommandAgentRunner.js";
-import { createCommandTools } from "../../src/agent/command-tools.js";
 import { createDynamicLlm } from "../../src/agent/dynamic-llm.js";
-import { createMemoryTools } from "../../src/agent/memory-tools.js";
-import { createSaveLoadTools } from "../../src/agent/saveload-tools.js";
+import { createAgentTools } from "../../src/agent/tool-factory.js";
 import type { HarnessConfig } from "../../src/cli/config.js";
 import { buildDevHarnessArgs, runDev } from "../../src/cli/dev.js";
 import type {
@@ -98,10 +96,27 @@ describe("agent integration smoke", () => {
   });
 
   it("registers valid agent tools across command, memory, and save/load factories", () => {
-    const tools = {
-      ...createCommandTools(createMockContext()),
-      ...createMemoryTools({
+    const tools = createAgentTools({
+      context: createMockContext(),
+      memoryStore: {
+        delete: vi.fn(async () => ({
+          deleted: true,
+          id: "mem-1",
+          section: "notes",
+          totalEntries: 0,
+        })),
         read: vi.fn(() => []),
+        replace: vi.fn(async () => ({
+          entry: {
+            id: "mem-1",
+            content: "updated",
+            createdAt: fixedNow().toISOString(),
+          },
+          id: "mem-1",
+          replaced: true,
+          section: "notes",
+          totalEntries: 1,
+        })),
         write: vi.fn(async () => ({
           entry: {
             id: "mem-1",
@@ -112,11 +127,10 @@ describe("agent integration smoke", () => {
           section: "notes",
           totalEntries: 1,
         })),
-      } as never),
-      ...createSaveLoadTools(createMockClient(), () => "overworld", {
-        write: vi.fn(),
-      }),
-    } satisfies AgentTools;
+      } as never,
+      modeProvider: () => "overworld",
+      rollbackProgressProvider: () => 0,
+    });
 
     expect(Object.keys(tools).sort()).toEqual([
       "pokemon_battle",

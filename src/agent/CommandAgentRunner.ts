@@ -1,7 +1,6 @@
 import path from "node:path";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { Agent, type AgentEvent, type AgentTools } from "@minpeter/pss-runtime";
-import { FileSessionStore } from "@minpeter/pss-runtime/session-store/file";
+import type { AgentEvent, AgentTools } from "@minpeter/pss-runtime";
 import type { LanguageModel } from "ai";
 import type { HarnessConfig } from "../cli/config.js";
 import type {
@@ -17,23 +16,21 @@ import type { DetectorStatus } from "../game/Detector.js";
 import type { HarnessStatus } from "../shared/types.js";
 import { runSupervisorIntervention } from "../supervisor/intervention-loop.js";
 import { AgentMemoryStore } from "./AgentMemoryStore";
+import { createAgentBridgeSession } from "./agent-bridge.js";
 import {
   type CommandAgentContext,
   type CommandAgentGameState,
   createCommandAgentContext,
 } from "./CommandAgentContext";
 import { buildAgentObservation } from "./command-observation";
-import { createCommandTools } from "./command-tools";
 import {
   buildInstructions,
-  createDynamicLlm,
   type DynamicLlmContext,
   type DynamicReasoningEffort,
 } from "./dynamic-llm";
 import { waitForInputReady } from "../executor/InputReadiness.js";
 import { writeSessionMemoryEvents } from "./memory-events.js";
-import { createMemoryTools } from "./memory-tools";
-import { createSaveLoadTools } from "./saveload-tools";
+import { createAgentTools } from "./tool-factory.js";
 import { toObservableState } from "../game/FullGameDetector.js";
 import { syncCommandAgentContext } from "./session-sync.js";
 import { selectToolsForSessionState } from "../template/fragments/tools.js";
@@ -218,24 +215,16 @@ export class CommandAgentRunner {
         tools
       ) as AgentTools;
 
-      const agent = await Agent.create({
-        llm: createDynamicLlm({
-          getContext: () => this.modeContext,
-          model: this.options.model ?? createDefaultModel(this.context.config),
-          reasoning: this.options.reasoning,
-          sleep: this.options.sleep,
-        }),
-        sessions: {
-          store: new FileSessionStore(
-            path.join(
-              this.context.config.evidenceDir,
-              this.context.config.harnessRunId,
-              SESSION_DIRECTORY
-            )
-          ),
-        },
+      const session = await createAgentBridgeSession({
+        contextProvider: () => this.modeContext,
+        evidenceDir: this.context.config.evidenceDir,
+        model: this.options.model ?? createDefaultModel(this.context.config),
+        reasoning: this.options.reasoning,
+        runId: this.context.config.harnessRunId,
+        sessionDirectory: SESSION_DIRECTORY,
+        sessionKey: this.sessionKey,
+        sleep: this.options.sleep,
       });
-      const session = agent.session(this.sessionKey);
 
       let status: HarnessStatus | undefined;
       while (this.turn < this.maxTurns) {
@@ -323,10 +312,7 @@ export class CommandAgentRunner {
           history: [...this.commandHistory],
         };
 
-        const run = await session.send({
-          type: "user-message",
-          content: observation,
-        });
+        const run = await session.sendUserMessage(observation);
 
         const streamStatus = await this.consumeRunEvents(
           run.stream(),
@@ -380,16 +366,12 @@ export class CommandAgentRunner {
   }
 
   private createTools(): AgentTools {
-    return {
-      ...createCommandTools(this.context),
-      ...createMemoryTools(this.agentMemoryStore),
-      ...createSaveLoadTools(
-        this.context.client,
-        () => this.modeContext.mode,
-        this.agentMemoryStore,
-        () => this.rollbackProgressSequence
-      ),
-    } satisfies AgentTools;
+    return createAgentTools({
+      context: this.context,
+      memoryStore: this.agentMemoryStore,
+      modeProvider: () => this.modeContext.mode,
+      rollbackProgressProvider: () => this.rollbackProgressSequence,
+    });
   }
 
   private async consumeRunEvents(
@@ -567,7 +549,19 @@ export class CommandAgentRunner {
     const MAX_EXIT_PRESSES = 60;
     const PRESS_FRAMES = 16;
     for (let i = 0; i < MAX_EXIT_PRESSES; i += 1) {
-      await this.context.controller.pressButton("A", PRESS_FRAMES);
+      const command: Command = {
+        type: "raw",
+        inputs: [{ button: "A", frames: PRESS_FRAMES }],
+        reason: "auto-battle-end",
+      };
+      const result = await executeCommand(command, {
+        ...this.context.executionContext,
+        mode: "battle",
+      });
+      this.recordCommand(command, result, this.turn + 1);
+      if (result.status === "rejected") {
+        break;
+      }
       const refreshed = await this.refreshState();
       if (refreshed.mode !== "battle") {
         return refreshed;

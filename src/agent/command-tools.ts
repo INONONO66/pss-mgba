@@ -9,7 +9,6 @@ import type {
   GameMode,
 } from "../control/CommandTypes.js";
 import { executeCommand } from "../executor/CommandExecutor.js";
-import { DialogExecutor } from "../executor/DialogExecutor.js";
 import { mapName } from "../game/PokemonCatalog.js";
 import type {
   CommandAgentContext,
@@ -297,14 +296,10 @@ const INTERRUPTING_REASONS = new Set([
 ]);
 
 function advanceDialog(context: CommandAgentContext): Promise<CommandResult> {
-  const dialogExecutor = new DialogExecutor(
-    context.executionContext.controller,
-    context.executionContext.dialogStateReader
+  return executeCommand(
+    { type: "dialog", action: { kind: "advance" } },
+    { ...context.executionContext, mode: "dialog" }
   );
-  return dialogExecutor.execute({
-    type: "dialog",
-    action: { kind: "advance" },
-  });
 }
 
 function mergeDialogResult(
@@ -339,9 +334,13 @@ async function waitForBattleExit(
     if (!state.fullState.battle.inBattle) {
       return state;
     }
-    await context.executionContext.controller.pressButton(
-      "A",
-      BATTLE_EXIT_PRESS_FRAMES
+    await executeCommand(
+      {
+        type: "raw",
+        inputs: [{ button: "A", frames: BATTLE_EXIT_PRESS_FRAMES }],
+        reason: "post-battle-exit",
+      },
+      { ...context.executionContext, mode: "battle" }
     );
   }
   return refreshState(context);

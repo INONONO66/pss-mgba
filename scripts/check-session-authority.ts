@@ -44,14 +44,6 @@ const LOW_LEVEL_INPUT_ALLOWLIST = new Map<string, string>([
     "Legacy context adapter pending bridge migration.",
   ],
   [
-    "src/agent/CommandAgentRunner.ts",
-    "Legacy runner direct intervention paths pending session migration.",
-  ],
-  [
-    "src/agent/command-tools.ts",
-    "Legacy tool auto handling pending AutoHandler migration.",
-  ],
-  [
     "src/executor/BattleExecutor.ts",
     "Legacy executor pending session API migration.",
   ],
@@ -151,6 +143,17 @@ const AUTO_LOOP_LEGACY_LIMITS = new Map<string, number>([
   ["src/agent/command-tools.ts", 8],
 ]);
 
+const AGENT_CONTROLLER_BYPASS_ALLOWLIST = new Map<string, string>([
+  [
+    "scripts/check-session-authority.ts",
+    "Guard rule definitions necessarily mention guarded symbols.",
+  ],
+  [
+    "src/executor/command-router.ts",
+    "Command router owns executor adaptation and routes inputs through InputGate.",
+  ],
+]);
+
 const TOOL_GATING_ALLOWLIST = new Map<string, string>([
   [
     "scripts/check-session-authority.ts",
@@ -186,6 +189,13 @@ const RULES: readonly AuthorityRule[] = [
       /\b(?:autoAdvanceDialog|autoAdvanceBattleLoss|advanceDialog|advanceBattleEnd|handlePostBattle|handlePostBattleCommand|handlePostWarp|waitForBattleExit)\b/g,
     allowlist: AUTO_LOOP_ALLOWLIST,
     legacyLimits: AUTO_LOOP_LEGACY_LIMITS,
+  },
+
+  {
+    name: "agent-controller-bypass",
+    pattern:
+      /\bnew\s+DialogExecutor\b|\bcontext\.executionContext\.controller\b|\bcontext\.controller\b/g,
+    allowlist: AGENT_CONTROLLER_BYPASS_ALLOWLIST,
   },
   {
     name: "tool-gating-authority",

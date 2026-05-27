@@ -208,10 +208,15 @@ describe("command tools", () => {
       context.executionContext as unknown as Record<string, unknown>
     ).dialogStateReader = choiceDialogStateReader;
 
-    executeCommandMock.mockResolvedValueOnce({
-      status: "success",
-      reason: "battle_ended",
-    } satisfies CommandResult);
+    executeCommandMock
+      .mockResolvedValueOnce({
+        status: "success",
+        reason: "battle_ended",
+      } satisfies CommandResult)
+      .mockResolvedValueOnce({
+        status: "interrupted",
+        reason: "choice_appeared",
+      } satisfies CommandResult);
 
     const result = await executeTool(
       createCommandTools(context).pokemon_battle,
