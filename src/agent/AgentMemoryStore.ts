@@ -7,6 +7,8 @@ export const AGENT_MEMORY_SECTIONS = [
   "journal",
   "notes",
   "strategy",
+  "landmarks",
+  "lessons",
 ] as const;
 
 export type AgentMemorySection = (typeof AGENT_MEMORY_SECTIONS)[number];
@@ -42,6 +44,21 @@ export interface AgentMemoryStoreOptions {
 export interface AgentMemoryWriteResult {
   readonly entry: AgentMemoryEntry;
   readonly evicted: number;
+  readonly section: AgentMemorySection;
+  readonly totalEntries: number;
+}
+
+export interface AgentMemoryDeleteResult {
+  readonly deleted: boolean;
+  readonly id: string;
+  readonly section: AgentMemorySection;
+  readonly totalEntries: number;
+}
+
+export interface AgentMemoryReplaceResult {
+  readonly entry?: AgentMemoryEntry;
+  readonly id: string;
+  readonly replaced: boolean;
   readonly section: AgentMemorySection;
   readonly totalEntries: number;
 }
@@ -114,6 +131,65 @@ export class AgentMemoryStore {
     };
   }
 
+  async delete(section: string, id: string): Promise<AgentMemoryDeleteResult> {
+    assertMemorySection(section);
+    const before = this.data.sections[section];
+    const after = before.filter((entry) => entry.id !== id);
+    const deleted = after.length !== before.length;
+    this.data.sections[section] = after;
+
+    if (deleted) {
+      await this.save();
+    }
+
+    return {
+      deleted,
+      id,
+      section,
+      totalEntries: after.length,
+    };
+  }
+
+  async replace(
+    section: string,
+    id: string,
+    content: string
+  ): Promise<AgentMemoryReplaceResult> {
+    assertMemorySection(section);
+    assertContent(content);
+
+    const entries = this.data.sections[section];
+    const index = entries.findIndex((entry) => entry.id === id);
+    if (index < 0) {
+      return {
+        id,
+        replaced: false,
+        section,
+        totalEntries: entries.length,
+      };
+    }
+
+    const existing = entries[index];
+    if (existing === undefined) {
+      throw new Error(`Memory entry '${id}' disappeared before replacement`);
+    }
+    const entry = { ...existing, content } satisfies AgentMemoryEntry;
+    this.data.sections[section] = [
+      ...entries.slice(0, index),
+      entry,
+      ...entries.slice(index + 1),
+    ];
+    await this.save();
+
+    return {
+      entry,
+      id,
+      replaced: true,
+      section,
+      totalEntries: this.data.sections[section].length,
+    };
+  }
+
   private async save(): Promise<void> {
     await mkdir(path.dirname(this.filePath), { recursive: true });
     this.data.updatedAt = this.timestamp();
@@ -167,6 +243,8 @@ function emptySections(): AgentMemorySections {
     journal: [],
     notes: [],
     strategy: [],
+    landmarks: [],
+    lessons: [],
   };
 }
 
@@ -246,12 +324,12 @@ function cloneFile(file: AgentMemoryFile): AgentMemoryFile {
     version: 1,
     updatedAt: file.updatedAt,
     nextEntryId: file.nextEntryId,
-    sections: {
-      objectives: [...file.sections.objectives],
-      journal: [...file.sections.journal],
-      notes: [...file.sections.notes],
-      strategy: [...file.sections.strategy],
-    },
+    sections: Object.fromEntries(
+      AGENT_MEMORY_SECTIONS.map((section) => [
+        section,
+        [...file.sections[section]],
+      ])
+    ) as AgentMemorySections,
   };
 }
 

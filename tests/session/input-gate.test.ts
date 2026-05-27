@@ -71,6 +71,55 @@ describe("InputGate", () => {
     expect(result.event).toMatchObject({ kind: "input", phase: "input" });
   });
 
+  it("reports each InputResult through the optional result hook", async () => {
+    const before = mini({ y: 5, x: 4 });
+    const after = mini({ y: 5, x: 5 });
+    const onResult = vi.fn();
+    const pressButton = vi.fn(async () => undefined);
+    const gate = new InputGate({
+      controller: { pressButton },
+      reader: readerFrom([before, after]),
+      options: {
+        onResult,
+        pollIntervalMs: 0,
+        sleep: async () => undefined,
+        stableReadCount: 1,
+      },
+    });
+
+    const result = await gate.press("Right", 5, { source: "test" });
+
+    expect(onResult).toHaveBeenCalledWith(result);
+    expect(result.event).toMatchObject({
+      metadata: { source: "test" },
+      transition: { kind: "movement" },
+    });
+  });
+
+  it("does not fail input transactions when the result hook throws", async () => {
+    const before = mini({ y: 5, x: 4 });
+    const after = mini({ y: 5, x: 5 });
+    const pressButton = vi.fn(async () => undefined);
+    const gate = new InputGate({
+      controller: { pressButton },
+      reader: readerFrom([before, after]),
+      options: {
+        onResult: () => {
+          throw new Error("observer failed");
+        },
+        pollIntervalMs: 0,
+        sleep: async () => undefined,
+        stableReadCount: 1,
+      },
+    });
+
+    const result = await gate.press("Right", 5, { source: "test" });
+
+    expect(pressButton).toHaveBeenCalledWith("Right", 5);
+    expect(result.executed).toBe(true);
+    expect(result.transition.kind).toBe("movement");
+  });
+
   it("rejects joy-ignore lock without executing input", async () => {
     const before = mini({ joyIgnore: 0xff });
     const { gate, pressButton } = createGate([before]);

@@ -1,7 +1,9 @@
 import type { SessionState } from "../../session/types.js";
 
 const COMMON_TOOL_NAMES = [
+  "pokemon_memory_delete",
   "pokemon_memory_read",
+  "pokemon_memory_replace",
   "pokemon_memory_write",
 ] as const;
 const WAIT_TOOL_NAMES = ["pokemon_wait"] as const;

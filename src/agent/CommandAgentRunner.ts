@@ -9,11 +9,13 @@ import type {
   CommandHistoryEntry,
   CommandResult,
   GameMode,
+  RawInput,
 } from "../control/CommandTypes.js";
 import { EvidenceRecorder } from "../evidence/EvidenceRecorder.js";
 import { executeCommand } from "../executor/CommandExecutor.js";
 import type { DetectorStatus } from "../game/Detector.js";
 import type { HarnessStatus } from "../shared/types.js";
+import { runSupervisorIntervention } from "../supervisor/intervention-loop.js";
 import { AgentMemoryStore } from "./AgentMemoryStore";
 import {
   type CommandAgentContext,
@@ -29,6 +31,7 @@ import {
   type DynamicReasoningEffort,
 } from "./dynamic-llm";
 import { waitForInputReady } from "../executor/InputReadiness.js";
+import { writeSessionMemoryEvents } from "./memory-events.js";
 import { createMemoryTools } from "./memory-tools";
 import { createSaveLoadTools } from "./saveload-tools";
 import { toObservableState } from "../game/FullGameDetector.js";
@@ -243,6 +246,7 @@ export class CommandAgentRunner {
         }
 
         const { state, detectorStatus } = preTurn;
+        await this.recordSessionMemoryEvents();
         this.turn += 1;
         const activeTools = this.updateModeContext(state.mode, tools);
         const beforeFrame = await this.safeCurrentFrame();
@@ -251,9 +255,21 @@ export class CommandAgentRunner {
 
         const intervention = await this.tryIntervention();
         if (intervention) {
-          for (const input of intervention.inputs) {
-            await this.context.controller.pressButton(input.button as Parameters<typeof this.context.controller.pressButton>[0], input.frames);
-          }
+          const interventionResult = await runSupervisorIntervention({
+            inputGate: this.context.executionContext.inputGate,
+            inputs: intervention.inputs as readonly RawInput[],
+            reason: intervention.reason,
+          });
+          this.recordCommand(
+            {
+              type: "raw",
+              reason: `recovery:${intervention.reason}`,
+              inputs: [...interventionResult.commandInputs],
+            },
+            interventionResult.result,
+            this.turn
+          );
+          await this.recordSessionMemoryEvents();
           const afterState = await this.refreshState();
           const afterStatus = this.updateDetector(afterState);
           await this.options.onTurnEnd?.(this.turn, afterStatus, this.commandHistory);
@@ -318,6 +334,7 @@ export class CommandAgentRunner {
           tools,
           turnLog
         );
+        await this.recordSessionMemoryEvents();
         const afterState = await this.refreshState();
         const afterStatus = this.updateDetector(afterState);
         this.updateModeContext(afterState.mode, tools);
@@ -417,6 +434,14 @@ export class CommandAgentRunner {
     }
 
     return "running";
+  }
+
+  private async recordSessionMemoryEvents(): Promise<void> {
+    const events = this.context.drainSessionEvents();
+    if (events.length === 0) {
+      return;
+    }
+    await writeSessionMemoryEvents(this.agentMemoryStore, events);
   }
 
   private recordRuntimeEvent(event: AgentEvent): void {

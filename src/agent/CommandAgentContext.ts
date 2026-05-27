@@ -39,6 +39,7 @@ import { MgbaHttpClient } from "../mgba/MgbaHttpClient.js";
 import type { MgbaButton } from "../mgba/MgbaTypes.js";
 import { InputGate } from "../session/input-gate.js";
 import { MiniStateReader } from "../session/mini-state-reader.js";
+import type { SessionEvent } from "../session/types.js";
 
 interface CommandAgentWarps {
   readonly x: number;
@@ -91,6 +92,7 @@ export interface CommandAgentContext {
   readonly currentWarps: readonly CommandAgentWarps[];
   readonly detector: CommandAgentDetector;
   readonly dialogStateReader: DialogStateReader;
+  readonly drainSessionEvents: () => readonly SessionEvent[];
   readonly executionContext: ExecutionContext;
   readonly getLastGameState: () => CommandAgentGameState | undefined;
   readonly getLastWorld: () => GameWorldSnapshot | undefined;
@@ -139,9 +141,17 @@ export function createCommandAgentContext(
   };
 
   const controller = createUnifiedController(ram);
+  const sessionEvents: SessionEvent[] = [];
   const inputGate = new InputGate({
     controller,
     reader: new MiniStateReader(client),
+    options: {
+      onResult(result) {
+        if (result.event !== undefined) {
+          sessionEvents.push(result.event);
+        }
+      },
+    },
   });
   const navigateWorldReader = createNavigateWorldReader(ram);
   const currentWarps: CommandAgentWarps[] = [];
@@ -327,6 +337,7 @@ export function createCommandAgentContext(
     navigateMapSource,
     interactStateReader,
     dialogStateReader,
+    drainSessionEvents: () => sessionEvents.splice(0, sessionEvents.length),
     executionContext,
     currentWarps,
     readGameState,

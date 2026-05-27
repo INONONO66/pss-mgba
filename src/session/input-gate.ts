@@ -17,6 +17,7 @@ export interface InputGateStateReader {
 }
 
 export interface InputGateOptions {
+  readonly onResult?: (result: InputResult) => void;
   readonly pollIntervalMs?: number;
   readonly settleTimeoutMs?: number;
   readonly sleep?: (ms: number) => Promise<void>;
@@ -46,6 +47,7 @@ interface InputGateSettleResult {
 
 export class InputGate {
   private readonly controller: InputGateController;
+  private readonly onResult?: (result: InputResult) => void;
   private readonly pollIntervalMs: number;
   private readonly reader: InputGateStateReader;
   private readonly settleTimeoutMs: number;
@@ -59,6 +61,7 @@ export class InputGate {
   }) {
     this.controller = input.controller;
     this.reader = input.reader;
+    this.onResult = input.options?.onResult;
     this.pollIntervalMs =
       input.options?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.settleTimeoutMs =
@@ -80,10 +83,12 @@ export class InputGate {
     const validation = validateInputIntent(before, intent);
 
     if (!validation.allowed) {
-      return createRejectedInputResult(
-        before,
-        intent,
-        validation.reason ?? "blocked"
+      return this.recordResult(
+        createRejectedInputResult(
+          before,
+          intent,
+          validation.reason ?? "blocked"
+        )
       );
     }
 
@@ -93,7 +98,7 @@ export class InputGate {
     const transition = detectStateTransition(before, after);
     const reason = settled.timedOut ? "settle-timeout" : undefined;
 
-    return {
+    return this.recordResult({
       before,
       after,
       executed: true,
@@ -115,7 +120,17 @@ export class InputGate {
           source: intent.source,
         },
       },
-    };
+    });
+  }
+
+  private recordResult(result: InputResult): InputResult {
+    try {
+      this.onResult?.(result);
+    } catch {
+      // Observation hooks must not turn an already-decided input transaction
+      // into a failed button press.
+    }
+    return result;
   }
 
   private async settle(intent: InputIntent): Promise<InputGateSettleResult> {

@@ -4,6 +4,7 @@ import path from "node:path";
 import type { AgentEvent, AgentTool, AgentTools } from "@minpeter/pss-runtime";
 import type { LanguageModel } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AgentMemoryStore } from "../../src/agent/AgentMemoryStore.js";
 import {
   type CommandAgentContext,
   type CommandAgentGameState,
@@ -23,7 +24,7 @@ import type {
 import type { DetectorStatus } from "../../src/game/Detector.js";
 import type { MgbaHttpClient } from "../../src/mgba/MgbaHttpClient.js";
 import { createMiniState } from "../../src/session/mini-state-reader.js";
-import type { InputResult } from "../../src/session/types.js";
+import type { InputResult, SessionEvent } from "../../src/session/types.js";
 
 const generateTextMock = vi.hoisted(() => vi.fn());
 const executeCommandMock = vi.hoisted(() => vi.fn());
@@ -123,7 +124,9 @@ describe("agent integration smoke", () => {
       "pokemon_interact",
       "pokemon_load",
       "pokemon_load_rollback",
+      "pokemon_memory_delete",
       "pokemon_memory_read",
+      "pokemon_memory_replace",
       "pokemon_memory_write",
       "pokemon_navigate",
       "pokemon_save",
@@ -230,7 +233,9 @@ describe("agent integration smoke", () => {
         "pokemon_interact",
         "pokemon_load",
         "pokemon_load_rollback",
+        "pokemon_memory_delete",
         "pokemon_memory_read",
+        "pokemon_memory_replace",
         "pokemon_memory_write",
         "pokemon_navigate",
         "pokemon_save",
@@ -340,7 +345,9 @@ describe("agent integration smoke", () => {
           "pokemon_interact",
           "pokemon_load",
           "pokemon_load_rollback",
+          "pokemon_memory_delete",
           "pokemon_memory_read",
+          "pokemon_memory_replace",
           "pokemon_memory_write",
           "pokemon_navigate",
           "pokemon_save",
@@ -409,7 +416,13 @@ describe("agent integration smoke", () => {
       expect(result.commandHistory).toEqual([]);
       expect(executeCommandMock).not.toHaveBeenCalled();
       expect(llmToolSets).toEqual([
-        ["pokemon_dialog", "pokemon_memory_read", "pokemon_memory_write"],
+        [
+          "pokemon_dialog",
+          "pokemon_memory_delete",
+          "pokemon_memory_read",
+          "pokemon_memory_replace",
+          "pokemon_memory_write",
+        ],
       ]);
     } finally {
       vi.doUnmock("../../src/agent/dynamic-llm");
@@ -458,6 +471,61 @@ describe("agent integration smoke", () => {
       "run:run --run-id legacy-dev",
       "viewer:closed",
     ]);
+  });
+
+  it("records drained session input events as memory lessons", async () => {
+    const evidenceDir = await tempDir(tempDirs);
+    const state = createMiniState({
+      battle: 0,
+      textBoxId: 0,
+      letterDelay: 0,
+      mapId: 1,
+      y: 2,
+      x: 3,
+      partyCount: 1,
+      walkCounter: 0,
+      joyIgnore: 0,
+      namingScreenType: 0,
+      windowY: 144,
+      screenText: "",
+    });
+    const context = createMockContext({
+      sessionEvents: [
+        {
+          kind: "input",
+          message: "Input Up executed",
+          metadata: { button: "Up", source: "supervisor" },
+          miniState: state,
+          mode: "overworld",
+          phase: "input",
+          transition: { kind: "none", before: state, after: state },
+        },
+      ],
+    });
+    const memoryStore = new AgentMemoryStore({
+      filePath: path.join(evidenceDir, "agent-memory.json"),
+      now: fixedNow,
+    });
+    await memoryStore.load();
+    const runner = new CommandAgentRunner(
+      fakeConfig({ evidenceDir, harnessRunId: "agent-memory-events" }),
+      {
+        agentMemoryStore: memoryStore,
+        context,
+        maxTurns: 1,
+        model: {} as LanguageModel,
+        now: fixedNow,
+        sessionKey: "memory-events-session",
+        sleep: async () => undefined,
+      }
+    );
+
+    await (runner as any).recordSessionMemoryEvents();
+
+    expect(memoryStore.read("lessons").map((entry) => entry.content)).toEqual([
+      "Wall collision at map 1 (2,3); choose a different direction or route around the obstacle.",
+    ]);
+    expect(context.drainSessionEvents()).toEqual([]);
   });
 
   describe("turn interruption only follows game actions", () => {
@@ -605,7 +673,9 @@ describe("agent integration smoke", () => {
             "pokemon_interact",
             "pokemon_load",
             "pokemon_load_rollback",
+            "pokemon_memory_delete",
             "pokemon_memory_read",
+            "pokemon_memory_replace",
             "pokemon_memory_write",
             "pokemon_navigate",
             "pokemon_save",
@@ -615,7 +685,9 @@ describe("agent integration smoke", () => {
             "pokemon_interact",
             "pokemon_load",
             "pokemon_load_rollback",
+            "pokemon_memory_delete",
             "pokemon_memory_read",
+            "pokemon_memory_replace",
             "pokemon_memory_write",
             "pokemon_navigate",
             "pokemon_save",
@@ -781,7 +853,9 @@ describe("agent integration smoke", () => {
             "pokemon_interact",
             "pokemon_load",
             "pokemon_load_rollback",
+            "pokemon_memory_delete",
             "pokemon_memory_read",
+            "pokemon_memory_replace",
             "pokemon_memory_write",
             "pokemon_navigate",
             "pokemon_save",
@@ -791,7 +865,9 @@ describe("agent integration smoke", () => {
             "pokemon_interact",
             "pokemon_load",
             "pokemon_load_rollback",
+            "pokemon_memory_delete",
             "pokemon_memory_read",
+            "pokemon_memory_replace",
             "pokemon_memory_write",
             "pokemon_navigate",
             "pokemon_save",
@@ -918,7 +994,9 @@ describe("agent integration smoke", () => {
           "pokemon_interact",
           "pokemon_load",
           "pokemon_load_rollback",
+          "pokemon_memory_delete",
           "pokemon_memory_read",
+          "pokemon_memory_replace",
           "pokemon_memory_write",
           "pokemon_navigate",
           "pokemon_save",
@@ -1188,11 +1266,13 @@ function createMockContext(
   options: {
     readonly choiceActive?: boolean;
     readonly namingScreenActive?: boolean;
+    readonly sessionEvents?: SessionEvent[];
     readonly states?: CommandAgentGameState[];
   } = {}
 ): CommandAgentContext {
   const states = [...(options.states ?? [gameState()])];
   const state = states[0] ?? gameState();
+  const sessionEvents = [...(options.sessionEvents ?? [])];
   const executionContext = {
     fullState: state.fullState,
     inputGate: {
@@ -1224,6 +1304,9 @@ function createMockContext(
         async () => options.namingScreenActive ?? false
       ),
     },
+    drainSessionEvents: vi.fn(() =>
+      sessionEvents.splice(0, sessionEvents.length)
+    ),
     executionContext,
     getLastGameState: vi.fn(() => state),
     getLastWorld: vi.fn(() => undefined),

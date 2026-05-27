@@ -45,7 +45,14 @@ function emptyMemory(): AgentMemoryFile {
     version: 1,
     updatedAt: new Date().toISOString(),
     nextEntryId: 1,
-    sections: { objectives: [], journal: [], notes: [], strategy: [] },
+    sections: {
+      objectives: [],
+      journal: [],
+      notes: [],
+      strategy: [],
+      landmarks: [],
+      lessons: [],
+    },
   };
 }
 
@@ -61,7 +68,15 @@ function populatedMemory(): AgentMemoryFile {
         { id: "mem-000003", createdAt: new Date().toISOString(), content: "Beat Brock" },
       ],
       notes: [],
-      strategy: [{ id: "mem-000004", createdAt: new Date().toISOString(), content: "Use Ember on grass types" }],
+      strategy: [
+        {
+          id: "mem-000004",
+          createdAt: new Date().toISOString(),
+          content: "Use Ember on grass types",
+        },
+      ],
+      landmarks: [],
+      lessons: [],
     },
   };
 }
