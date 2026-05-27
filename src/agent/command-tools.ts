@@ -98,7 +98,7 @@ const battleInputSchema = z.object({
   ),
 });
 
-export interface PokemonCommandToolState {
+interface PokemonCommandToolState {
   readonly facing: string;
   readonly mapId: number;
   readonly mapName: string;
@@ -107,7 +107,7 @@ export interface PokemonCommandToolState {
   readonly y: number;
 }
 
-export interface PokemonCommandToolPokemonSnapshot {
+interface PokemonCommandToolPokemonSnapshot {
   readonly hp: number;
   readonly level: number;
   readonly maxHp: number;
@@ -116,19 +116,19 @@ export interface PokemonCommandToolPokemonSnapshot {
   readonly status: string;
 }
 
-export interface PokemonCommandToolBattleSnapshot {
+interface PokemonCommandToolBattleSnapshot {
   readonly enemy?: PokemonCommandToolPokemonSnapshot;
   readonly inBattle: boolean;
   readonly party: readonly PokemonCommandToolPokemonSnapshot[];
   readonly type: string;
 }
 
-export interface PokemonCommandToolBattleContext {
+interface PokemonCommandToolBattleContext {
   readonly after: PokemonCommandToolBattleSnapshot;
   readonly before: PokemonCommandToolBattleSnapshot;
 }
 
-export interface PokemonCommandToolResult {
+interface PokemonCommandToolResult {
   readonly after: PokemonCommandToolState;
   readonly battle?: PokemonCommandToolBattleContext;
   readonly before: PokemonCommandToolState;
@@ -236,6 +236,29 @@ async function runCommandTool(
     ...context.executionContext,
     mode: executionMode,
   });
+
+  if (
+    result.reason === "mode_mismatch" &&
+    beforeState.mode === "dialog" &&
+    (command.type === "navigate" || command.type === "interact")
+  ) {
+    const dialogResult = await advanceDialog(context);
+    const clearedState = await refreshState(context);
+    const transcript = parseTranscript(dialogResult.details);
+    return capToolResult({
+      ok: false,
+      command,
+      result: {
+        status: "rejected",
+        reason: "mode_mismatch",
+        details: `Cannot use ${command.type} in dialog mode; dialog auto-advanced`,
+      },
+      before: summarizeState(beforeState),
+      after: summarizeState(clearedState),
+      ...(transcript.length > 0 ? { transcript } : {}),
+      ...buildOptionalContext(context, clearedState, result),
+    });
+  }
 
   const postCommand = await handlePostCommand(context, command, result);
   const afterState = postCommand.finalState;
