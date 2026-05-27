@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
+import { copyFile, mkdir, writeFile } from 'node:fs/promises'
 
 export interface ProcessCreateOptions {
   instanceId: string
@@ -26,7 +26,10 @@ export class ProcessDriver {
     const loaderContent = `port = ${opts.port}\ndofile("${opts.luaScriptPath}")\n`
     await writeFile(loaderPath, loaderContent)
 
-    const child = spawn(opts.mgbaBinary, ['--script', loaderPath, opts.romPath], {
+    const instanceRom = join(frameDir, basename(opts.romPath))
+    await copyFile(opts.romPath, instanceRom)
+
+    const child = spawn(opts.mgbaBinary, ['--script', loaderPath, instanceRom], {
       env: { ...process.env, DISPLAY: ':99', SDL_AUDIODRIVER: 'dummy' },
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false,
