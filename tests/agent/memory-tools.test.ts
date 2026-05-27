@@ -13,7 +13,9 @@ describe("agent memory tools and store", () => {
   let tempDirs: string[] = [];
 
   afterEach(async () => {
-    await Promise.all(tempDirs.map((dir) => rm(dir, { force: true, recursive: true })));
+    await Promise.all(
+      tempDirs.map((dir) => rm(dir, { force: true, recursive: true }))
+    );
     tempDirs = [];
   });
 
@@ -23,8 +25,13 @@ describe("agent memory tools and store", () => {
     await store.load();
     const tools = createMemoryTools(store);
 
-    const writeResult = await executeTool(tools.pokemon_memory_write, { section: "journal", content: "Met Oak in Pallet Town." });
-    const readResult = await executeTool(tools.pokemon_memory_read, { section: "journal" });
+    const writeResult = await executeTool(tools.pokemon_memory_write, {
+      section: "journal",
+      content: "Met Oak in Pallet Town.",
+    });
+    const readResult = await executeTool(tools.pokemon_memory_read, {
+      section: "journal",
+    });
     const reloaded = new AgentMemoryStore({ filePath, now: fixedNow });
     await reloaded.load();
 
@@ -33,7 +40,11 @@ describe("agent memory tools and store", () => {
       ok: true,
       section: "journal",
       totalEntries: 1,
-      entry: { id: "mem-000001", content: "Met Oak in Pallet Town.", createdAt: fixedNow().toISOString() },
+      entry: {
+        id: "mem-000001",
+        content: "Met Oak in Pallet Town.",
+        createdAt: fixedNow().toISOString(),
+      },
     });
     expect(readResult).toMatchObject({
       count: 1,
@@ -41,45 +52,167 @@ describe("agent memory tools and store", () => {
       section: "journal",
       entries: [{ id: "mem-000001", content: "Met Oak in Pallet Town." }],
     });
-    expect(reloaded.read("journal").map((entry) => entry.content)).toEqual(["Met Oak in Pallet Town."]);
-    expect(await readFile(filePath, "utf8")).toContain("Met Oak in Pallet Town.");
+    expect(reloaded.read("journal").map((entry) => entry.content)).toEqual([
+      "Met Oak in Pallet Town.",
+    ]);
+    expect(await readFile(filePath, "utf8")).toContain(
+      "Met Oak in Pallet Town."
+    );
+  });
+
+  it("supports landmarks and lessons sections", async () => {
+    const store = new AgentMemoryStore({
+      filePath: await tempMemoryFile(),
+      now: fixedNow,
+    });
+    await store.load();
+
+    await store.write("landmarks", "Viridian City connects south to Route 1.");
+    await store.write(
+      "lessons",
+      "If movement is blocked, try another direction."
+    );
+
+    expect(store.read("landmarks").map((entry) => entry.content)).toEqual([
+      "Viridian City connects south to Route 1.",
+    ]);
+    expect(store.read("lessons").map((entry) => entry.content)).toEqual([
+      "If movement is blocked, try another direction.",
+    ]);
+  });
+
+  it("deletes and replaces entries through memory tools", async () => {
+    const store = new AgentMemoryStore({
+      filePath: await tempMemoryFile(),
+      now: fixedNow,
+    });
+    await store.load();
+    const tools = createMemoryTools(store);
+    const writeResult = await executeTool(tools.pokemon_memory_write, {
+      section: "lessons",
+      content: "Old lesson",
+    });
+    const id = String((writeResult.entry as { id: string }).id);
+
+    const replaceResult = await executeTool(tools.pokemon_memory_replace, {
+      section: "lessons",
+      id,
+      content: "Updated lesson",
+    });
+
+    expect(replaceResult).toMatchObject({
+      ok: true,
+      replaced: true,
+      section: "lessons",
+    });
+    expect(store.read("lessons").map((entry) => entry.content)).toEqual([
+      "Updated lesson",
+    ]);
+    expect(replaceResult.entry).toMatchObject({
+      id,
+      content: "Updated lesson",
+    });
+    const missingReplaceResult = await executeTool(
+      tools.pokemon_memory_replace,
+      {
+        section: "lessons",
+        id: "mem-missing",
+        content: "Should not appear",
+      }
+    );
+    expect(missingReplaceResult).toMatchObject({
+      id: "mem-missing",
+      ok: false,
+      reason: "not_found",
+      replaced: false,
+      section: "lessons",
+      totalEntries: 1,
+    });
+    const deleteResult = await executeTool(tools.pokemon_memory_delete, {
+      section: "lessons",
+      id,
+    });
+    expect(store.read("lessons").map((entry) => entry.content)).toEqual([]);
+    expect(deleteResult).toMatchObject({
+      deleted: true,
+      ok: true,
+      section: "lessons",
+      totalEntries: 0,
+    });
   });
 
   it("evicts journal entries FIFO after the per-section limit", async () => {
-    const store = new AgentMemoryStore({ filePath: await tempMemoryFile(), now: fixedNow });
+    const store = new AgentMemoryStore({
+      filePath: await tempMemoryFile(),
+      now: fixedNow,
+    });
     await store.load();
 
     let lastWrite: Awaited<ReturnType<AgentMemoryStore["write"]>> | undefined;
-    for (let index = 1; index <= AGENT_MEMORY_MAX_ENTRIES_PER_SECTION + 1; index += 1) {
+    for (
+      let index = 1;
+      index <= AGENT_MEMORY_MAX_ENTRIES_PER_SECTION + 1;
+      index += 1
+    ) {
       lastWrite = await store.write("journal", `entry-${index}`);
     }
 
     const entries = store.read("journal");
-    expect(lastWrite).toMatchObject({ evicted: 1, totalEntries: AGENT_MEMORY_MAX_ENTRIES_PER_SECTION });
+    expect(lastWrite).toMatchObject({
+      evicted: 1,
+      totalEntries: AGENT_MEMORY_MAX_ENTRIES_PER_SECTION,
+    });
     expect(entries).toHaveLength(AGENT_MEMORY_MAX_ENTRIES_PER_SECTION);
     expect(entries[0]?.content).toBe("entry-2");
     expect(entries.at(-1)?.content).toBe("entry-21");
   });
 
   it("enforces 500-character size limits in schemas and store writes", async () => {
-    const store = new AgentMemoryStore({ filePath: await tempMemoryFile(), now: fixedNow });
+    const store = new AgentMemoryStore({
+      filePath: await tempMemoryFile(),
+      now: fixedNow,
+    });
     await store.load();
     const writeTool = createMemoryTools(store).pokemon_memory_write;
 
-    expect(safeParse(writeTool, { section: "notes", content: "x".repeat(AGENT_MEMORY_MAX_ENTRY_CHARS) }).success).toBe(true);
-    expect(safeParse(writeTool, { section: "notes", content: "x".repeat(AGENT_MEMORY_MAX_ENTRY_CHARS + 1) }).success).toBe(false);
-    await expect(store.write("notes", "x".repeat(AGENT_MEMORY_MAX_ENTRY_CHARS + 1))).rejects.toThrow("exceeds 500 characters");
+    expect(
+      safeParse(writeTool, {
+        section: "notes",
+        content: "x".repeat(AGENT_MEMORY_MAX_ENTRY_CHARS),
+      }).success
+    ).toBe(true);
+    expect(
+      safeParse(writeTool, {
+        section: "notes",
+        content: "x".repeat(AGENT_MEMORY_MAX_ENTRY_CHARS + 1),
+      }).success
+    ).toBe(false);
+    await expect(
+      store.write("notes", "x".repeat(AGENT_MEMORY_MAX_ENTRY_CHARS + 1))
+    ).rejects.toThrow("exceeds 500 characters");
   });
 
   it("caps memory read tool payloads near the global 2K result guardrail", async () => {
-    const store = new AgentMemoryStore({ filePath: await tempMemoryFile(), now: fixedNow });
+    const store = new AgentMemoryStore({
+      filePath: await tempMemoryFile(),
+      now: fixedNow,
+    });
     await store.load();
-    for (let index = 1; index <= AGENT_MEMORY_MAX_ENTRIES_PER_SECTION; index += 1) {
-      await store.write("strategy", `${index}: ${"x".repeat(AGENT_MEMORY_MAX_ENTRY_CHARS - 4)}`);
+    for (
+      let index = 1;
+      index <= AGENT_MEMORY_MAX_ENTRIES_PER_SECTION;
+      index += 1
+    ) {
+      await store.write(
+        "strategy",
+        `${index}: ${"x".repeat(AGENT_MEMORY_MAX_ENTRY_CHARS - 4)}`
+      );
     }
     const tools = createMemoryTools(store);
 
-    const readResult = await executeTool(tools.pokemon_memory_read, { section: "strategy" });
+    const readResult = await executeTool(tools.pokemon_memory_read, {
+      section: "strategy",
+    });
 
     expect(JSON.stringify(readResult).length).toBeLessThanOrEqual(2100);
     expect(readResult).toMatchObject({
@@ -106,7 +239,10 @@ interface SchemaTool {
   inputSchema: { safeParse: (input: unknown) => { success: boolean } };
 }
 
-async function executeTool(tool: unknown, input: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function executeTool(
+  tool: unknown,
+  input: Record<string, unknown>
+): Promise<Record<string, unknown>> {
   const result = await (tool as ExecutableTool).execute(input);
   return result as Record<string, unknown>;
 }

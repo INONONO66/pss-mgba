@@ -61,7 +61,9 @@ describe("session observation template", () => {
 
   it("resolves mode-specific tools from SessionState", () => {
     expect(resolveTools(sessionState("overworld"))).toEqual([
+      "pokemon_memory_delete",
       "pokemon_memory_read",
+      "pokemon_memory_replace",
       "pokemon_memory_write",
       "pokemon_wait",
       "pokemon_navigate",
@@ -71,18 +73,24 @@ describe("session observation template", () => {
       "pokemon_load_rollback",
     ]);
     expect(resolveTools(sessionState("battle"))).toEqual([
+      "pokemon_memory_delete",
       "pokemon_memory_read",
+      "pokemon_memory_replace",
       "pokemon_memory_write",
       "pokemon_wait",
       "pokemon_battle",
     ]);
     expect(resolveTools(sessionState("dialog"))).toEqual([
+      "pokemon_memory_delete",
       "pokemon_memory_read",
+      "pokemon_memory_replace",
       "pokemon_memory_write",
       "pokemon_dialog",
     ]);
     expect(resolveTools(sessionState("naming"))).toEqual([
+      "pokemon_memory_delete",
       "pokemon_memory_read",
+      "pokemon_memory_replace",
       "pokemon_memory_write",
       "pokemon_dialog",
     ]);
@@ -99,7 +107,7 @@ describe("session observation template", () => {
     });
 
     expect(rendered).toContain(
-      "[TOOLS]\n- pokemon_dialog\n- pokemon_memory_read\n- pokemon_memory_write"
+      "[TOOLS]\n- pokemon_dialog\n- pokemon_memory_delete\n- pokemon_memory_read\n- pokemon_memory_replace\n- pokemon_memory_write"
     );
     expect(rendered).toContain(
       "[EVENTS]\n- transition/input/dialog: Moved to next tile transition=movement"
