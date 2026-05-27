@@ -825,6 +825,7 @@ function createDefaultModel(config: HarnessConfig): LanguageModel {
     apiKey: config.openaiApiKey,
     baseURL: config.openaiBaseUrl,
     name: "pss-runtime-openai-compatible",
+    headers: { "X-Agent-Name": "pokemon" },
   }).chatModel(config.openaiModel);
 }
 
