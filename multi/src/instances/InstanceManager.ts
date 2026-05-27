@@ -1,12 +1,12 @@
+import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { rm } from 'node:fs/promises'
+import { join } from 'node:path'
 
 import { generateToken } from '../auth/TokenAuth.js'
 import type { Config } from '../config.js'
 import type { InstanceRegistry } from '../gateway/ApiRouter.js'
 import { MgbaSocketClient } from '../mgba/MgbaSocketClient.js'
-import { DockerDriver } from './DockerDriver.js'
-import { isSafeCaptureDirectory } from './capturePaths.js'
+import { ProcessDriver } from './ProcessDriver.js'
 import type { InstanceInfo } from './types.js'
 
 const SOCKET_READY_TIMEOUT_MS = 30_000
@@ -16,9 +16,11 @@ const HEALTH_CHECK_INTERVAL_MS = 10_000
 export class InstanceManager {
   private readonly instances = new Map<string, InstanceInfo>()
   private readonly clients = new Map<string, MgbaSocketClient>()
+  private readonly processes = new Map<string, ChildProcess>()
+  private readonly usedPorts = new Set<number>()
   private readonly config: Config
   private readonly registry: InstanceRegistry
-  private readonly driver: DockerDriver
+  private readonly driver: ProcessDriver
   private healthCheckInterval?: NodeJS.Timeout
 
   constructor(
@@ -27,7 +29,7 @@ export class InstanceManager {
   ) {
     this.config = config
     this.registry = registry
-    this.driver = new DockerDriver()
+    this.driver = new ProcessDriver()
   }
 
   async create(romPath?: string): Promise<InstanceInfo> {
@@ -37,44 +39,56 @@ export class InstanceManager {
 
     const id = randomUUID()
     const token = generateToken()
-    const containerInfo = await this.driver.createContainer({
-      image: this.config.emulatorImage,
-      instanceId: id,
-      token,
-      romPath: romPath ?? this.config.romPath,
-      networkName: this.config.networkName,
-      emulatorPort: this.config.emulatorPort,
-      emulatorMemoryBytes: this.config.emulatorMemoryBytes,
-      captureRoot: this.config.captureRoot,
-    })
+    const resolvedRomPath = romPath ?? this.config.romPath
+    if (!resolvedRomPath) {
+      throw new Error('ROM_PATH_REQUIRED')
+    }
 
-    const client = new MgbaSocketClient()
+    const port = this.allocatePort()
+    const framePath = join(this.config.frameDir, id)
+    let spawnedPid: number | undefined
+
     try {
-      await this.waitForSocket(client, containerInfo.host, containerInfo.port)
+      const processInfo = await this.driver.spawn({
+        instanceId: id,
+        romPath: resolvedRomPath,
+        port,
+        mgbaBinary: this.config.mgbaBinary,
+        luaScriptPath: this.config.luaScriptPath,
+        frameDir: this.config.frameDir,
+      })
+      spawnedPid = processInfo.pid
+
+      const client = new MgbaSocketClient()
+      await this.waitForSocket(client, '127.0.0.1', processInfo.port)
+
+      const info: InstanceInfo = {
+        id,
+        token,
+        pid: processInfo.pid,
+        port: processInfo.port,
+        framePath,
+        status: 'running',
+        createdAt: new Date(),
+      }
+
+      processInfo.process.on('exit', () => {
+        this.markDead(id)
+      })
+
+      this.instances.set(id, info)
+      this.clients.set(id, client)
+      this.processes.set(id, processInfo.process)
+      this.registry.set(token, { info, client })
+
+      return info
     } catch (error) {
-      client.disconnect()
-      await this.driver.stopContainer(containerInfo.id).catch(() => undefined)
-      if (await isSafeCaptureDirectory(containerInfo.captureDirectory, this.config.captureRoot)) {
-        await rm(containerInfo.captureDirectory, { force: true, recursive: true }).catch(() => undefined)
+      this.usedPorts.delete(port)
+      if (spawnedPid !== undefined) {
+        await this.driver.kill(spawnedPid).catch(() => undefined)
       }
       throw error
     }
-
-    const info: InstanceInfo = {
-      id,
-      token,
-      containerId: containerInfo.id,
-      containerHost: containerInfo.host,
-      captureDirectory: containerInfo.captureDirectory,
-      status: 'running',
-      createdAt: new Date(),
-    }
-
-    this.instances.set(id, info)
-    this.clients.set(id, client)
-    this.registry.set(token, { info, client })
-
-    return info
   }
 
   async destroy(instanceId: string): Promise<void> {
@@ -84,13 +98,12 @@ export class InstanceManager {
     }
 
     this.clients.get(instanceId)?.disconnect()
-    await this.driver.stopContainer(info.containerId).catch(() => undefined)
-    if (await isSafeCaptureDirectory(info.captureDirectory, this.config.captureRoot)) {
-      await rm(info.captureDirectory, { force: true, recursive: true }).catch(() => undefined)
-    }
+    await this.driver.kill(info.pid).catch(() => undefined)
+    this.usedPorts.delete(info.port)
 
     this.instances.delete(instanceId)
     this.clients.delete(instanceId)
+    this.processes.delete(instanceId)
     this.registry.delete(info.token)
   }
 
@@ -107,52 +120,7 @@ export class InstanceManager {
   }
 
   async reconstruct(): Promise<void> {
-    const containers = await this.driver.listManagedContainers()
-    for (const container of containers) {
-      if (this.instances.size >= this.config.maxInstances) {
-        return
-      }
-
-      if (container.captureDirectory === undefined ||
-        !(await isSafeCaptureDirectory(container.captureDirectory, this.config.captureRoot))
-      ) {
-        await this.driver.stopContainer(container.id).catch(() => undefined)
-        continue
-      }
-
-      const inspection = await this.driver.inspectContainer(container.id).catch(() => ({ running: false }))
-      if (!inspection.running) {
-        continue
-      }
-
-      const token = container.token
-      if (token === undefined || token === '') {
-        continue
-      }
-
-      const client = new MgbaSocketClient()
-      await this.waitForSocket(client, container.host, this.config.emulatorPort).catch(() => {
-        client.disconnect()
-      })
-
-      if (!client.isConnected()) {
-        continue
-      }
-
-      const info: InstanceInfo = {
-        id: container.instanceId,
-        token,
-        containerId: container.id,
-        containerHost: container.host,
-        captureDirectory: container.captureDirectory,
-        status: 'running',
-        createdAt: new Date(),
-      }
-
-      this.instances.set(container.instanceId, info)
-      this.clients.set(container.instanceId, client)
-      this.registry.set(token, { info, client })
-    }
+    console.info('Process-based instances are not reconstructed across gateway restarts')
   }
 
   startHealthChecks(): void {
@@ -190,6 +158,18 @@ export class InstanceManager {
     if (info) {
       info.status = 'error'
     }
+  }
+
+  private allocatePort(): number {
+    for (let offset = 0; offset < this.config.maxInstances; offset += 1) {
+      const port = this.config.baseLuaPort + offset
+      if (!this.usedPorts.has(port)) {
+        this.usedPorts.add(port)
+        return port
+      }
+    }
+
+    throw new Error('NO_PORT_AVAILABLE')
   }
 
   private async waitForSocket(

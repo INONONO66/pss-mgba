@@ -1,12 +1,13 @@
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 
 import { Hono } from 'hono'
 
-import { readCaptureFile } from '../instances/capturePaths.js'
 import type { InstanceInfo } from '../instances/types.js'
 import type { MgbaSocketClient } from '../mgba/MgbaSocketClient.js'
 import { formatMessage, SUCCESS_MARKER } from '../mgba/protocol.js'
 
-interface InstanceEntry {
+export interface InstanceEntry {
   info: InstanceInfo
   client: MgbaSocketClient
 }
@@ -21,22 +22,17 @@ interface ApiEnv {
   Variables: ApiVariables
 }
 
-const CONTAINER_CAPTURE_PATH = '/capture/rest-capture.png'
-const HOST_CAPTURE_FILE = 'rest-capture.png'
-
-interface ApiRouterOptions {
-  fallbackToSingleInstance?: boolean
-}
-
-export function createApiRouter(registry: InstanceRegistry, options: ApiRouterOptions = {}): Hono<ApiEnv> {
+export function createApiRouter(registry: InstanceRegistry): Hono<ApiEnv> {
   const app = new Hono<ApiEnv>()
 
   app.use('*', async (c, next) => {
     const token = c.req.param('token')
-    const entry = token === undefined && options.fallbackToSingleInstance && registry.size === 1
-      ? Array.from(registry.values())[0]
-      : token === undefined ? undefined : registry.get(token)
-    if (entry === undefined) {
+    if (token === undefined) {
+      return c.text('Unauthorized', 401)
+    }
+
+    const entry = registry.get(token)
+    if (!entry) {
       return c.text('Unauthorized', 401)
     }
 
@@ -99,13 +95,13 @@ export function createApiRouter(registry: InstanceRegistry, options: ApiRouterOp
 
   app.post('/core/screenshot', async (c) => {
     const entry = c.get('entry')
-    const response = await send(entry, 'core.screenshot', CONTAINER_CAPTURE_PATH)
+    const response = await send(entry, 'core.screenshot', join(entry.info.framePath, 'capture.png'))
     if (response !== SUCCESS_MARKER) {
       return c.text(response, 500)
     }
 
     try {
-      const pngBytes = await readCaptureFile(entry.info.captureDirectory, HOST_CAPTURE_FILE)
+      const pngBytes = await readCapture(entry.info.framePath)
       return c.body(new Uint8Array(pngBytes), 200, { 'content-type': 'image/png' })
     } catch {
       return c.text('Failed to read screenshot', 500)
@@ -147,4 +143,8 @@ function queryParam(value: string | undefined, name: string): QueryParamResult {
   }
 
   return { ok: true, value }
+}
+
+function readCapture(framePath: string): Promise<Buffer> {
+  return readFile(join(framePath, 'capture.png'))
 }

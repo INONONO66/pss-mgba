@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim AS builder
+FROM debian:bookworm-slim AS mgba-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
@@ -18,7 +18,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libelf-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Build mGBA from source with Lua scripting enabled
 RUN git clone --depth 1 https://github.com/mgba-emu/mgba.git /mgba
 
 RUN python3 - <<'PY'
@@ -142,7 +141,7 @@ path.write_text(text)
 PY
 
 RUN grep -q 'parseLongScriptArg' /mgba/src/platform/sdl/main.c || \
-    (echo "FATAL: Source patch failed — mGBA source has changed" && exit 1)
+    (echo "FATAL: mGBA source patch failed — upstream source has changed" && exit 1)
 
 WORKDIR /mgba/build
 RUN cmake .. \
@@ -160,28 +159,35 @@ RUN cmake .. \
     && make -j$(nproc) mgba-sdl \
     && make install DESTDIR=/install
 
-FROM debian:bookworm-slim
+FROM node:22-slim AS gateway-builder
+WORKDIR /app
+RUN npm install -g pnpm
+COPY package.json ./
+RUN pnpm install --no-frozen-lockfile --dangerously-allow-all-builds
+COPY src/ ./src/
+COPY tsconfig.json ./
+RUN pnpm build
 
-# Runtime dependencies only
+FROM node:22-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    xvfb \
-    x11-utils \
-    tini \
-    procps \
-    libsdl2-2.0-0 \
-    libgl1 \
-    liblua5.4-0 \
-    libpng16-16 \
-    zlib1g \
-    libzip4 \
+    xvfb x11-utils tini procps \
+    libsdl2-2.0-0 libgl1 liblua5.4-0 libpng16-16 zlib1g libzip4 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /install/usr/local/bin/mgba /usr/local/bin/mgba-sdl
-COPY --from=builder /install/usr/local/lib/libmgba.so* /usr/local/lib/
-COPY scripts/mGBASocketServer.lua /app/mGBASocketServer.lua
-COPY entrypoint.sh /entrypoint.sh
-RUN ldconfig && chmod +x /entrypoint.sh
+COPY --from=mgba-builder /install/usr/local/bin/mgba /usr/local/bin/mgba-sdl
+COPY --from=mgba-builder /install/usr/local/lib/libmgba.so* /usr/local/lib/
+RUN ldconfig
 
-EXPOSE 8888
+WORKDIR /app
+COPY --from=gateway-builder /app/dist ./dist/
+COPY --from=gateway-builder /app/node_modules ./node_modules/
+COPY --from=gateway-builder /app/package.json ./
+COPY docker/scripts/mGBASocketServer.lua /app/mGBASocketServer.lua
 
+RUN mkdir -p /tmp/frames
+
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 8787
 ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]
