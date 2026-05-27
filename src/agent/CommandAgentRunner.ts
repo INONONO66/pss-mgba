@@ -32,6 +32,7 @@ import { waitForInputReady } from "../executor/InputReadiness.js";
 import { createMemoryTools } from "./memory-tools";
 import { createSaveLoadTools } from "./saveload-tools";
 import { toObservableState } from "../game/FullGameDetector.js";
+import { syncCommandAgentContext } from "./session-sync.js";
 
 const HISTORY_LIMIT = 10;
 const AUTO_CHECKPOINT_SLOT = 8;
@@ -706,16 +707,8 @@ export class CommandAgentRunner {
     }
   }
 
-  private async refreshState(): Promise<CommandAgentGameState> {
-    const state = await this.context.readGameState();
-    this.context.executionContext.mode = state.mode;
-    this.context.executionContext.fullState = state.fullState;
-    this.context.executionContext.mapWidth = state.mapWidth;
-    this.context.executionContext.mapHeight = state.mapHeight;
-    await this.context.updateMapMemory();
-    this.context.mapMemoryStore.onUpdate(this.context.mapMemory);
-    this.context.updateMapGraph();
-    return state;
+  private refreshState(): Promise<CommandAgentGameState> {
+    return syncCommandAgentContext(this.context);
   }
 
   private updateDetector(state: CommandAgentGameState): DetectorStatus {

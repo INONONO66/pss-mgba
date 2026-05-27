@@ -15,6 +15,7 @@ import type {
   CommandAgentContext,
   CommandAgentGameState,
 } from "./CommandAgentContext";
+import { syncCommandAgentContext } from "./session-sync.js";
 
 const TOOL_RESULT_CHAR_LIMIT = 2000;
 const DETAILS_CHAR_LIMIT = 420;
@@ -264,7 +265,10 @@ async function runCommandTool(
   const afterState = postCommand.finalState;
 
   return capToolResult({
-    ok: result.status === "success" || result.status === "partial" || result.status === "interrupted",
+    ok:
+      result.status === "success" ||
+      result.status === "partial" ||
+      result.status === "interrupted",
     command,
     result: capCommandResult(postCommand.result),
     before: summarizeState(beforeState),
@@ -280,29 +284,37 @@ async function runCommandTool(
 }
 
 interface PostCommandResult {
+  readonly finalState: CommandAgentGameState;
   readonly result: CommandResult;
   readonly transcript: string[];
-  readonly finalState: CommandAgentGameState;
 }
 
 const MAX_POST_BATTLE_DIALOG_ROUNDS = 5;
-const INTERRUPTING_REASONS = new Set(["choice_appeared", "naming_screen", "battle_started"]);
+const INTERRUPTING_REASONS = new Set([
+  "choice_appeared",
+  "naming_screen",
+  "battle_started",
+]);
 
-function advanceDialog(
-  context: CommandAgentContext,
-): Promise<CommandResult> {
+function advanceDialog(context: CommandAgentContext): Promise<CommandResult> {
   const dialogExecutor = new DialogExecutor(
     context.executionContext.controller,
-    context.executionContext.dialogStateReader,
+    context.executionContext.dialogStateReader
   );
-  return dialogExecutor.execute({ type: "dialog", action: { kind: "advance" } });
+  return dialogExecutor.execute({
+    type: "dialog",
+    action: { kind: "advance" },
+  });
 }
 
 function mergeDialogResult(
   base: CommandResult,
-  dialogResult: CommandResult,
+  dialogResult: CommandResult
 ): CommandResult {
-  if (dialogResult.reason !== undefined && INTERRUPTING_REASONS.has(dialogResult.reason)) {
+  if (
+    dialogResult.reason !== undefined &&
+    INTERRUPTING_REASONS.has(dialogResult.reason)
+  ) {
     return {
       ...base,
       status: "interrupted",
@@ -310,28 +322,34 @@ function mergeDialogResult(
       details: combineDetails(base.details, dialogResult.details),
     };
   }
-  return { ...base, details: combineDetails(base.details, dialogResult.details) };
+  return {
+    ...base,
+    details: combineDetails(base.details, dialogResult.details),
+  };
 }
 
 const BATTLE_EXIT_PRESS_FRAMES = 16;
 const MAX_BATTLE_EXIT_PRESSES = 40;
 
 async function waitForBattleExit(
-  context: CommandAgentContext,
+  context: CommandAgentContext
 ): Promise<CommandAgentGameState> {
   for (let i = 0; i < MAX_BATTLE_EXIT_PRESSES; i += 1) {
     const state = await refreshState(context);
     if (!state.fullState.battle.inBattle) {
       return state;
     }
-    await context.executionContext.controller.pressButton("A", BATTLE_EXIT_PRESS_FRAMES);
+    await context.executionContext.controller.pressButton(
+      "A",
+      BATTLE_EXIT_PRESS_FRAMES
+    );
   }
   return refreshState(context);
 }
 
 async function handlePostBattleCommand(
   context: CommandAgentContext,
-  originalResult: CommandResult,
+  originalResult: CommandResult
 ): Promise<PostCommandResult> {
   const transcript: string[] = [];
   let state = await refreshState(context);
@@ -344,13 +362,20 @@ async function handlePostBattleCommand(
     }
   }
 
-  for (let round = 0; round < MAX_POST_BATTLE_DIALOG_ROUNDS && state.mode === "dialog"; round += 1) {
+  for (
+    let round = 0;
+    round < MAX_POST_BATTLE_DIALOG_ROUNDS && state.mode === "dialog";
+    round += 1
+  ) {
     const dialogResult = await advanceDialog(context);
     transcript.push(...parseTranscript(dialogResult.details));
     result = mergeDialogResult(result, dialogResult);
     state = await refreshState(context);
 
-    if (dialogResult.reason !== undefined && INTERRUPTING_REASONS.has(dialogResult.reason)) {
+    if (
+      dialogResult.reason !== undefined &&
+      INTERRUPTING_REASONS.has(dialogResult.reason)
+    ) {
       break;
     }
   }
@@ -402,7 +427,10 @@ function parseTranscript(details: string | undefined): string[] {
   }
 }
 
-function combineDetails(original: string | undefined, additional: string | undefined): string {
+function combineDetails(
+  original: string | undefined,
+  additional: string | undefined
+): string {
   if (original === undefined) {
     return additional ?? "";
   }
@@ -412,18 +440,10 @@ function combineDetails(original: string | undefined, additional: string | undef
   return `${original}; ${additional}`;
 }
 
-async function refreshState(
+function refreshState(
   context: CommandAgentContext
 ): Promise<CommandAgentGameState> {
-  const state = await context.readGameState();
-  context.executionContext.mode = state.mode;
-  context.executionContext.fullState = state.fullState;
-  context.executionContext.mapWidth = state.mapWidth;
-  context.executionContext.mapHeight = state.mapHeight;
-  await context.updateMapMemory();
-  context.mapMemoryStore.onUpdate(context.mapMemory);
-  context.updateMapGraph();
-  return state;
+  return syncCommandAgentContext(context);
 }
 
 function summarizeState(state: CommandAgentGameState): PokemonCommandToolState {
