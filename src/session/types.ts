@@ -61,6 +61,8 @@ export type InputSource =
   | "test";
 
 export interface InputIntent {
+  /** Treat a visible text window as a valid input/settle state. */
+  readonly allowDialog?: boolean;
   readonly button: MgbaButton;
   readonly frames: number;
   readonly reason?: string;
