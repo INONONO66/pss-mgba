@@ -1,8 +1,8 @@
 import type { HarnessErrorCode } from "./types.js";
 
-export type SafeErrorContext = Record<string, unknown>;
+type SafeErrorContext = Record<string, unknown>;
 
-export interface SerializedHarnessError {
+interface SerializedHarnessError {
   name: "HarnessError";
   code: HarnessErrorCode;
   message: string;

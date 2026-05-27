@@ -6,7 +6,7 @@ import type { ResourceSampleReport } from "./report.js";
 
 const LEADING_SLASH = /^\//;
 
-export interface ResourceSampleOptions {
+interface ResourceSampleOptions {
   containerIds: string[];
   gatewayPid?: number;
 }

@@ -5,7 +5,7 @@ import { HALL_OF_FAME_MAP_ID as MEMORY_MAP_HALL_OF_FAME_MAP_ID } from "./memoryM
 import type { FullGameState } from "./PokemonTypes.js";
 export const HALL_OF_FAME_MAP_ID = MEMORY_MAP_HALL_OF_FAME_MAP_ID;
 
-export type FullGameCheckpointName =
+type FullGameCheckpointName =
   | "initialObserved"
   | "starterAcquired"
   | "rivalBattleEntered"
@@ -33,7 +33,7 @@ export interface FullGameObservableState {
   readonly hallOfFameComplete?: boolean;
 }
 
-export interface FullGameObservedFields {
+interface FullGameObservedFields {
   readonly wCurMap?: number;
   readonly wYCoord?: number;
   readonly wXCoord?: number;
@@ -44,7 +44,7 @@ export interface FullGameObservedFields {
   readonly hallOfFameComplete?: boolean;
 }
 
-export interface FullGameCheckpoints {
+interface FullGameCheckpoints {
   readonly initialObserved: boolean;
   readonly starterAcquired: boolean;
   readonly rivalBattleEntered: boolean;
@@ -56,7 +56,7 @@ export interface FullGameCheckpoints {
   readonly completed: boolean;
 }
 
-export interface FullGameCheckpointEvidence {
+interface FullGameCheckpointEvidence {
   readonly checkpoint: FullGameCheckpointName;
   readonly step: number;
   readonly frame?: number;
@@ -64,7 +64,7 @@ export interface FullGameCheckpointEvidence {
   readonly observed: FullGameObservedFields;
 }
 
-export interface FullGameStatus extends DetectorStatus<FullGameCheckpoints> {
+interface FullGameStatus extends DetectorStatus<FullGameCheckpoints> {
   readonly status: HarnessStatus;
   readonly checkpoints: FullGameCheckpoints;
   readonly progressStep: number;

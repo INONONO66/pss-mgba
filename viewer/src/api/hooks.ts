@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import type { AgentMemoryResponse, GameStateResponse, MapMemoryResponse, RunSummary, SupervisorResponse, TurnsResponse } from "./types";
+import type { SupervisorResponse } from "./types";
 
-export function usePolling<T>(url: string, interval = 1000): { data: T | null; error: string | null } {
+function usePolling<T>(url: string, interval = 1000): { data: T | null; error: string | null } {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,12 +40,7 @@ export function usePolling<T>(url: string, interval = 1000): { data: T | null; e
   return { data, error };
 }
 
-export function useTurns(limit = 20) { return usePolling<TurnsResponse>(`/api/turns?limit=${limit}`, 1000).data; }
-export function useGameState(limit = 8) { return usePolling<GameStateResponse>(`/api/game-state?limit=${limit}`, 1000).data; }
-export function useRunSummary() { return usePolling<RunSummary>("/api/global/run-summary", 1000).data; }
-export function useAgentMemory() { return usePolling<AgentMemoryResponse>("/api/global/agent-memory", 2000).data; }
 export function useSupervisor() { return usePolling<SupervisorResponse>("/api/global/supervisor", 2000).data; }
-export function useMapMemory() { return usePolling<MapMemoryResponse>("/api/global/map-memory", 2000).data; }
 
 async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetch(`${url}${url.includes("?") ? "&" : "?"}nonce=${Date.now()}`, { cache: "no-store" });

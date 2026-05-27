@@ -2,7 +2,7 @@ import type { TurnRecord, TurnTimelineEvent } from "../api/types";
 import { actionLabel } from "./labels";
 import { isRecord, value } from "./shared";
 
-export type TimelineTone = "seeing" | "thinking" | "deciding" | "error" | "state";
+type TimelineTone = "seeing" | "thinking" | "deciding" | "error" | "state";
 
 export function timelineTone(event: TurnTimelineEvent): TimelineTone {
   if (event.type === "turn-error") return "error";

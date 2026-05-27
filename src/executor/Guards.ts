@@ -7,7 +7,7 @@ export interface GuardContext {
   mapHeight: number;
 }
 
-export type GuardResult =
+type GuardResult =
   | { valid: true }
   | { valid: false; result: CommandResult };
 

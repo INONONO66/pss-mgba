@@ -12,11 +12,11 @@ const DEFAULT_TIMEOUT_MS = 5000;
 /** Minimum consecutive ready readings to confirm stability. */
 const STABLE_COUNT = 2;
 
-export interface InputReadinessReader {
+interface InputReadinessReader {
   read8(address: number): Promise<number>;
 }
 
-export interface InputReadinessResult {
+interface InputReadinessResult {
   /** Whether the game reached a confirmed input-ready state. */
   readonly ready: boolean;
   /** Final joyIgnore value observed. */
@@ -31,7 +31,7 @@ export interface InputReadinessResult {
   readonly timedOut: boolean;
 }
 
-export interface WaitForInputReadyOptions {
+interface WaitForInputReadyOptions {
   /** Timeout in milliseconds. Defaults to 5000. */
   readonly timeoutMs?: number;
   /** Custom sleep function for testing. */

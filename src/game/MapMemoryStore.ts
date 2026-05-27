@@ -37,13 +37,13 @@ export interface PersistedMapRecord {
   playerPosition?: { y: number; x: number };
 }
 
-export interface PersistedTile {
+interface PersistedTile {
   terrain: TileTerrain;
   features: readonly TileFeature[];
   tileId: number;
 }
 
-export interface PersistedWarp {
+interface PersistedWarp {
   y: number;
   x: number;
   destMapId: number;

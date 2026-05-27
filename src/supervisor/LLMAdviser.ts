@@ -68,7 +68,7 @@ export interface LLMAdviserResult {
   readonly situationKey: string;
 }
 
-export interface VisionInterventionInput {
+interface VisionInterventionInput {
   readonly screenshotPath: string;
   readonly fullState?: FullGameState;
   readonly stuckReasons: readonly string[];

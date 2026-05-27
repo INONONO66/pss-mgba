@@ -30,7 +30,7 @@ export const TILESET = {
 
 // Water tile IDs — only for water-capable tilesets
 // From pokered: data/tilesets/water_tilesets.asm, home/overworld.asm:1888-1945
-export const WATER_TILES: ReadonlyMap<number, ReadonlySet<number>> = new Map([
+const WATER_TILES: ReadonlyMap<number, ReadonlySet<number>> = new Map([
   [TILESET.OVERWORLD, new Set([0x14, 0x32, 0x48])],
   [TILESET.FOREST, new Set([0x14, 0x32, 0x48])],
   [TILESET.DOJO, new Set([0x14])],
@@ -44,19 +44,19 @@ export const WATER_TILES: ReadonlyMap<number, ReadonlySet<number>> = new Map([
 
 // Cut tree tiles — from pokered: engine/overworld/cut.asm
 // Key = tileset ID, Value = set of cuttable tile IDs
-export const CUTTABLE_TILES: ReadonlyMap<number, ReadonlySet<number>> = new Map([
+const CUTTABLE_TILES: ReadonlyMap<number, ReadonlySet<number>> = new Map([
   [TILESET.OVERWORLD, new Set([0x3d, 0x52])],
   [TILESET.GYM, new Set([0x50])],
 ]);
 
 // Ledge tiles — from pokered: data/tilesets/ledge_tiles.asm
 // Overworld only. These are the LEDGE tiles (the tile you jump over/onto)
-export const LEDGE_TILES: ReadonlyMap<number, ReadonlySet<number>> = new Map([
+const LEDGE_TILES: ReadonlyMap<number, ReadonlySet<number>> = new Map([
   [TILESET.OVERWORLD, new Set([0x37, 0x36, 0x27, 0x0d, 0x1d])],
 ]);
 
 // Counter tiles — from pokered: data/tilesets/tileset_headers.asm (3 per header)
-export const COUNTER_TILES: ReadonlyMap<number, ReadonlySet<number>> = new Map([
+const COUNTER_TILES: ReadonlyMap<number, ReadonlySet<number>> = new Map([
   [TILESET.MART, new Set([0x18, 0x19, 0x1e])],
   [TILESET.POKECENTER, new Set([0x18, 0x19, 0x1e])],
   [TILESET.DOJO, new Set([0x3a])],
@@ -72,7 +72,7 @@ export const COUNTER_TILES: ReadonlyMap<number, ReadonlySet<number>> = new Map([
 ]);
 
 // Door tiles — from pokered: data/tilesets/door_tile_ids.asm
-export const DOOR_TILES: ReadonlyMap<number, ReadonlySet<number>> = new Map([
+const DOOR_TILES: ReadonlyMap<number, ReadonlySet<number>> = new Map([
   [TILESET.OVERWORLD, new Set([0x1b, 0x58])],
   [TILESET.FOREST_GATE, new Set([0x3b])],
   [TILESET.MUSEUM, new Set([0x3b])],
@@ -96,7 +96,7 @@ export const DOOR_TILES: ReadonlyMap<number, ReadonlySet<number>> = new Map([
 
 // Warp tiles — from pokered: data/tilesets/warp_tile_ids.asm
 // NOTE: pokered uses fallthrough chains; all inherited tile IDs are resolved here.
-export const WARP_TILES: ReadonlyMap<number, ReadonlySet<number>> = new Map([
+const WARP_TILES: ReadonlyMap<number, ReadonlySet<number>> = new Map([
   [TILESET.OVERWORLD, new Set([0x1b, 0x58])],
   [TILESET.REDS_HOUSE_1, new Set([0x1a, 0x1c])],
   [TILESET.MART, new Set([0x5e])],

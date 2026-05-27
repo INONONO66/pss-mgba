@@ -30,15 +30,11 @@ export interface PokemonStateSnapshot {
   [key: string]: unknown;
 }
 
-export interface RecentStateSnapshot extends PokemonStateSnapshot {
-  step?: number;
-}
-
 export interface PolicyInput {
   state?: PokemonStateSnapshot;
   currentState?: unknown;
   recentActions?: readonly unknown[];
-  recentStates?: readonly RecentStateSnapshot[];
+  recentStates?: readonly (PokemonStateSnapshot & { step?: number })[];
   step?: number;
   objective?: string;
   adviserHint?: string;

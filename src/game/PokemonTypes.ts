@@ -2,7 +2,7 @@
 // Core enums / primitives
 // ---------------------------------------------------------------------------
 
-export type BattleKind = "none" | "wild" | "trainer" | "lost";
+type BattleKind = "none" | "wild" | "trainer" | "lost";
 
 export type BattleFlag =
   | { kind: "none"; raw: 0 }
@@ -10,14 +10,14 @@ export type BattleFlag =
   | { kind: "trainer"; raw: 2 }
   | { kind: "lost"; raw: 255 };
 
-export type PlayerFacingDirection = "down" | "up" | "left" | "right";
+type PlayerFacingDirection = "down" | "up" | "left" | "right";
 
 export interface PlayerFacing {
   raw: number;
   direction: PlayerFacingDirection;
 }
 
-export type ScreenTextKind = "none" | "oak_intro" | "default_name_menu" | "naming_screen" | "overworld_text";
+type ScreenTextKind = "none" | "oak_intro" | "default_name_menu" | "naming_screen" | "overworld_text";
 
 // ---------------------------------------------------------------------------
 // Coordinates / Map

@@ -17,7 +17,7 @@ import {
 const OPEN_READY_STATE = 1;
 const KEYFRAME_REQUEST_THROTTLE_MS = 500;
 
-export interface DashboardBroadcastOptions {
+interface DashboardBroadcastOptions {
   requestKeyframe?: (token?: string) => void;
 }
 

@@ -2,9 +2,9 @@
 import type { CapturedFrame } from "./FrameCapture.js";
 import { StreamFrameType, type ViewerClientMetrics } from "./StreamProtocol.js";
 
-export type StreamDeliveryTarget = "dashboard" | "instance";
+type StreamDeliveryTarget = "dashboard" | "instance";
 
-export interface StreamInstanceMetricsSnapshot {
+interface StreamInstanceMetricsSnapshot {
   clientDecodedFrames: number;
   clientDroppedFrames: number;
   clientFps?: number;
@@ -31,7 +31,7 @@ export interface StreamInstanceMetricsSnapshot {
   sequenceGaps: number;
 }
 
-export interface StreamMetricsSnapshot {
+interface StreamMetricsSnapshot {
   aggregate: {
     clientDroppedFrames: number;
     clientRenderedFrames: number;

@@ -2,13 +2,13 @@ import { mkdir, writeFile } from "node:fs/promises";
 import type { HarnessStatus } from "../shared/types.js";
 import { buildRunPaths, type RunPaths } from "./RunPaths.js";
 
-export interface EvidenceRecorderOptions {
+interface EvidenceRecorderOptions {
   readonly evidenceDir?: string;
   readonly runId?: string;
   readonly now?: () => Date;
 }
 
-export interface ScreenshotMetadata {
+interface ScreenshotMetadata {
   readonly path: string;
   readonly frame?: number;
   readonly step?: number;

@@ -1,8 +1,8 @@
 import { mapName } from "./PokemonCatalog.js";
 
-export type ConnectionDirection = "north" | "south" | "east" | "west";
+type ConnectionDirection = "north" | "south" | "east" | "west";
 
-export interface WarpEdge {
+interface WarpEdge {
   kind: "warp";
   fromMapId: number;
   from: { y: number; x: number };
@@ -10,14 +10,14 @@ export interface WarpEdge {
   destWarpId: number;
 }
 
-export interface ConnectionEdge {
+interface ConnectionEdge {
   kind: "connection";
   fromMapId: number;
   direction: ConnectionDirection;
   toMapId: number;
 }
 
-export type MapGraphEdge = WarpEdge | ConnectionEdge;
+type MapGraphEdge = WarpEdge | ConnectionEdge;
 
 export interface MapGraphInput {
   mapId: number;

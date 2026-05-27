@@ -1,4 +1,4 @@
-export function renderDashboard(): string {
+function renderDashboard(): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>

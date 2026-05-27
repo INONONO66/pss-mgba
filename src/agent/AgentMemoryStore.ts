@@ -13,7 +13,7 @@ export type AgentMemorySection = (typeof AGENT_MEMORY_SECTIONS)[number];
 
 export const AGENT_MEMORY_MAX_ENTRY_CHARS = 500;
 export const AGENT_MEMORY_MAX_ENTRIES_PER_SECTION = 20;
-export const AGENT_MEMORY_FILE_NAME = "agent-memory.json";
+
 
 const entryIdPattern = /^mem-(\d+)$/;
 
@@ -23,7 +23,7 @@ export interface AgentMemoryEntry {
   readonly content: string;
 }
 
-export type AgentMemorySections = Record<AgentMemorySection, AgentMemoryEntry[]>;
+type AgentMemorySections = Record<AgentMemorySection, AgentMemoryEntry[]>;
 
 export interface AgentMemoryFile {
   readonly version: 1;

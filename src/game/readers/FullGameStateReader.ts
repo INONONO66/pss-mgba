@@ -6,7 +6,7 @@ import { readDialogState, readStoryFlags } from "./ProgressReader.js";
 import type { BadgeProgress, FullGameState, MenuTextState, PlayerFacing, PokemonCoordinates } from "../PokemonTypes.js";
 import type { RamClient } from "../RamClient.js";
 
-export interface FullGameStateInput {
+interface FullGameStateInput {
   readonly client: RamClient;
   readonly coordinates: PokemonCoordinates;
   readonly playerFacing: PlayerFacing;

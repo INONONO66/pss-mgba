@@ -23,11 +23,11 @@ const SPRITE_NAMES: Readonly<Record<number, string>> = {
   0x48: "Gambler Asleep",
 };
 
-export function spriteName(pictureId: number): string {
+function spriteName(pictureId: number): string {
   return SPRITE_NAMES[pictureId] ?? `sprite:${pictureId}`;
 }
 
-export function isItemSprite(pictureId: number): boolean {
+function isItemSprite(pictureId: number): boolean {
   return pictureId >= FIRST_STILL_SPRITE;
 }
 
@@ -55,7 +55,7 @@ export interface VisualGraph {
   readonly nodeCount: number;
 }
 
-export interface MapMemoryStats {
+interface MapMemoryStats {
   readonly mapCount: number;
   readonly tileCount: number;
   readonly warpCount: number;

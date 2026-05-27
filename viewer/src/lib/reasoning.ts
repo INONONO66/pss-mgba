@@ -1,9 +1,9 @@
 import type { ContentPart, TurnRecord } from "../api/types";
 
 export interface ReasoningResult { thinking: string | null; rationale?: string; hasExplicitThinking: boolean; rawThinkTag: string | null; source: "think" | "preamble" | "rationale" | "none"; }
-export interface ChipResult { chips: Array<{ label: string; type: "mode" | "rule" | "hint" }>; systemText: string; userText: string; }
+interface ChipResult { chips: Array<{ label: string; type: "mode" | "rule" | "hint" }>; systemText: string; userText: string; }
 
-export function messageText(message: { content: string | ContentPart[] }): string {
+function messageText(message: { content: string | ContentPart[] }): string {
   if (typeof message.content === "string") return message.content;
   return (message.content ?? []).map((part) => {
     if (part.type === "text") return part.text;

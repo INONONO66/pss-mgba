@@ -61,20 +61,7 @@ export interface TurnRecord {
   error?: unknown;
 }
 
-export interface LlmConversation {
-  call: number;
-  model: string;
-  temperature?: number;
-  mode?: string;
-  harnessMode?: string;
-  messages: Array<{ role: "system" | "user" | "assistant"; content: string | ContentPart[] }>;
-  responseContent?: string;
-  parsedDecision?: { command?: Command; action?: Action; rationale?: string; confidence?: number; observedStateCitations?: string[] };
-  error?: { code: string; message: string } | string;
-  fileName?: string;
-}
 
-export interface LlmConversationsResponse { runId: string; limit: number; count: number; conversations: LlmConversation[]; }
 export interface TurnsResponse { runId: string; limit: number; count: number; turns: TurnRecord[]; }
 
 export interface GameStateSnapshot { fileName?: string; state?: unknown; step?: number; frame?: number; stateHash?: string; error?: unknown; [key: string]: unknown; }
@@ -92,26 +79,25 @@ export interface RunSummary {
   lastAction?: { step?: number; frame?: number; command?: Command; action?: Action; confidence?: number; rationale?: string };
 }
 
-export interface AgentMemoryEntry { id: string; createdAt: string; content: string; }
 export interface AgentMemoryResponse {
   runId: string;
   updatedAt: string | null;
   sections: {
-    objectives: AgentMemoryEntry[];
-    journal: AgentMemoryEntry[];
-    notes: AgentMemoryEntry[];
-    strategy: AgentMemoryEntry[];
+    objectives: Array<{ id: string; createdAt: string; content: string }>;
+    journal: Array<{ id: string; createdAt: string; content: string }>;
+    notes: Array<{ id: string; createdAt: string; content: string }>;
+    strategy: Array<{ id: string; createdAt: string; content: string }>;
   };
 }
 
-export interface SupervisorAssessment {
+interface SupervisorAssessment {
   state: "progressing" | "stuck" | "blocked" | "complete" | string;
   reasons?: readonly string[];
   repeatedActionCount?: number;
   stableLocationCount?: number;
 }
 
-export interface SupervisorGoal {
+interface SupervisorGoal {
   id: string;
   kind: string;
   title: string;
@@ -183,13 +169,6 @@ export type ServerMessage =
   | { type: "ack"; seq: number; runId: string; payload: { id: string } }
   | { type: "error"; seq: number; runId: string; payload: { message: string; id?: string } };
 
-export type ClientMessage =
-  | { type: "resume"; lastSeq?: number }
-  | { type: "subscribe"; channels: string[] }
-  | { type: "input:press"; id: string; payload: { button: GameButton; frames: number } }
-  | { type: "agent:pause"; id: string }
-  | { type: "agent:resume"; id: string };
-
 export interface ViewerSnapshot {
   summary: RunSummary | null;
   gameState: GameStateResponse | null;
@@ -206,7 +185,7 @@ export interface ConsoleEntry {
 
 /* ── Viewer state (client-side store) ── */
 
-export type ConnectionStatus = "connecting" | "open" | "closed";
+type ConnectionStatus = "connecting" | "open" | "closed";
 
 export interface ViewerState {
   connection: { status: ConnectionStatus; lastSeq: number; error?: string };

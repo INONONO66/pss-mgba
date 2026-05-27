@@ -6,7 +6,7 @@ import type { InstanceInfo } from '../instances/types.js'
 import type { MgbaSocketClient } from '../mgba/MgbaSocketClient.js'
 import { formatMessage, SUCCESS_MARKER } from '../mgba/protocol.js'
 
-export interface InstanceEntry {
+interface InstanceEntry {
   info: InstanceInfo
   client: MgbaSocketClient
 }

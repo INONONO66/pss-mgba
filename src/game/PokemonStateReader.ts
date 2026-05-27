@@ -14,22 +14,22 @@ import { readRangeExact } from "./RamClient.js";
 import { decodeGen1Text } from "./TextCodec.js";
 import { readFullGameState } from "./readers/FullGameStateReader.js";
 
-export type PokemonGameVersion = "red" | "blue";
+type PokemonGameVersion = "red" | "blue";
 
-export interface PokemonStateReaderOptions {
+interface PokemonStateReaderOptions {
   readonly client: RamClient;
   readonly version: PokemonGameVersion;
 }
 
-export interface ReadFullStateOptions {
+interface ReadFullStateOptions {
   readonly menuText?: MenuTextState;
 }
 
-export interface ReadMenuTextStateOptions {
+interface ReadMenuTextStateOptions {
   readonly tileMapBytes?: Uint8Array;
 }
 
-export interface PokemonBattleState {
+interface PokemonBattleState {
   readonly flag: BattleFlag;
   readonly battleType: number;
   readonly battleResult: number;
@@ -37,7 +37,7 @@ export interface PokemonBattleState {
   readonly enemyMonHp: number;
 }
 
-export interface PokemonGameStateSnapshot extends PokemonGameState {
+interface PokemonGameStateSnapshot extends PokemonGameState {
   readonly battleState: PokemonBattleState;
   readonly wIsInBattle: number;
   readonly wBattleType: number;

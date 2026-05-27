@@ -117,5 +117,4 @@ function truncate(value: string, maxChars: number): string {
   return `${value.slice(0, Math.max(0, maxChars - 1))}…`;
 }
 
-export type { AgentMemorySection } from "./AgentMemoryStore";
 export { MEMORY_TOOL_RESULT_CHAR_LIMIT as POKEMON_MEMORY_TOOL_RESULT_CHAR_LIMIT };

@@ -4,9 +4,9 @@ import { wCurMap, wXCoord, wYCoord } from "../game/memoryMap.js";
 import type { HarnessErrorCode } from "../shared/types.js";
 import { MgbaHttpClient } from "./MgbaHttpClient.js";
 
-export type MgbaPreflightStatus = "pass" | "fail" | "warn";
+type MgbaPreflightStatus = "pass" | "fail" | "warn";
 
-export type MgbaPreflightCheckName =
+type MgbaPreflightCheckName =
   | "config"
   | "current_frame"
   | "ram_wCurMap"
@@ -15,7 +15,7 @@ export type MgbaPreflightCheckName =
   | "screenshot"
   | "button_tap";
 
-export interface MgbaPreflightCheck {
+interface MgbaPreflightCheck {
   readonly name: MgbaPreflightCheckName;
   readonly status: MgbaPreflightStatus;
   readonly message: string;
@@ -36,7 +36,7 @@ export interface MgbaPreflightClient {
   tapButton(button: "B", frames: number): Promise<void>;
 }
 
-export interface RunMgbaPreflightOptions {
+interface RunMgbaPreflightOptions {
   readonly config: HarnessConfig;
   readonly client?: MgbaPreflightClient;
 }

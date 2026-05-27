@@ -31,7 +31,7 @@ export interface StuckSnapshot {
   readonly interventionAttempted: boolean;
 }
 
-export interface EscalationResult {
+interface EscalationResult {
   readonly issueNumber: number;
   readonly issueUrl: string;
   readonly situationKey: string;

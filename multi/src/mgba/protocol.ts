@@ -8,7 +8,7 @@ export function formatMessage(type: string, ...args: string[]): string {
   return `${body}${TERMINATION_MARKER}`
 }
 
-export interface ParsedResponse {
+interface ParsedResponse {
   value: string
   isSuccess: boolean
   isError: boolean

@@ -70,8 +70,8 @@ const rawConfigSchema = z
 
 type RawHarnessConfig = z.infer<typeof rawConfigSchema>;
 
-export type PokemonVersion = RawHarnessConfig["POKEMON_VERSION"];
-export type LogLevel = RawHarnessConfig["LOG_LEVEL"];
+type PokemonVersion = RawHarnessConfig["POKEMON_VERSION"];
+type LogLevel = RawHarnessConfig["LOG_LEVEL"];
 export type AiProvider = RawHarnessConfig["AI_PROVIDER"];
 export type HarnessMode = RawHarnessConfig["HARNESS_MODE"];
 

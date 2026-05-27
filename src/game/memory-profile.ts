@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-export interface MemoryProfile {
+interface MemoryProfile {
   readonly constants: Readonly<Record<string, number>>;
   readonly description?: string;
   readonly id: string;

@@ -35,8 +35,6 @@ const RED_BLUE_PROFILE_CONSTANTS = redBlueMemoryProfile.constants as Readonly<
 export const HALL_OF_FAME_MAP_ID =
   RED_BLUE_PROFILE_CONSTANTS.HALL_OF_FAME_MAP_ID;
 
-export type RedBlueMemorySymbol = keyof typeof RED_BLUE_MEMORY_MAP;
-
 export const wIsInBattle = RED_BLUE_MEMORY_MAP.wIsInBattle;
 export const wBattleType = RED_BLUE_MEMORY_MAP.wBattleType;
 export const wBattleMonHP = RED_BLUE_MEMORY_MAP.wBattleMonHP;

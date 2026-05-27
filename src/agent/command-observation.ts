@@ -9,7 +9,7 @@ import type { FullGameState } from "../game/PokemonTypes.js";
 
 const HISTORY_LIMIT = 10;
 
-export interface AgentObservationWarpInfo {
+interface AgentObservationWarpInfo {
   readonly y: number;
   readonly x: number;
   readonly destWarpId: number;
@@ -17,22 +17,13 @@ export interface AgentObservationWarpInfo {
   readonly destMapName: string;
 }
 
-export interface AgentObservationNpcInfo {
+interface AgentObservationNpcInfo {
   readonly slot: number;
   readonly pictureId: number;
   readonly mapY: number;
   readonly mapX: number;
   readonly facing: string;
   readonly movementType: string;
-}
-
-export interface AgentObservationKnownNpcInfo {
-  readonly slot: number;
-  readonly pictureId: number;
-  readonly mapY: number;
-  readonly mapX: number;
-  readonly movementType: string;
-  readonly lastSeenTurn: number;
 }
 
 export interface AgentObservationState {
@@ -48,7 +39,7 @@ export interface AgentObservationState {
   readonly npcs: readonly AgentObservationNpcInfo[];
 }
 
-export interface AgentObservationOptions {
+interface AgentObservationOptions {
   readonly adviserHint?: string;
   readonly availableTools?: AgentTools | Readonly<Record<string, unknown>> | readonly string[];
   readonly agentMemory?: AgentMemoryFile;

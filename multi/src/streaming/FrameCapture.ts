@@ -30,7 +30,7 @@ export interface CapturedFrame {
   width: number
 }
 
-export type FrameHandler = (frame: CapturedFrame) => void
+type FrameHandler = (frame: CapturedFrame) => void
 
 interface PreviousFrameState {
   forceKeyframe: boolean

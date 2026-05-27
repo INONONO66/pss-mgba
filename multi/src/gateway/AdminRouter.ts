@@ -13,7 +13,7 @@ export interface IInstanceManager {
   list(): InstanceInfo[];
 }
 
-export interface AdminRouterOptions {
+interface AdminRouterOptions {
   streamMetrics?: StreamMetrics;
 }
 

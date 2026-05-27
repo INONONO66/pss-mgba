@@ -14,7 +14,7 @@ type ViewerAction =
 const RECONNECT_MIN_MS = 250;
 const RECONNECT_MAX_MS = 5000;
 
-export function useWebSocket(dispatch: Dispatch<ViewerAction>, enabled: boolean) {
+function useWebSocket(dispatch: Dispatch<ViewerAction>, enabled: boolean) {
   const wsRef = useRef<WebSocket | null>(null);
   const lastSeqRef = useRef(0);
 
@@ -112,7 +112,7 @@ function handleServerMessage(msg: ServerMessage, dispatch: Dispatch<ViewerAction
   }
 }
 
-export function sendButtonPress(ws: WebSocket | null, button: GameButton, frames = 5) {
+function sendButtonPress(ws: WebSocket | null, button: GameButton, frames = 5) {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({
       type: "input:press",

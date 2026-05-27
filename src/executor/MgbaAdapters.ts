@@ -35,7 +35,7 @@ export interface RamReader {
   readRange(address: number, length: number): Promise<Uint8Array>;
 }
 
-export interface WalkabilitySource {
+interface WalkabilitySource {
   walkabilityGrid(
     mapId: number
   ): { grid: boolean[][]; width: number; height: number } | undefined;
@@ -76,16 +76,16 @@ export function createNavigateWorldReader(ram: RamReader): NavigateWorldReader {
   };
 }
 
-export interface WarpSource {
+interface WarpSource {
   warpPositions(mapId: number): ReadonlyArray<{ y: number; x: number }>;
 }
 
-export interface NpcSource {
+interface NpcSource {
   npcAt(mapId: number, y: number, x: number): { slot: number; movementType: string } | undefined;
   refreshObstacles(mapId: number): Promise<void>;
 }
 
-export interface ConnectionSource {
+interface ConnectionSource {
   mapConnections(mapId: number): Partial<Record<"north" | "south" | "east" | "west", number>>;
 }
 

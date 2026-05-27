@@ -27,8 +27,4 @@ export function mapName(mapId: number): string {
   return GEN1_MAPS[mapId]?.name ?? `Map #${mapId}`;
 }
 
-export function staticMapSize(mapId: number): { readonly width: number; readonly height: number } | undefined {
-  const info = GEN1_MAPS[mapId];
-  if (info === undefined) return undefined;
-  return { width: info.width, height: info.height };
-}
+

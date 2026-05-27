@@ -6,7 +6,7 @@ import type { MgbaButton } from "./MgbaTypes.js";
 
 export type MgbaFetch = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
-export interface MgbaHttpClientOptions {
+interface MgbaHttpClientOptions {
   baseUrl: string | URL;
   fetchImpl?: MgbaFetch;
   screenshotDir?: string;

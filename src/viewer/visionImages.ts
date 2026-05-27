@@ -2,13 +2,13 @@ import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { buildRunPaths } from "../evidence/RunPaths.js";
 
-export interface VisionImageListOptions {
+interface VisionImageListOptions {
   readonly evidenceDir: string;
   readonly runId: string;
   readonly limit?: number;
 }
 
-export interface ListedVisionImage {
+interface ListedVisionImage {
   readonly fileName: string;
   readonly url: string;
   readonly bytes: number;

@@ -27,7 +27,7 @@ export type GameMode =
 export const RWY_ADDRESS = 0xff_4a;
 export const WINDOW_HIDDEN_Y = 144;
 
-export interface ModeFlags {
+interface ModeFlags {
   readonly battle: number;
   readonly textBoxId: number;
   readonly letterDelay: number;
@@ -41,8 +41,6 @@ export interface ModeFlags {
   readonly screenText: string;
   readonly windowY: number;
 }
-
-
 
 export interface GameWorldSnapshot {
   readonly mode: GameMode;
@@ -58,7 +56,7 @@ export interface GameWorldSnapshot {
   readonly grassRate: number;
 }
 
-export interface GameWorldReadOptions {
+interface GameWorldReadOptions {
   readonly tileMapBytes?: Uint8Array;
 }
 

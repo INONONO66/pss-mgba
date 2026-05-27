@@ -21,11 +21,12 @@ type HarnessCommand = "preflight" | "run" | "press" | "agent";
 
 let activeSupervisorOrchestrator: SupervisorOrchestrator | undefined;
 
-export interface CliOptions {
+interface CliOptions {
   readonly command?: HarnessCommand;
   readonly help: boolean;
   readonly runId?: string;
   readonly maxTurns?: number;
+  readonly loadSlot?: number;
   readonly pressButton?: string;
   readonly pressFrames?: number;
   readonly reasoning?: DynamicReasoningEffort;
@@ -36,21 +37,21 @@ export interface CliIo {
   readonly stderr: (message: string) => void;
 }
 
-export interface CliFactories {
+interface CliFactories {
   readonly loadConfig?: (env: NodeJS.ProcessEnv) => HarnessConfig;
   readonly createRunner?: (config: HarnessConfig, options: { maxTurns?: number; reasoning?: DynamicReasoningEffort }) => CliRunner;
   readonly runPreflight?: (config: HarnessConfig) => Promise<MgbaPreflightReport>;
   readonly executePress?: (config: HarnessConfig, action: unknown) => Promise<void>;
 }
 
-export interface SupervisorSnapshot {
+interface SupervisorSnapshot {
   plan: unknown | null;
   assessment: unknown | null;
   activeGoal: unknown | null;
   knowledgeBaseSize: number;
 }
 
-export interface CliRunner {
+interface CliRunner {
   run(): Promise<{ readonly status: string }>;
 }
 
@@ -70,8 +71,8 @@ export function getHarnessHelp(): string {
     "",
     "Usage:",
     "  pnpm run harness --help",
-    "  pnpm run harness run [--run-id ID] [--max-turns N] [--reasoning MODE]",
-    "  pnpm run harness agent [--run-id ID] [--max-turns N] [--reasoning MODE]",
+    "  pnpm run harness run [--run-id ID] [--max-turns N] [--reasoning MODE] [--load-slot N]",
+    "  pnpm run harness agent [--run-id ID] [--max-turns N] [--reasoning MODE] [--load-slot N]",
     "  pnpm run harness preflight",
     "  pnpm run harness press BUTTON [--frames N]",
     "",
@@ -208,6 +209,12 @@ async function handleRun(options: CliOptions, io: CliIo, factories: CliFactories
     },
   };
 
+  if (options.loadSlot !== undefined) {
+    const client = new MgbaHttpClient({ baseUrl: config.mgbaHttpBaseUrl });
+    await client.loadStateSlot(options.loadSlot);
+    io.stdout(`Loaded savestate slot ${options.loadSlot}`);
+  }
+
   const runner = factories.createRunner
     ? factories.createRunner(config, runnerOptions)
     : new CommandAgentRunner(config, defaultRunnerOptions);
@@ -299,6 +306,15 @@ function parseNonEmpty(value: string | undefined, name: string, errors: string[]
   return value;
 }
 
+function parseSlotNumber(value: string | undefined, errors: string[]): number | undefined {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 9) {
+    errors.push("--load-slot must be an integer between 1 and 9");
+    return;
+  }
+  return parsed;
+}
+
 function parseReasoningEffort(value: string | undefined, errors: string[]): DynamicReasoningEffort | undefined {
   if (value === undefined || value.trim().length === 0) {
     errors.push("--reasoning must not be empty");
@@ -346,6 +362,11 @@ function consumeCliArg(
 
   if (arg === "--reasoning") {
     options.reasoning = parseReasoningEffort(args[index + 1], errors);
+    return index + 1;
+  }
+
+  if (arg === "--load-slot") {
+    options.loadSlot = parseSlotNumber(args[index + 1], errors);
     return index + 1;
   }
 
@@ -400,6 +421,7 @@ interface MutableCliOptions {
   help: boolean;
   runId?: string;
   maxTurns?: number;
+  loadSlot?: number;
   pressButton?: string;
   pressFrames?: number;
   reasoning?: DynamicReasoningEffort;

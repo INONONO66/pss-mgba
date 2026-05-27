@@ -55,7 +55,7 @@ export interface MapRecord {
   knownNpcs: Map<number, KnownNpc>;
 }
 
-export interface MapRecordView {
+interface MapRecordView {
   readonly mapId: number;
   readonly width: number;
   readonly height: number;
@@ -63,7 +63,7 @@ export interface MapRecordView {
   readonly npcPositions: ReadonlyArray<{ readonly y: number; readonly x: number; readonly slot: number; readonly pictureId: number }>;
 }
 
-export type MapMemoryUpdateResult =
+type MapMemoryUpdateResult =
   | { readonly status: "updated" }
   | { readonly status: "skipped"; readonly reason: "short_tilemap" | "inactive_mode" | "walking" | "missing_player" };
 

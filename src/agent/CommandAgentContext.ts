@@ -31,18 +31,18 @@ import { readGameWorld, type GameWorldSnapshot } from "../game/GameWorld.js";
 import { MgbaHttpClient } from "../mgba/MgbaHttpClient.js";
 import type { MgbaButton } from "../mgba/MgbaTypes.js";
 
-export interface CommandAgentWarps {
+interface CommandAgentWarps {
   readonly y: number;
   readonly x: number;
 }
 
-export interface CommandAgentWarpInfo extends CommandAgentWarps {
+interface CommandAgentWarpInfo extends CommandAgentWarps {
   readonly destWarpId: number;
   readonly destMapId: number;
   readonly destMapName: string;
 }
 
-export interface CommandAgentNpcInfo {
+interface CommandAgentNpcInfo {
   readonly slot: number;
   readonly pictureId: number;
   readonly mapY: number;
@@ -64,13 +64,13 @@ export interface CommandAgentGameState {
   readonly npcs: readonly CommandAgentNpcInfo[];
 }
 
-export interface CommandAgentMapMemoryStore {
+interface CommandAgentMapMemoryStore {
   loadInto(memory: MapMemory): Promise<void>;
   onUpdate(memory: MapMemory): void;
   flush(memory: MapMemory): Promise<void>;
 }
 
-export type CommandAgentDetector = ProgressDetector<FullGameObservableState, DetectorStatus>;
+type CommandAgentDetector = ProgressDetector<FullGameObservableState, DetectorStatus>;
 
 export interface CommandAgentContext {
   readonly config: HarnessConfig;

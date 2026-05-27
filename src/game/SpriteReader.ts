@@ -5,9 +5,9 @@ type RamClient = Pick<MgbaHttpClient, "read8" | "readRange">;
 
 const map = RED_BLUE_MEMORY_MAP;
 
-export type FacingDirection = "down" | "up" | "left" | "right" | "unknown";
+type FacingDirection = "down" | "up" | "left" | "right" | "unknown";
 
-export interface SpriteState {
+interface SpriteState {
   readonly slot: number;
   readonly isPlayer: boolean;
   readonly pictureId: number;

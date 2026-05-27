@@ -1,4 +1,4 @@
-export type InstanceStatus = 'starting' | 'running' | 'stopped' | 'error'
+type InstanceStatus = 'starting' | 'running' | 'stopped' | 'error'
 
 export interface InstanceInfo {
   id: string

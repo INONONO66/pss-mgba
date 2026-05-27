@@ -1,4 +1,4 @@
-export type RunId = string;
+type RunId = string;
 
 export type FrameNumber = number;
 

@@ -1,7 +1,7 @@
 // biome-ignore-all lint/style/useFilenamingConvention: Existing multi modules use PascalCase filenames.
 
-export const STREAM_MAGIC = "PSMG";
-export const STREAM_VERSION = 1;
+const STREAM_MAGIC = "PSMG";
+const STREAM_VERSION = 1;
 export const STREAM_HEADER_SIZE = 30;
 export const VIEWER_CONTROL_MAX_BYTES = 4096;
 const MAX_CLIENT_COUNTER = 10_000_000;
@@ -19,7 +19,7 @@ export const enum StreamFrameFlags {
   DeflateRaw = 1 << 0,
 }
 
-export interface StreamFrameEnvelope {
+interface StreamFrameEnvelope {
   frameType: StreamFrameType;
   flags: number;
   height: number;
@@ -34,7 +34,7 @@ export interface StreamFrameEnvelope {
   width: number;
 }
 
-export interface EncodableStreamFrame {
+interface EncodableStreamFrame {
   frameType: StreamFrameType;
   flags?: number;
   height: number;
@@ -47,7 +47,7 @@ export interface EncodableStreamFrame {
   width: number;
 }
 
-export type ViewerControlMessage =
+type ViewerControlMessage =
   | { type: "client-metrics"; metrics: ViewerClientMetrics }
   | { type: "keyframe" };
 

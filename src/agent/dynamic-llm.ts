@@ -28,7 +28,7 @@ export interface DynamicLlmContext {
   tools?: ToolSet;
 }
 
-export interface CompactionOptions {
+interface CompactionOptions {
   readonly model: LanguageModel;
   readonly generateTextImpl?: typeof generateText;
   readonly maxSummaryTokens?: number;

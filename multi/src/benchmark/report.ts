@@ -1,4 +1,4 @@
-export interface DistributionSummary {
+interface DistributionSummary {
   average: number;
   count: number;
   max: number;
@@ -8,7 +8,7 @@ export interface DistributionSummary {
   p99: number;
 }
 
-export interface InstanceBenchmarkReport {
+interface InstanceBenchmarkReport {
   displayedFps: DistributionSummary;
   droppedOrLateFrameRatio: number;
   droppedOrLateFrames: number;
@@ -52,7 +52,7 @@ export interface ResourceSampleReport {
   totalMemoryBytes?: number;
 }
 
-export interface BenchmarkTarget {
+interface BenchmarkTarget {
   durationMs: number;
   instances: number;
   maxDroppedOrLateRatio: number;
@@ -62,7 +62,7 @@ export interface BenchmarkTarget {
   strictAcceptance?: boolean;
 }
 
-export interface BenchmarkReport {
+interface BenchmarkReport {
   baseUrl: string;
   generatedAt: string;
   instances: InstanceBenchmarkReport[];

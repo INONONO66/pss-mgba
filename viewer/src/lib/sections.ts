@@ -1,8 +1,8 @@
-export interface Section { title: string; content: string; label: string; }
+interface Section { title: string; content: string; label: string; }
 
 const SECTION_RE = /^\[(PROGRESS|LAST RESULT|ADVISER HINT|STATE:[^\]]+|MAP GRAPH|CURRENT MAP|HISTORY)\]/gm;
 
-export function sectionLabel(title: string): string {
+function sectionLabel(title: string): string {
   if (title === "PROGRESS") return "진행";
   if (title === "LAST RESULT") return "직전 결과";
   if (title.startsWith("STATE:")) return "현재 상태";
@@ -27,7 +27,7 @@ export function parsePromptSections(text: string): Section[] {
   });
 }
 
-export function currentMapAscii(content: string): string | null {
+function currentMapAscii(content: string): string | null {
   const beforeLegend = content.split(/\n\s*Legend:/)[0] ?? content;
   const rows = beforeLegend.split("\n").filter((line) => /^\s*\d+\s+[.#"?@NW]+\s*$/.test(line));
   return rows.length > 0 ? rows.join("\n") : null;

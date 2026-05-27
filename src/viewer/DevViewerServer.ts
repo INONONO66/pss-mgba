@@ -6,11 +6,11 @@ import path from "node:path";
 import { buildRunPaths } from "../evidence/RunPaths.js";
 import { listLatestVisionImages, isSafeVisionFileName, visionImageContentType } from "./visionImages.js";
 
-export interface DevViewerClient {
+interface DevViewerClient {
   screenshot(path?: string): Promise<string>;
 }
 
-export interface DevViewerServerOptions {
+interface DevViewerServerOptions {
   readonly client: DevViewerClient;
   readonly evidenceDir: string;
   readonly runId: string;
@@ -61,7 +61,7 @@ export async function startDevViewerServer(options: DevViewerServerOptions): Pro
   };
 }
 
-export function createDevViewerServer(options: DevViewerServerOptions): Server {
+function createDevViewerServer(options: DevViewerServerOptions): Server {
   const paths = buildRunPaths(options.evidenceDir, options.runId);
   const tempDir = options.tempDir ?? path.join(os.tmpdir(), "pss-mgba-dev-viewer", options.runId);
   const visionImageLimit = options.visionImageLimit ?? 3;

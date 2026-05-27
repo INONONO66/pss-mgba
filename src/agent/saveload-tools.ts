@@ -25,7 +25,7 @@ const saveInputSchema = z.object({
 const loadInputSchema = z.object({ slot: slotSchema });
 const rollbackInputSchema = z.object({});
 
-export type SaveLoadAction = "pokemon_save" | "pokemon_load" | "pokemon_load_rollback";
+type SaveLoadAction = "pokemon_save" | "pokemon_load" | "pokemon_load_rollback";
 
 export interface SaveLoadJournalEntry {
   schema: "pokemon.saveload.v1";
@@ -43,7 +43,7 @@ export interface SaveLoadJournalEntry {
 
 type JournalWriter = (entry: SaveLoadJournalEntry) => void | Promise<void>;
 
-export interface SaveLoadMemoryStore {
+interface SaveLoadMemoryStore {
   write?: (section: string, content: string) => Promise<unknown>;
   appendJournalEntry?: JournalWriter;
   appendJournal?: JournalWriter;

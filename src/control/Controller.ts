@@ -8,9 +8,9 @@ export interface ControllerClient {
   holdButton(button: MgbaButton, frames: number): Promise<void>;
 }
 
-export type ControllerSleep = (ms: number) => Promise<void>;
+type ControllerSleep = (ms: number) => Promise<void>;
 
-export interface ControllerOptions {
+interface ControllerOptions {
   client: ControllerClient;
   defaultTapFrames?: number;
   defaultHoldFrames?: number;

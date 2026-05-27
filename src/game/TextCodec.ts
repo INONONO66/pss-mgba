@@ -1,4 +1,4 @@
-export interface DecodeTextOptions {
+interface DecodeTextOptions {
   readonly stopAtTerminator?: boolean;
 }
 
@@ -19,7 +19,7 @@ export function decodeGen1Name(bytes: Uint8Array): string {
   return decodeGen1Text(bytes, { stopAtTerminator: true });
 }
 
-export function decodeGen1Char(byte: number): string {
+function decodeGen1Char(byte: number): string {
   if (byte === 0x7f || byte === 0x00 || byte === 0x4f || byte === TERMINATOR) {
     return " ";
   }

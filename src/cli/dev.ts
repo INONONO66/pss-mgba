@@ -7,8 +7,17 @@ import { MgbaHttpClient } from "../mgba/MgbaHttpClient.js";
 import { startDevViewerServer, type StartedDevViewerServer } from "../viewer/DevViewerServer.js";
 import { DevViewerHub } from "../viewer/DevViewerHub.js";
 import type { MgbaButton } from "../mgba/MgbaTypes.js";
+import type { AgentRunMode } from "../viewer/wsProtocol.js";
 
-export interface DevDependencies {
+type AgentSessionStatus = "standby" | "running" | "stopping" | "finished";
+
+export interface AgentController {
+  start(mode: AgentRunMode, options?: { maxTurns?: number; loadSlot?: number }): void;
+  stop(): void;
+  getStatus(): { status: AgentSessionStatus; runId: string | undefined };
+}
+
+interface DevDependencies {
   readonly loadConfig?: (env: NodeJS.ProcessEnv) => HarnessConfig;
   readonly runCli?: (args: readonly string[], io: CliIo) => Promise<number>;
   readonly startViewer?: (
@@ -26,21 +35,60 @@ const DEFAULT_IO: CliIo = {
 
 export async function runDev(args: readonly string[] = process.argv.slice(2), io: CliIo = DEFAULT_IO, dependencies: DevDependencies = {}): Promise<number> {
   const normalizedArgs = stripSeparator(args);
-  const runId = nonEmpty(optionValue(normalizedArgs, "--run-id")) ?? nonEmpty(process.env.HARNESS_RUN_ID) ?? createRunId(dependencies.now?.() ?? new Date());
-  const harnessArgs = buildDevHarnessArgs(normalizedArgs, runId);
-  const config = loadDevConfig(harnessArgs, dependencies.loadConfig ?? loadConfig);
-  const viewer = await (dependencies.startViewer ?? startViewer)(config, undefined, getSupervisorSnapshot);
+  const baseRunId = nonEmpty(optionValue(normalizedArgs, "--run-id")) ?? nonEmpty(process.env.HARNESS_RUN_ID) ?? createRunId(dependencies.now?.() ?? new Date());
+  const harnessArgs = buildDevHarnessArgs(normalizedArgs, baseRunId);
+  const baseConfig = loadDevConfig(harnessArgs, dependencies.loadConfig ?? loadConfig);
+  const mgbaClient = new MgbaHttpClient({ baseUrl: baseConfig.mgbaHttpBaseUrl });
+
+  const viewer = await (dependencies.startViewer ?? createStartViewer(mgbaClient))(baseConfig, undefined, getSupervisorSnapshot);
 
   io.stdout(`Dev viewer: ${viewer.url}`);
   io.stdout(`WebSocket: ${viewer.url.replace("http", "ws")}/ws`);
-  io.stdout(`Run ID: ${config.harnessRunId}`);
-  io.stdout(formatDevRunBanner(config));
+  io.stdout(formatDevRunBanner(baseConfig));
 
-  try {
-    return await (dependencies.runCli ?? runCli)(harnessArgs, io);
-  } finally {
-    await viewer.close();
+  // Legacy/test mode: run agent directly and return when done
+  if (dependencies.runCli) {
+    try {
+      return await dependencies.runCli(harnessArgs, io);
+    } finally {
+      await viewer.close();
+    }
   }
+
+  // Standby mode: server stays up, agent controlled via WebSocket
+  io.stdout("Agent standby. Send agent:start via WebSocket to begin.");
+
+  const controller = createAgentController({
+    baseConfig,
+    baseArgs: normalizedArgs,
+    mgbaClient,
+    io,
+    dependencies,
+    now: dependencies.now,
+  });
+
+  const hub = new DevViewerHub({
+    runId: baseRunId,
+    onButtonPress: async (button: string, frames: number) => {
+      await mgbaClient.tapButton(button as MgbaButton, frames);
+    },
+    agentController: controller,
+  });
+  hub.attachToServer(viewer.server);
+
+  hub.publish("agent:status", { status: "standby", runId: undefined });
+
+  return new Promise<number>((resolve) => {
+    const shutdown = async () => {
+      controller.stop();
+      hub.close();
+      await viewer.close();
+      resolve(0);
+    };
+
+    process.on("SIGINT", () => { shutdown(); });
+    process.on("SIGTERM", () => { shutdown(); });
+  });
 }
 
 export function buildDevHarnessArgs(args: readonly string[], runId: string): string[] {
@@ -57,39 +105,142 @@ export function formatDevRunBanner(config: Pick<HarnessConfig, "aiProvider">): s
   return `Policy: ${config.aiProvider}`;
 }
 
-async function startViewer(
-  config: HarnessConfig,
-  agentMemoryStore?: { snapshot(): { sections: Record<string, Array<{ id: string; createdAt: string; content: string }>>; updatedAt: string } },
-  supervisorSnapshot?: () => { plan: unknown | null; assessment: unknown | null; activeGoal: unknown | null; knowledgeBaseSize: number }
-): Promise<StartedDevViewerServer & { hub: DevViewerHub }> {
-  const mgbaClient = new MgbaHttpClient({ baseUrl: config.mgbaHttpBaseUrl });
-  const tapButton = async (button: string, frames: number) => {
-    await mgbaClient.tapButton(button as MgbaButton, frames);
-  };
-  const started = await startDevViewerServer({
-    client: mgbaClient,
-    evidenceDir: config.evidenceDir,
-    runId: config.harnessRunId,
-    host: devViewerHost(),
-    port: devViewerPort(),
-    agentMemoryStore,
-    supervisorSnapshot,
-    onButtonPress: tapButton,
-  });
+interface AgentControllerConfig {
+  readonly baseConfig: HarnessConfig;
+  readonly baseArgs: readonly string[];
+  readonly mgbaClient: MgbaHttpClient;
+  readonly io: CliIo;
+  readonly dependencies: DevDependencies;
+  readonly now?: () => Date;
+}
 
-  const hub = new DevViewerHub({
-    runId: config.harnessRunId,
-    onButtonPress: tapButton,
-  });
-  hub.attachToServer(started.server);
+function createAgentController(cfg: AgentControllerConfig): AgentController {
+  let status: AgentSessionStatus = "standby";
+  let activeRunId: string | undefined;
+  let abortController: AbortController | undefined;
 
   return {
-    ...started,
-    hub,
-    close: async () => {
-      hub.close();
-      await started.close();
+    start(mode, options) {
+      if (status === "running") {
+        cfg.io.stderr("Agent is already running. Stop first.");
+        return;
+      }
+
+      const runId = createRunId(cfg.now?.() ?? new Date());
+      activeRunId = runId;
+      status = "running";
+
+      const args = buildRunArgs(cfg.baseArgs, runId, mode, options);
+      cfg.io.stdout(`Agent starting: mode=${mode} runId=${runId}${options?.loadSlot !== undefined ? ` loadSlot=${options.loadSlot}` : ""}`);
+
+      abortController = new AbortController();
+      runAgent(cfg, args, mode, options?.loadSlot, abortController.signal)
+        .then((exitCode) => {
+          cfg.io.stdout(`Agent finished: runId=${runId} exit=${exitCode}`);
+        })
+        .catch((error) => {
+          cfg.io.stderr(`Agent error: ${error instanceof Error ? error.message : String(error)}`);
+        })
+        .finally(() => {
+          status = "standby";
+          activeRunId = undefined;
+          abortController = undefined;
+        });
     },
+
+    stop() {
+      if (status !== "running") {
+        return;
+      }
+      status = "stopping";
+      abortController?.abort();
+      cfg.io.stdout("Agent stop requested.");
+    },
+
+    getStatus() {
+      return { status, runId: activeRunId };
+    },
+  };
+}
+
+function buildRunArgs(
+  baseArgs: readonly string[],
+  runId: string,
+  mode: AgentRunMode,
+  options?: { maxTurns?: number; loadSlot?: number },
+): string[] {
+  const args: string[] = ["run", "--run-id", runId];
+
+  if (mode === "continue") {
+    const existingRunId = optionValue(baseArgs, "--run-id");
+    if (existingRunId) {
+      args[2] = existingRunId;
+    }
+  }
+
+  if (options?.maxTurns !== undefined) {
+    args.push("--max-turns", String(options.maxTurns));
+  } else {
+    const existingMaxTurns = optionValue(baseArgs, "--max-turns");
+    if (existingMaxTurns) {
+      args.push("--max-turns", existingMaxTurns);
+    }
+  }
+
+  const existingReasoning = optionValue(baseArgs, "--reasoning");
+  if (existingReasoning) {
+    args.push("--reasoning", existingReasoning);
+  }
+
+  if (options?.loadSlot !== undefined) {
+    args.push("--load-slot", String(options.loadSlot));
+  } else if (mode === "reset") {
+    args.push("--load-slot", "1");
+  }
+
+  return args;
+}
+
+async function runAgent(
+  cfg: AgentControllerConfig,
+  args: string[],
+  _mode: AgentRunMode,
+  loadSlot: number | undefined,
+  signal: AbortSignal,
+): Promise<number> {
+  if (loadSlot !== undefined) {
+    await cfg.mgbaClient.loadStateSlot(loadSlot);
+    cfg.io.stdout(`Loaded savestate slot ${loadSlot}`);
+  }
+
+  if (signal.aborted) {
+    return 1;
+  }
+
+  return (cfg.dependencies.runCli ?? runCli)(args, cfg.io);
+}
+
+function createStartViewer(mgbaClient: MgbaHttpClient) {
+  return async (
+    config: HarnessConfig,
+    agentMemoryStore?: { snapshot(): { sections: Record<string, Array<{ id: string; createdAt: string; content: string }>>; updatedAt: string } },
+    supervisorSnapshot?: () => { plan: unknown | null; assessment: unknown | null; activeGoal: unknown | null; knowledgeBaseSize: number },
+  ): Promise<StartedDevViewerServer & { hub?: DevViewerHub }> => {
+    const tapButton = async (button: string, frames: number) => {
+      await mgbaClient.tapButton(button as MgbaButton, frames);
+    };
+    const started = await startDevViewerServer({
+      client: mgbaClient,
+      evidenceDir: config.evidenceDir,
+      runId: config.harnessRunId,
+      host: devViewerHost(),
+      port: devViewerPort(),
+      agentMemoryStore,
+      supervisorSnapshot,
+      onButtonPress: tapButton,
+    });
+
+    return started;
   };
 }
 

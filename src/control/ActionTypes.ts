@@ -1,23 +1,23 @@
 import type { MgbaButton } from "../mgba/MgbaTypes.js";
 
-export type PressAction = {
+type PressAction = {
   type: "press";
   button: MgbaButton;
   frames: number;
 };
 
-export type HoldAction = {
+type HoldAction = {
   type: "hold";
   button: MgbaButton;
   frames: number;
 };
 
-export type WaitAction = {
+type WaitAction = {
   type: "wait";
   frames: number;
 };
 
-export type SequenceAction = {
+type SequenceAction = {
   type: "sequence";
   actions: HarnessAction[];
 };

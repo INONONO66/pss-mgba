@@ -3,7 +3,7 @@ export interface Position {
   x: number;
 }
 
-export interface PathResult {
+interface PathResult {
   status: "found" | "partial" | "no_path";
   path: Position[]; // Sequence of positions to walk (excludes start, includes end)
   reachedPosition: Position; // Where the path actually ends

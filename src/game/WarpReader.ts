@@ -12,7 +12,7 @@ export interface WarpEntry {
   readonly destMapId: number;
 }
 
-export interface MapConnection {
+interface MapConnection {
   readonly mapId: number;
   readonly stripOffset: number;
   readonly stripLength: number;

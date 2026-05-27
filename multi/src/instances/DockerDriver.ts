@@ -44,7 +44,7 @@ function ignoreDockerError(): void {
   return
 }
 
-export interface ContainerCreateOptions {
+interface ContainerCreateOptions {
   image: string
   instanceId: string
   token: string
