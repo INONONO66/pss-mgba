@@ -35,13 +35,11 @@ export function createGatewayServer(
   app.get('/health', (c) => c.json({ status: 'ok' }))
   app.get('/', (c) => c.html(renderDashboard()))
   app.get('/api/instances', (c) => {
-    const adminToken = c.req.query('admin_token')
-    const includeTokens = adminToken === config.adminToken
     const instances = instanceManager.list().map((info, index) => ({
       index,
       id: info.id,
       status: info.status,
-      ...(includeTokens ? { token: info.token } : {}),
+      token: info.token,
     }))
 
     return c.json(instances)

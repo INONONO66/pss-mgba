@@ -16,7 +16,7 @@ export interface CapturedFrame {
 
 export type FrameHandler = (frame: CapturedFrame) => void
 
-const MAX_CONCURRENT_CAPTURES = 4
+const MAX_CONCURRENT_CAPTURES = 10
 
 export class FrameCapture {
   private readonly timers = new Map<string, NodeJS.Timeout>()
