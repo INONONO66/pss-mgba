@@ -4,6 +4,7 @@ import { GoalLedger } from "./GoalLedger.js";
 import { KnowledgeBase } from "./KnowledgeBase.js";
 import { LLMAdviser, type VisionInterventionResult } from "./LLMAdviser.js";
 import { buildPokemonSupervisorPlan } from "./PokemonSupervisor.js";
+import { StuckEscalator } from "./StuckEscalator.js";
 import { renderSupervisorPlan } from "./SupervisorSummary.js";
 import type { SupervisorInput, SupervisorPlan } from "./SupervisorTypes.js";
 import { WalkthroughSearcher } from "./WalkthroughSearcher.js";
@@ -11,10 +12,11 @@ import { WalkthroughSearcher } from "./WalkthroughSearcher.js";
 export interface OrchestratorConfig {
   readonly evidenceDir: string;
   readonly runId: string;
-  readonly stuckThresholds?: { readonly repeatedActionCount: number; readonly stableLocationCount: number };
   readonly adviserModel?: LanguageModel;
   readonly adviserCooldownTurns?: number;
   readonly exaApiKey?: string;
+  readonly escalationThreshold?: number;
+  readonly onEscalation?: (result: { issueNumber: number; issueUrl: string; situationKey: string }) => void;
 }
 
 export class SupervisorOrchestrator {
@@ -22,7 +24,10 @@ export class SupervisorOrchestrator {
   private readonly goalLedger: GoalLedger;
   private readonly knowledgeBase: KnowledgeBase;
   private readonly llmAdviser: LLMAdviser | undefined;
+  private readonly stuckEscalator: StuckEscalator;
   private readonly walkthroughSearcher: WalkthroughSearcher;
+  private adviserHintGivenThisCycle = false;
+  private interventionAttemptedThisCycle = false;
   private lastPlan: SupervisorPlan | undefined;
   private lastInput: SupervisorInput | undefined;
   private screenshotPath: string | undefined;
@@ -33,6 +38,11 @@ export class SupervisorOrchestrator {
     this.knowledgeBase = new KnowledgeBase(
       path.join(config.evidenceDir, "global", "adviser-knowledge.json"),
     );
+    this.stuckEscalator = new StuckEscalator({
+      evidenceDir: config.evidenceDir,
+      runId: config.runId,
+      escalationThreshold: config.escalationThreshold,
+    });
     this.walkthroughSearcher = new WalkthroughSearcher({
       apiKey: config.exaApiKey ?? process.env.EXA_API_KEY,
     });
@@ -63,7 +73,27 @@ export class SupervisorOrchestrator {
     this.goalLedger.updatePlan(plan, metadata);
     if (plan.assessment.state === "stuck") {
       this.goalLedger.recordStuckDetection(plan.assessment, metadata, plan.activeGoal);
+      const snapshot = {
+        step: input.step ?? 0,
+        assessment: plan.assessment,
+        activeGoal: plan.activeGoal,
+        fullState: input.fullState,
+        screenshotPath: this.screenshotPath,
+        adviserHintGiven: this.adviserHintGivenThisCycle,
+        interventionAttempted: this.interventionAttemptedThisCycle,
+      };
+      this.stuckEscalator.reportStuck(snapshot);
+      this.stuckEscalator.maybeEscalate(snapshot).then((result) => {
+        if (result) {
+          this.config.onEscalation?.(result);
+        }
+      }).catch(() => { /* escalation is best-effort */ });
+    } else {
+      this.stuckEscalator.reportProgress();
     }
+
+    this.adviserHintGivenThisCycle = false;
+    this.interventionAttemptedThisCycle = false;
 
     return plan;
   }
@@ -84,6 +114,7 @@ export class SupervisorOrchestrator {
 
       const cached = this.knowledgeBase.lookup(situationKey);
       if (cached) {
+        this.adviserHintGivenThisCycle = true;
         return truncate(`[Cached advice] ${cached.advice}`, 500);
       }
 
@@ -108,6 +139,7 @@ export class SupervisorOrchestrator {
             badges: this.lastInput.fullState.player.badges.count,
           });
           await this.knowledgeBase.save();
+          this.adviserHintGivenThisCycle = true;
           return truncate(`[Expert advice] ${result.advice}`, 500);
         }
       }
@@ -141,6 +173,7 @@ export class SupervisorOrchestrator {
       return;
     }
 
+    this.interventionAttemptedThisCycle = true;
     return this.llmAdviser.intervene(
       {
         screenshotPath: this.screenshotPath,
@@ -150,6 +183,10 @@ export class SupervisorOrchestrator {
       },
       this.lastInput.step,
     );
+  }
+
+  getStuckEscalator(): StuckEscalator {
+    return this.stuckEscalator;
   }
 
   private extractVisitedMapIds(): number[] {
