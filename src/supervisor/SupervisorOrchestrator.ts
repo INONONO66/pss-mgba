@@ -4,7 +4,6 @@ import { GoalLedger } from "./GoalLedger.js";
 import { KnowledgeBase } from "./KnowledgeBase.js";
 import { LLMAdviser, type VisionInterventionResult } from "./LLMAdviser.js";
 import { buildPokemonSupervisorPlan } from "./PokemonSupervisor.js";
-import { StuckDetector } from "./StuckDetector.js";
 import { renderSupervisorPlan } from "./SupervisorSummary.js";
 import type { SupervisorInput, SupervisorPlan } from "./SupervisorTypes.js";
 import { WalkthroughSearcher } from "./WalkthroughSearcher.js";
@@ -20,7 +19,6 @@ export interface OrchestratorConfig {
 
 export class SupervisorOrchestrator {
   private readonly config: OrchestratorConfig;
-  private readonly stuckDetector: StuckDetector;
   private readonly goalLedger: GoalLedger;
   private readonly knowledgeBase: KnowledgeBase;
   private readonly llmAdviser: LLMAdviser | undefined;
@@ -31,7 +29,6 @@ export class SupervisorOrchestrator {
 
   constructor(config: OrchestratorConfig) {
     this.config = config;
-    this.stuckDetector = new StuckDetector(config.stuckThresholds);
     this.goalLedger = new GoalLedger();
     this.knowledgeBase = new KnowledgeBase(
       path.join(config.evidenceDir, "global", "adviser-knowledge.json"),
@@ -54,8 +51,7 @@ export class SupervisorOrchestrator {
   update(input: SupervisorInput): SupervisorPlan {
     this.lastInput = input;
 
-    const detectorStatus = this.stuckDetector.analyze(input);
-    const plan = buildPokemonSupervisorPlan({ ...input, detectorStatus });
+    const plan = buildPokemonSupervisorPlan(input);
     this.lastPlan = plan;
 
     const metadata = {

@@ -29,6 +29,7 @@ export interface StuckDetectionV2 extends StuckDetection {
   readonly severity: StuckSeverity;
   readonly levels: {
     readonly actionLoop: boolean;
+    readonly actionCycle: boolean;
     readonly locationLoop: boolean;
     readonly noProgress: boolean;
     readonly backtrackLoop: boolean;
@@ -86,8 +87,10 @@ export function analyzeStuckSignalsV2(
   thresholds: StuckDetectorThresholds = defaultStuckDetectorThresholds
 ): StuckDetectionV2 {
   const baseline = analyzeStuckSignals(input, thresholds);
+  const actionSigs = (input.recentActions ?? []).map(actionSignature);
   const levels: StuckDetectionV2["levels"] = {
     actionLoop: baseline.stuck,
+    actionCycle: detectActionCycle(actionSigs),
     locationLoop: detectLocationLoop(input.recentStates ?? []),
     noProgress: detectNoProgress(input),
     backtrackLoop: detectBacktrackLoop(input.recentStates ?? []),
@@ -108,6 +111,9 @@ function buildV2Reasons(
   levels: StuckDetectionV2["levels"]
 ): readonly string[] {
   const reasons = [...baselineReasons];
+  if (levels.actionCycle) {
+    reasons.push("Recent actions cycle through a small set of commands without progress.");
+  }
   if (levels.locationLoop) {
     reasons.push("Recent states oscillated between a small set of maps without route progress.");
   }
@@ -123,6 +129,7 @@ function buildV2Reasons(
 function computeSeverity(levels: StuckDetectionV2["levels"]): StuckSeverity {
   const activeLevelCount = [
     levels.actionLoop,
+    levels.actionCycle,
     levels.locationLoop,
     levels.noProgress,
     levels.backtrackLoop,
@@ -207,6 +214,34 @@ function extractMapId(state: unknown): number | undefined {
   return firstNumber(nested.player?.position?.mapId);
 }
 
+function detectActionCycle(signatures: readonly string[]): boolean {
+  if (signatures.length < 6) {
+    return false;
+  }
+  const tail = signatures.slice(-9);
+  const unique = new Set(tail);
+  if (unique.size < 2 || unique.size > 4) {
+    return false;
+  }
+  let cycleMatches = 0;
+  for (let period = 2; period <= 4; period += 1) {
+    if (tail.length < period * 2) {
+      continue;
+    }
+    let matched = true;
+    for (let i = tail.length - 1; i >= period; i -= 1) {
+      if (tail[i] !== tail[i - period]) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) {
+      cycleMatches += 1;
+    }
+  }
+  return cycleMatches > 0;
+}
+
 function trailingRepeat(signatures: readonly string[]): { readonly count: number; readonly signature?: string } {
   const last = signatures.at(-1);
   if (last === undefined) {
@@ -243,6 +278,10 @@ function isRecoverableLoopCandidate(state: FullGameState | undefined): boolean {
 }
 
 function actionSignature(value: unknown): string {
+  const command = unwrapCommand(value);
+  if (command !== undefined) {
+    return commandSignature(command);
+  }
   const action = unwrapAction(value);
   if (action === undefined) {
     return stableSignature(value);
@@ -254,6 +293,43 @@ function actionSignature(value: unknown): string {
     return `wait:${action.frames}`;
   }
   return `sequence:${action.actions.map(actionSignature).join("|")}`;
+}
+
+function commandSignature(cmd: Record<string, unknown>): string {
+  switch (cmd.type) {
+    case "navigate":
+      return `navigate:${cmd.x}:${cmd.y}`;
+    case "interact":
+      return `interact:${cmd.direction ?? "none"}`;
+    case "dialog":
+      return `dialog:${stableSignature(cmd.action)}`;
+    case "battle":
+      return `battle:${stableSignature(cmd.action)}`;
+    case "wait":
+      return `wait:${cmd.frames}`;
+    case "raw":
+      return `raw:${stableSignature(cmd.inputs)}`;
+    default:
+      return stableSignature(cmd);
+  }
+}
+
+function unwrapCommand(value: unknown): Record<string, unknown> | undefined {
+  if (value === null || typeof value !== "object") {
+    return;
+  }
+  const record = value as Record<string, unknown>;
+  const candidate = (record.command ?? value) as Record<string, unknown>;
+  if (candidate === null || typeof candidate !== "object") {
+    return;
+  }
+  const cmdType = candidate.type;
+  if (typeof cmdType !== "string") {
+    return;
+  }
+  if (["navigate", "interact", "dialog", "battle", "wait", "raw"].includes(cmdType)) {
+    return candidate;
+  }
 }
 
 function unwrapAction(value: unknown): HarnessAction | undefined {

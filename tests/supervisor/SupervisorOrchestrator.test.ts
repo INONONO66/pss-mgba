@@ -112,6 +112,52 @@ describe("SupervisorOrchestrator", () => {
     expect(hint?.length).toBeLessThanOrEqual(500);
   });
 
+  it("detects stuck from cycling navigate commands and returns adviser hint", async () => {
+    const orchestrator = new SupervisorOrchestrator({ evidenceDir: "runs", runId: "test-run" });
+    const cycle = [
+      { command: { type: "navigate", x: 6, y: 2 }, result: { status: "success", reason: "arrived" }, step: 1 },
+      { command: { type: "navigate", x: 7, y: 2 }, result: { status: "success", reason: "arrived" }, step: 2 },
+      { command: { type: "navigate", x: 8, y: 2 }, result: { status: "success", reason: "arrived" }, step: 3 },
+    ];
+    const recentActions = [...cycle, ...cycle, ...cycle];
+    const recentStates = Array.from({ length: 10 }, (_v, i) => ({
+      step: i, mapId: 40, y: 2, x: 6 + (i % 3),
+    }));
+
+    orchestrator.update({
+      step: 30,
+      fullState: fullState({
+        map: { ...fullState().map, mapId: 40, mapName: "Oaks Lab" },
+        player: { ...fullState().player, position: { ...fullState().player.position, mapId: 40, y: 2, x: 6 } },
+      }),
+      recentActions,
+      recentStates,
+    });
+
+    const plan = orchestrator.getLastPlan();
+    expect(plan?.assessment.state).toBe("stuck");
+
+    const hint = await orchestrator.getAdviserHint();
+    expect(hint).toBeDefined();
+    expect(hint?.length).toBeGreaterThan(0);
+    expect(hint?.length).toBeLessThanOrEqual(500);
+  });
+
+  it("detects stuck via noProgress when lastProgressStep is far behind", () => {
+    const orchestrator = new SupervisorOrchestrator({ evidenceDir: "runs", runId: "test-run" });
+
+    orchestrator.update({
+      step: 124,
+      fullState: fullState(),
+      detectorStatus: { lastProgressStep: 6 },
+      recentActions: [],
+      recentStates: [],
+    });
+
+    const plan = orchestrator.getLastPlan();
+    expect(plan?.assessment.state).toBe("stuck");
+  });
+
   it("getAdviserHint saves LLM result to KB", () => {
     const orchestrator = new SupervisorOrchestrator({
       evidenceDir: "runs",

@@ -1,5 +1,5 @@
 import type { FullGameState, PartyPokemon } from "../game/PokemonTypes.js";
-import { analyzeStuckSignals } from "./StuckDetector.js";
+import { analyzeStuckSignalsV2 } from "./StuckDetector.js";
 import type { SupervisorAssessment, SupervisorGoal, SupervisorInput, SupervisorPlan, SupervisorProgressState } from "./SupervisorTypes.js";
 
 const MAX_GOALS = 4;
@@ -29,7 +29,7 @@ export function buildPokemonSupervisorPlan(input: SupervisorInput): SupervisorPl
 }
 
 function assessProgress(input: SupervisorInput): SupervisorAssessment {
-  const stuckDetection = analyzeStuckSignals(input);
+  const stuckDetection = analyzeStuckSignalsV2(input);
   const repeatedActionCount = stuckDetection.repeatedActionCount;
   const stableLocationCount = stuckDetection.stableLocationCount;
   const reasons: string[] = [];
