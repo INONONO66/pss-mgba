@@ -452,24 +452,14 @@ export class MapMemory {
 // ---------------------------------------------------------------------------
 
 export function classifyBlock(collision: TileCollisionData, _t0: number, _t1: number, t2: number, t3: number): ClassifiedTile {
-  const lower = [classifyTile(collision, t2), classifyTile(collision, t3)];
-  const features = [...new Set(lower.flatMap((tile) => tile.features))];
-  const terrains = lower.map((tile) => tile.terrain);
+  // Gen 1 collision uses only the bottom-left tile (t2) of each 2x2 block.
+  // See pokered _GetTileAndCoordsInFrontOfPlayer: lda_coord 8,9 / 8,11 / 8,7 / 6,9 / 10,9
+  // all resolve to the bottom-left tile within the 2x2 player-step grid.
+  const primary = classifyTile(collision, t2);
+  const secondary = classifyTile(collision, t3);
+  const features = [...new Set([...primary.features, ...secondary.features])];
 
-  const bothPassable = terrains.every((t) => t === "walkable" || t === "grass");
-  if (bothPassable) {
-    return {
-      terrain: terrains.includes("grass") ? "grass" : "walkable",
-      features,
-      tileId: t2,
-    };
-  }
-
-  if (terrains.includes("water")) {
-    return { terrain: "water", features, tileId: t2 };
-  }
-
-  return { terrain: "wall", features, tileId: t2 };
+  return { terrain: primary.terrain, features, tileId: t2 };
 }
 
 function tileChar(type: TileType): string {

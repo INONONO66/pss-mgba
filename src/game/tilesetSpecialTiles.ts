@@ -95,21 +95,29 @@ export const DOOR_TILES: ReadonlyMap<number, ReadonlySet<number>> = new Map([
 ]);
 
 // Warp tiles — from pokered: data/tilesets/warp_tile_ids.asm
+// NOTE: pokered uses fallthrough chains; all inherited tile IDs are resolved here.
 export const WARP_TILES: ReadonlyMap<number, ReadonlySet<number>> = new Map([
   [TILESET.OVERWORLD, new Set([0x1b, 0x58])],
+  [TILESET.REDS_HOUSE_1, new Set([0x1a, 0x1c])],
+  [TILESET.MART, new Set([0x5e])],
   [TILESET.FOREST, new Set([0x5a, 0x5c, 0x3a])],
+  [TILESET.REDS_HOUSE_2, new Set([0x1a, 0x1c])],
   [TILESET.DOJO, new Set([0x4a])],
+  [TILESET.POKECENTER, new Set([0x5e])],
   [TILESET.GYM, new Set([0x4a])],
   [TILESET.HOUSE, new Set([0x54, 0x5c, 0x32])],
+  [TILESET.FOREST_GATE, new Set([0x3b, 0x1a, 0x1c])],
+  [TILESET.MUSEUM, new Set([0x3b, 0x1a, 0x1c])],
+  [TILESET.UNDERGROUND, new Set([0x13])],
+  [TILESET.GATE, new Set([0x3b, 0x1a, 0x1c])],
   [TILESET.SHIP, new Set([0x37, 0x39, 0x1e, 0x4a])],
+  [TILESET.CEMETERY, new Set([0x1b, 0x13])],
   [TILESET.INTERIOR, new Set([0x15, 0x55, 0x04])],
   [TILESET.CAVERN, new Set([0x18, 0x1a, 0x22])],
   [TILESET.LOBBY, new Set([0x1a, 0x1c, 0x38])],
   [TILESET.MANSION, new Set([0x1a, 0x1c, 0x53])],
   [TILESET.LAB, new Set([0x34])],
-  [TILESET.FACILITY, new Set([0x43, 0x58, 0x20])],
-  [TILESET.CEMETERY, new Set([0x1b])],
-  [TILESET.UNDERGROUND, new Set([0x13])],
+  [TILESET.FACILITY, new Set([0x43, 0x58, 0x20, 0x1b, 0x13])],
   [TILESET.PLATEAU, new Set([0x1b, 0x3b])],
 ]);
 

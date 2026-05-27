@@ -12,10 +12,12 @@ function tileMap(fill = 0x01): Uint8Array {
 }
 
 describe("MapMemory", () => {
-  it("classifies Gen1 blocks from lower entry tiles instead of any decorative tile", () => {
+  it("classifies Gen1 blocks using only the bottom-left tile (t2) for walkability", () => {
     const collision = { tilesetId: 0, walkableTiles: new Set([0x1c]), grassTile: undefined };
 
-    expect(classifyBlock(collision, 0x0c, 0x0d, 0x1c, 0x1d).terrain).toBe("wall");
+    // t2=0x1c walkable → block walkable (t3 irrelevant for terrain)
+    expect(classifyBlock(collision, 0x0c, 0x0d, 0x1c, 0x1d).terrain).toBe("walkable");
+    // t2=0x0c not walkable → block wall
     expect(classifyBlock(collision, 0x1c, 0x2a, 0x0c, 0x0d).terrain).toBe("wall");
 
     const bothWalkable = { tilesetId: 0, walkableTiles: new Set([0x1c, 0x1d]), grassTile: undefined };
