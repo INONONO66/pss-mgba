@@ -79,7 +79,8 @@ export interface CommandAgentRunnerOptions {
   readonly onEvent?: (event: AgentEvent, turn: number) => void | Promise<void>;
   readonly onTurnEnd?: (
     turn: number,
-    status: DetectorStatus
+    status: DetectorStatus,
+    commandHistory: readonly CommandHistoryEntry[]
   ) => void | Promise<void>;
   readonly onTurnStart?: (
     turn: number,
@@ -264,7 +265,7 @@ export class CommandAgentRunner {
           }
           const afterState = await this.refreshState();
           const afterStatus = this.updateDetector(afterState);
-          await this.options.onTurnEnd?.(this.turn, afterStatus);
+          await this.options.onTurnEnd?.(this.turn, afterStatus, this.commandHistory);
           if (isDetectorComplete(afterStatus)) {
             status = "completed";
             break;
@@ -338,7 +339,7 @@ export class CommandAgentRunner {
         await this.evidence.recordTurn(
           turnLog as Required<Pick<TurnLogDraft, "finishedAt">> & TurnLogDraft
         );
-        await this.options.onTurnEnd?.(this.turn, afterStatus);
+        await this.options.onTurnEnd?.(this.turn, afterStatus, this.commandHistory);
 
         if (streamStatus !== "running") {
           status = streamStatus;

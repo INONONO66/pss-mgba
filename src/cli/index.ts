@@ -179,6 +179,7 @@ async function handleRun(options: CliOptions, io: CliIo, factories: CliFactories
 
   const runnerOptions = { maxTurns: options.maxTurns, reasoning: options.reasoning };
   const screenshotsDir = `${config.evidenceDir}/${config.harnessRunId}/raw-screenshots`;
+  let lastDetectorStatus: unknown;
   const defaultRunnerOptions = {
     ...runnerOptions,
     adviserHintProvider: () => orchestrator.getAdviserHint(),
@@ -188,19 +189,23 @@ async function handleRun(options: CliOptions, io: CliIo, factories: CliFactories
       if (recentStates.length > RECENT_BUFFER_SIZE) {
         recentStates.shift();
       }
-      recentActions.push(state.fullState);
-      if (recentActions.length > RECENT_BUFFER_SIZE) {
-        recentActions.shift();
-      }
 
       orchestrator.setScreenshotPath(`${screenshotsDir}/${formatSequence(turn)}.png`);
       orchestrator.update({
         step: turn,
         fullState: state.fullState,
+        detectorStatus: lastDetectorStatus,
         recentActions: recentActions.slice(-RECENT_BUFFER_SIZE),
-        recentStates: recentStates.slice(-RECENT_BUFFER_SIZE)
+        recentStates: recentStates.slice(-RECENT_BUFFER_SIZE),
       });
-    }
+    },
+    onTurnEnd: (_turn: number, status: import("../game/Detector.js").DetectorStatus, commandHistory: readonly import("../control/CommandTypes.js").CommandHistoryEntry[]) => {
+      lastDetectorStatus = status;
+      recentActions.length = 0;
+      for (const entry of commandHistory.slice(-RECENT_BUFFER_SIZE)) {
+        recentActions.push(entry);
+      }
+    },
   };
 
   const runner = factories.createRunner
