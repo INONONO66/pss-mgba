@@ -77,4 +77,69 @@ describe("session authority guard", () => {
       "src/agent/new-refresh.ts:1 [duplicate-refresh-state] refreshState"
     );
   });
+
+  it("reports new production auto-loop authorities outside AutoHandler", () => {
+    const violations = findSessionAuthorityViolations([
+      {
+        path: "src/agent/new-auto-loop.ts",
+        text: [
+          "async function advanceDialog() {}",
+          "async function advanceBattleEnd() {}",
+          "async function handlePostBattle() {}",
+          "async function handlePostWarp() {}",
+        ].join("\n"),
+      },
+    ]);
+
+    expect(violations).toEqual([
+      {
+        file: "src/agent/new-auto-loop.ts",
+        line: 1,
+        match: "advanceDialog",
+        rule: "auto-loop-authority",
+      },
+      {
+        file: "src/agent/new-auto-loop.ts",
+        line: 2,
+        match: "advanceBattleEnd",
+        rule: "auto-loop-authority",
+      },
+      {
+        file: "src/agent/new-auto-loop.ts",
+        line: 3,
+        match: "handlePostBattle",
+        rule: "auto-loop-authority",
+      },
+      {
+        file: "src/agent/new-auto-loop.ts",
+        line: 4,
+        match: "handlePostWarp",
+        rule: "auto-loop-authority",
+      },
+    ]);
+  });
+
+  it("limits new auto-loop symbols in legacy auto-loop files", () => {
+    const violations = findSessionAuthorityViolations([
+      {
+        path: "src/agent/CommandAgentRunner.ts",
+        text: [
+          "autoAdvanceDialog()",
+          "autoAdvanceBattleLoss()",
+          "autoAdvanceDialog()",
+          "autoAdvanceBattleLoss()",
+          "handlePostWarp()",
+        ].join("\n"),
+      },
+    ]);
+
+    expect(violations).toEqual([
+      {
+        file: "src/agent/CommandAgentRunner.ts",
+        line: 5,
+        match: "handlePostWarp",
+        rule: "auto-loop-authority",
+      },
+    ]);
+  });
 });
