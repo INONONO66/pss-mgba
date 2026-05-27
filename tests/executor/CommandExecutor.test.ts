@@ -1,14 +1,29 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { executeCommand, type ExecutionContext } from "../../src/executor/CommandExecutor.js";
-import type { FullGameState, MoveSlot, PartyPokemon } from "../../src/game/PokemonTypes.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  type ExecutionContext,
+  executeCommand,
+} from "../../src/executor/CommandExecutor.js";
+import type {
+  FullGameState,
+  MoveSlot,
+  PartyPokemon,
+} from "../../src/game/PokemonTypes.js";
 import type { MgbaButton } from "../../src/mgba/MgbaTypes.js";
+import { createMiniState } from "../../src/session/mini-state-reader.js";
+import type { InputResult } from "../../src/session/types.js";
 
 vi.mock("../../src/executor/NavigateExecutor.js", () => ({
-  executeNavigate: vi.fn(async () => ({ status: "success", reason: "navigated" })),
+  executeNavigate: vi.fn(async () => ({
+    status: "success",
+    reason: "navigated",
+  })),
 }));
 
 vi.mock("../../src/executor/InteractExecutor.js", () => ({
-  executeInteract: vi.fn(async () => ({ status: "success", reason: "interacted" })),
+  executeInteract: vi.fn(async () => ({
+    status: "success",
+    reason: "interacted",
+  })),
 }));
 
 vi.mock("../../src/executor/DialogExecutor.js", () => ({
@@ -18,20 +33,25 @@ vi.mock("../../src/executor/DialogExecutor.js", () => ({
 }));
 
 vi.mock("../../src/executor/BattleExecutor.js", () => ({
-  executeBattle: vi.fn(async () => ({ status: "success", reason: "battle_done" })),
+  executeBattle: vi.fn(async () => ({
+    status: "success",
+    reason: "battle_done",
+  })),
 }));
 
 vi.mock("../../src/executor/Guards.js", () => ({
   validateCommand: vi.fn(() => ({ valid: true })),
 }));
 
-import { executeNavigate } from "../../src/executor/NavigateExecutor.js";
-import { executeInteract } from "../../src/executor/InteractExecutor.js";
 import { executeBattle } from "../../src/executor/BattleExecutor.js";
 import { validateCommand } from "../../src/executor/Guards.js";
+import { executeInteract } from "../../src/executor/InteractExecutor.js";
+import { executeNavigate } from "../../src/executor/NavigateExecutor.js";
 
 function createFullGameState(): FullGameState {
-  const moveSlots: MoveSlot[] = [{ id: 1, name: "Tackle", pp: 35, ppUp: 0, maxPp: 35 }];
+  const moveSlots: MoveSlot[] = [
+    { id: 1, name: "Tackle", pp: 35, ppUp: 0, maxPp: 35 },
+  ];
   const members: PartyPokemon[] = [
     {
       slot: 0,
@@ -63,7 +83,12 @@ function createFullGameState(): FullGameState {
     party: { count: members.length, members },
     bag: [{ id: 1, name: "Potion", quantity: 3 }],
     battle: { inBattle: false, type: "wild" },
-    dialog: { active: false, textBoxId: 0, letterPrintingDelayFlags: 0, joyIgnore: 0 },
+    dialog: {
+      active: false,
+      textBoxId: 0,
+      letterPrintingDelayFlags: 0,
+      joyIgnore: 0,
+    },
     flags: {
       hasPokedex: false,
       hasOaksParcel: false,
@@ -96,13 +121,42 @@ function createController() {
   };
 }
 
-function createContext(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
+function createInputResult(button: MgbaButton, frames = 5): InputResult {
+  const state = createMiniState({
+    battle: 0,
+    textBoxId: 0,
+    letterDelay: 0,
+    mapId: 1,
+    y: 5,
+    x: 5,
+    partyCount: 1,
+    walkCounter: 0,
+    joyIgnore: 0,
+    namingScreenType: 0,
+    windowY: 144,
+    screenText: "",
+  });
+  return {
+    before: state,
+    after: state,
+    executed: true,
+    intent: { button, frames, source: "agent" },
+    transition: { kind: "none", before: state, after: state },
+  };
+}
+
+function createContext(
+  overrides: Partial<ExecutionContext> = {}
+): ExecutionContext {
   return {
     mode: "overworld",
     fullState: createFullGameState(),
     mapWidth: 20,
     mapHeight: 20,
     controller: createController(),
+    inputGate: {
+      press: vi.fn(async (button, frames) => createInputResult(button, frames)),
+    },
     navigateWorldReader: {
       readPosition: vi.fn(async () => ({ mapId: 1, y: 5, x: 5 })),
       readWalkCounter: vi.fn(async () => 0),
@@ -143,29 +197,35 @@ describe("CommandExecutor", () => {
 
     expect(executeNavigate).toHaveBeenCalledWith(
       { type: "navigate", x: 3, y: 4 },
-      ctx.controller,
+      expect.objectContaining({ pressButton: expect.any(Function) }),
       ctx.navigateWorldReader,
-      ctx.navigateMapSource,
+      ctx.navigateMapSource
     );
     expect(result.status).toBe("success");
   });
 
   it("battle in battle mode routes to executeBattle", async () => {
     const ctx = createContext({ mode: "battle" });
-    const result = await executeCommand({ type: "battle", action: { kind: "run" } }, ctx);
+    const result = await executeCommand(
+      { type: "battle", action: { kind: "run" } },
+      ctx
+    );
 
     expect(executeBattle).toHaveBeenCalledWith(
       { type: "battle", action: { kind: "run" } },
-      ctx.controller,
+      expect.objectContaining({ pressButton: expect.any(Function) }),
       ctx.fullState,
-      ctx.dialogStateReader,
+      ctx.dialogStateReader
     );
     expect(result.status).toBe("success");
   });
 
   it("dialog in dialog mode routes to DialogExecutor", async () => {
     const ctx = createContext({ mode: "dialog" });
-    const result = await executeCommand({ type: "dialog", action: { kind: "advance" } }, ctx);
+    const result = await executeCommand(
+      { type: "dialog", action: { kind: "advance" } },
+      ctx
+    );
 
     expect(result.status).toBe("success");
     expect(result.reason).toBe("dialog_done");
@@ -182,7 +242,10 @@ describe("CommandExecutor", () => {
 
   it("battle in overworld returns mode_mismatch rejection", async () => {
     const ctx = createContext({ mode: "overworld" });
-    const result = await executeCommand({ type: "battle", action: { kind: "run" } }, ctx);
+    const result = await executeCommand(
+      { type: "battle", action: { kind: "run" } },
+      ctx
+    );
 
     expect(result.status).toBe("rejected");
     expect(result.reason).toBe("mode_mismatch");
@@ -196,7 +259,10 @@ describe("CommandExecutor", () => {
     });
 
     const ctx = createContext({ mode: "battle" });
-    const result = await executeCommand({ type: "battle", action: { kind: "fight", move: "Tackle" } }, ctx);
+    const result = await executeCommand(
+      { type: "battle", action: { kind: "fight", move: "Tackle" } },
+      ctx
+    );
 
     expect(result.status).toBe("rejected");
     expect(result.reason).toBe("no_pp");
@@ -223,22 +289,34 @@ describe("CommandExecutor", () => {
         ],
         reason: "test",
       },
-      ctx,
+      ctx
     );
 
-    expect(ctx.controller.pressButton).toHaveBeenCalledWith("A", 5);
-    expect(ctx.controller.pressButton).toHaveBeenCalledWith("B", 3);
+    expect(ctx.inputGate.press).toHaveBeenCalledWith(
+      "A",
+      5,
+      expect.objectContaining({ reason: "command:raw", source: "agent" })
+    );
+    expect(ctx.inputGate.press).toHaveBeenCalledWith(
+      "B",
+      3,
+      expect.objectContaining({ reason: "command:raw", source: "agent" })
+    );
+    expect(ctx.controller.pressButton).not.toHaveBeenCalled();
     expect(result.status).toBe("success");
   });
 
   it("interact in overworld routes to executeInteract", async () => {
     const ctx = createContext({ mode: "overworld" });
-    const result = await executeCommand({ type: "interact", direction: "up" }, ctx);
+    const result = await executeCommand(
+      { type: "interact", direction: "up" },
+      ctx
+    );
 
     expect(executeInteract).toHaveBeenCalledWith(
       { type: "interact", direction: "up" },
-      ctx.controller,
-      ctx.interactStateReader,
+      expect.objectContaining({ pressButton: expect.any(Function) }),
+      ctx.interactStateReader
     );
     expect(result.status).toBe("success");
   });

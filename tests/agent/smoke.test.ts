@@ -15,13 +15,15 @@ import { createDynamicLlm } from "../../src/agent/dynamic-llm.js";
 import { createMemoryTools } from "../../src/agent/memory-tools.js";
 import { createSaveLoadTools } from "../../src/agent/saveload-tools.js";
 import type { HarnessConfig } from "../../src/cli/config.js";
+import { buildDevHarnessArgs, runDev } from "../../src/cli/dev.js";
 import type {
   CommandResult,
   GameMode,
 } from "../../src/control/CommandTypes.js";
-import { buildDevHarnessArgs, runDev } from "../../src/cli/dev.js";
-import type { MgbaHttpClient } from "../../src/mgba/MgbaHttpClient.js";
 import type { DetectorStatus } from "../../src/game/Detector.js";
+import type { MgbaHttpClient } from "../../src/mgba/MgbaHttpClient.js";
+import { createMiniState } from "../../src/session/mini-state-reader.js";
+import type { InputResult } from "../../src/session/types.js";
 
 const generateTextMock = vi.hoisted(() => vi.fn());
 const executeCommandMock = vi.hoisted(() => vi.fn());
@@ -58,6 +60,7 @@ describe("agent integration smoke", () => {
     expect(context.config.harnessRunId).toBe("context-smoke");
     expect(context.client).toBeDefined();
     expect(context.controller).toBeDefined();
+    expect(context.executionContext.inputGate).toBeDefined();
     expect(context.executionContext.mode).toBe("overworld");
     expect(typeof context.readGameState).toBe("function");
     expect(context.getLastGameState()).toBeUndefined();
@@ -253,7 +256,10 @@ describe("agent integration smoke", () => {
     );
     expect(executeCommandMock).toHaveBeenCalledWith(
       { type: "wait", frames: 1 },
-      expect.objectContaining({ mode: "overworld" })
+      expect.objectContaining({
+        inputGate: expect.objectContaining({ press: expect.any(Function) }),
+        mode: "overworld",
+      })
     );
     expect(context.mapMemoryStore.flush).toHaveBeenCalledTimes(1);
     vi.doUnmock("../../src/agent/dynamic-llm");
@@ -324,7 +330,10 @@ describe("agent integration smoke", () => {
       ]);
       expect(executeCommandMock).toHaveBeenCalledWith(
         { type: "dialog", action: { kind: "advance" } },
-        expect.objectContaining({ mode: "dialog" })
+        expect.objectContaining({
+          inputGate: expect.objectContaining({ press: expect.any(Function) }),
+          mode: "dialog",
+        })
       );
       expect(llmToolSets).toEqual([
         [
@@ -651,7 +660,7 @@ describe("agent integration smoke", () => {
               const saveTool = tools?.pokemon_save as
                 | ExecutableTool
                 | undefined;
-               const saveOutput = await saveTool?.execute({
+              const saveOutput = await saveTool?.execute({
                 slot: 2,
                 label: "smoke",
               });
@@ -951,7 +960,12 @@ describe("agent integration smoke", () => {
       );
 
       const aborted = { value: false };
-      const turnLog = { reasoning: "", response: "", timeline: [], toolCalls: [] };
+      const turnLog = {
+        reasoning: "",
+        response: "",
+        timeline: [],
+        toolCalls: [],
+      };
       let interruptCalls = 0;
       const status = await (runner as any).consumeRunEvents(
         interruptibleEvents(
@@ -983,12 +997,29 @@ describe("agent integration smoke", () => {
       );
 
       expect(turnLog.timeline).toEqual([
-        expect.objectContaining({ sequence: 1, type: "tool-result", toolName: "pokemon_memory_read" }),
-        expect.objectContaining({ sequence: 2, type: "tool-result", toolName: "pokemon_wait", isGameAction: true }),
+        expect.objectContaining({
+          sequence: 1,
+          type: "tool-result",
+          toolName: "pokemon_memory_read",
+        }),
+        expect.objectContaining({
+          sequence: 2,
+          type: "tool-result",
+          toolName: "pokemon_wait",
+          isGameAction: true,
+        }),
       ]);
       expect(turnLog.toolCalls).toEqual([
-        expect.objectContaining({ toolCallId: "memory-1", output: { ok: true } }),
-        expect.objectContaining({ toolCallId: "wait-1", output: expect.objectContaining({ command: { type: "wait", frames: 1 } }) }),
+        expect.objectContaining({
+          toolCallId: "memory-1",
+          output: { ok: true },
+        }),
+        expect.objectContaining({
+          toolCallId: "wait-1",
+          output: expect.objectContaining({
+            command: { type: "wait", frames: 1 },
+          }),
+        }),
       ]);
       expect(status).toBe(expectedStatus);
       expect(interruptCalls).toBe(1);
@@ -1163,10 +1194,15 @@ function createMockContext(
   const states = [...(options.states ?? [gameState()])];
   const state = states[0] ?? gameState();
   const executionContext = {
-    mode: "overworld" as GameMode,
     fullState: state.fullState,
+    inputGate: {
+      press: vi.fn(async (button, frames) =>
+        inputResult(button, frames, state.mode)
+      ),
+    },
     mapHeight: state.mapHeight,
     mapWidth: state.mapWidth,
+    mode: "overworld" as GameMode,
   };
   const detectorStatus = {
     checkpoints: {},
@@ -1210,6 +1246,34 @@ function createMockContext(
     updateMapGraph: vi.fn(),
     updateMapMemory: vi.fn(async () => undefined),
   } as unknown as CommandAgentContext;
+}
+
+function inputResult(
+  button: InputResult["intent"]["button"],
+  frames: number,
+  mode: GameMode
+): InputResult {
+  const state = createMiniState({
+    battle: mode === "battle" ? 1 : 0,
+    textBoxId: mode === "dialog" ? 1 : 0,
+    letterDelay: 0,
+    mapId: 0,
+    y: 3,
+    x: 2,
+    partyCount: 1,
+    walkCounter: 0,
+    joyIgnore: 0,
+    namingScreenType: 0,
+    windowY: mode === "dialog" ? 112 : 144,
+    screenText: "",
+  });
+  return {
+    after: state,
+    before: state,
+    executed: true,
+    intent: { button, frames, source: "agent" },
+    transition: { after: state, before: state, kind: "none" },
+  };
 }
 
 function createMockClient(): MgbaHttpClient {

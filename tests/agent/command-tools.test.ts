@@ -8,6 +8,9 @@ import type {
   CommandResult,
   GameMode,
 } from "../../src/control/CommandTypes.js";
+import type { InputGateIntentOptions } from "../../src/session/input-gate.js";
+import { createMiniState } from "../../src/session/mini-state-reader.js";
+import type { InputResult } from "../../src/session/types.js";
 
 const executeCommandMock = vi.hoisted(() => vi.fn());
 
@@ -36,6 +39,7 @@ describe("command tools", () => {
     expect(executeCommandMock).toHaveBeenCalledWith(
       { type: "navigate", x: 4, y: 5 },
       expect.objectContaining({
+        inputGate: expect.objectContaining({ press: expect.any(Function) }),
         mode: "overworld",
         mapWidth: 20,
         mapHeight: 18,
@@ -62,7 +66,10 @@ describe("command tools", () => {
 
     expect(executeCommandMock).toHaveBeenCalledWith(
       { type: "interact", direction: "left" },
-      expect.objectContaining({ mode: "overworld" })
+      expect.objectContaining({
+        inputGate: expect.objectContaining({ press: expect.any(Function) }),
+        mode: "overworld",
+      })
     );
   });
 
@@ -102,7 +109,10 @@ describe("command tools", () => {
 
     expect(executeCommandMock).toHaveBeenCalledWith(
       { type: "dialog", action: { kind: "choose", index: 1 } },
-      expect.objectContaining({ mode: "dialog" })
+      expect.objectContaining({
+        inputGate: expect.objectContaining({ press: expect.any(Function) }),
+        mode: "dialog",
+      })
     );
     expect(result).toMatchObject({
       ok: false,
@@ -121,10 +131,7 @@ describe("command tools", () => {
       gameState({ mode: "battle", enemyHp: 5 })
     );
     const context = createContext({
-      states: [
-        gameState({ mode: "battle", enemyHp: 12 }),
-        ...battleStates,
-      ],
+      states: [gameState({ mode: "battle", enemyHp: 12 }), ...battleStates],
     });
     const result = await executeTool(
       createCommandTools(context).pokemon_battle,
@@ -133,7 +140,10 @@ describe("command tools", () => {
 
     expect(executeCommandMock).toHaveBeenCalledWith(
       { type: "battle", action: { kind: "fight", move: "Scratch" } },
-      expect.objectContaining({ mode: "battle" })
+      expect.objectContaining({
+        inputGate: expect.objectContaining({ press: expect.any(Function) }),
+        mode: "battle",
+      })
     );
     expect(result).toMatchObject({
       ok: true,
@@ -194,7 +204,9 @@ describe("command tools", () => {
         gameState({ mode: "dialog" }),
       ],
     });
-    (context.executionContext as unknown as Record<string, unknown>).dialogStateReader = choiceDialogStateReader;
+    (
+      context.executionContext as unknown as Record<string, unknown>
+    ).dialogStateReader = choiceDialogStateReader;
 
     executeCommandMock.mockResolvedValueOnce({
       status: "success",
@@ -261,6 +273,11 @@ function createContext(
     controller: {
       pressButton: vi.fn(async () => undefined),
     },
+    inputGate: {
+      press: vi.fn(async (button, frames, intent = {}) =>
+        inputResult(button, frames, intent, states[0]?.mode ?? "overworld")
+      ),
+    },
     dialogStateReader: {
       readTextBoxId: vi.fn(async () => 0),
       readCurrentMenuItem: vi.fn(async () => 0),
@@ -289,6 +306,40 @@ function createContext(
     updateMapGraph: vi.fn(),
     updateMapMemory: vi.fn(async () => undefined),
   } as unknown as CommandAgentContext;
+}
+
+function inputResult(
+  button: InputResult["intent"]["button"],
+  frames: number,
+  intent: InputGateIntentOptions,
+  mode: GameMode
+): InputResult {
+  const state = createMiniState({
+    battle: mode === "battle" ? 1 : 0,
+    textBoxId: mode === "dialog" ? 1 : 0,
+    letterDelay: 0,
+    mapId: 0,
+    y: 3,
+    x: 2,
+    partyCount: 1,
+    walkCounter: 0,
+    joyIgnore: 0,
+    namingScreenType: 0,
+    windowY: mode === "dialog" ? 112 : 144,
+    screenText: "",
+  });
+  return {
+    after: state,
+    before: state,
+    executed: true,
+    intent: {
+      ...intent,
+      button,
+      frames,
+      source: intent.source ?? "test",
+    },
+    transition: { after: state, before: state, kind: "none" },
+  };
 }
 
 function gameState(
