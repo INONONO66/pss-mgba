@@ -2,7 +2,7 @@ import path from "node:path";
 import type { LanguageModel } from "ai";
 import { GoalLedger } from "./GoalLedger.js";
 import { KnowledgeBase } from "./KnowledgeBase.js";
-import { LLMAdviser } from "./LLMAdviser.js";
+import { LLMAdviser, type VisionInterventionResult } from "./LLMAdviser.js";
 import { buildPokemonSupervisorPlan } from "./PokemonSupervisor.js";
 import { StuckDetector } from "./StuckDetector.js";
 import { renderSupervisorPlan } from "./SupervisorSummary.js";
@@ -27,6 +27,7 @@ export class SupervisorOrchestrator {
   private readonly walkthroughSearcher: WalkthroughSearcher;
   private lastPlan: SupervisorPlan | undefined;
   private lastInput: SupervisorInput | undefined;
+  private screenshotPath: string | undefined;
 
   constructor(config: OrchestratorConfig) {
     this.config = config;
@@ -130,6 +131,29 @@ export class SupervisorOrchestrator {
 
   getKnowledgeBase(): KnowledgeBase {
     return this.knowledgeBase;
+  }
+
+  setScreenshotPath(screenshotPath: string): void {
+    this.screenshotPath = screenshotPath;
+  }
+
+  async getStuckIntervention(): Promise<VisionInterventionResult | undefined> {
+    if (!this.lastPlan || this.lastPlan.assessment.state !== "stuck") {
+      return;
+    }
+    if (!this.llmAdviser || !this.lastInput?.fullState || !this.screenshotPath || this.lastInput.step === undefined) {
+      return;
+    }
+
+    return this.llmAdviser.intervene(
+      {
+        screenshotPath: this.screenshotPath,
+        fullState: this.lastInput.fullState,
+        stuckReasons: this.lastPlan.assessment.reasons,
+        currentGoal: this.lastPlan.activeGoal.title,
+      },
+      this.lastInput.step,
+    );
   }
 
   private extractVisitedMapIds(): number[] {

@@ -1,9 +1,32 @@
+import { readFile } from "node:fs/promises";
 import { generateText } from "ai";
 import type { LanguageModel } from "ai";
 import type { BagItem, FullGameState, PartyPokemon } from "../game/PokemonTypes.js";
+import type { RawInput } from "../control/CommandTypes.js";
 
 const DEFAULT_COOLDOWN_TURNS = 10;
 const DEFAULT_MAX_TOKENS = 300;
+const VALID_BUTTONS = new Set(["A", "B", "Up", "Down", "Left", "Right", "Start", "Select"]);
+const DEFAULT_BUTTON_FRAMES = 8;
+const MAX_INTERVENTION_INPUTS = 20;
+const JSON_ARRAY_PATTERN = /\[[\s\S]*\]/;
+
+const VISION_INTERVENTION_PROMPT = `You are a Pokemon Red/Blue Game Boy screen reader. The player's AI agent is stuck repeating the same action. Look at the screenshot and output a sequence of button presses to escape.
+
+Output format — respond with ONLY a JSON array of button presses, nothing else:
+[{"button":"Right","frames":8},{"button":"Right","frames":8},{"button":"A","frames":8}]
+
+Valid buttons: A, B, Up, Down, Left, Right, Start, Select
+Each press needs a "frames" field (how long to hold; 8 is a normal tap).
+
+Guidelines:
+- Look at the actual Game Boy screen to understand what is happening.
+- If a dialog box is visible, press A to advance it.
+- If the player is in a menu, navigate with Up/Down and confirm with A.
+- If the player is stuck against a wall, move in a different direction toward open space or a door.
+- If the player is in a building, look for the exit (usually at the bottom) and walk toward it.
+- Keep the sequence short (3-10 presses). The agent will resume control afterward.
+- Do not output explanations, only the JSON array.`;
 
 const SYSTEM_PROMPT = `You are a Pokemon Red/Blue walkthrough expert. A player is stuck and needs concrete guidance.
 
@@ -43,6 +66,18 @@ export interface LLMAdviserInput {
 export interface LLMAdviserResult {
   readonly advice: string;
   readonly situationKey: string;
+}
+
+export interface VisionInterventionInput {
+  readonly screenshotPath: string;
+  readonly fullState?: FullGameState;
+  readonly stuckReasons: readonly string[];
+  readonly currentGoal?: string;
+}
+
+export interface VisionInterventionResult {
+  readonly inputs: RawInput[];
+  readonly reason: string;
 }
 
 export class LLMAdviser {
@@ -85,6 +120,40 @@ export class LLMAdviser {
       };
     } catch (error) {
       console.warn("LLMAdviser failed to generate advice", error);
+      return;
+    }
+  }
+
+  async intervene(input: VisionInterventionInput, step: number): Promise<VisionInterventionResult | undefined> {
+    if (!this.canAdvise(step)) {
+      return;
+    }
+
+    let imageData: Buffer;
+    try {
+      imageData = await readFile(input.screenshotPath);
+    } catch {
+      return;
+    }
+
+    try {
+      const base64 = imageData.toString("base64");
+      const { text } = await this.config.generateTextFn({
+        model: this.config.model,
+        system: VISION_INTERVENTION_PROMPT,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "image", image: `data:image/png;base64,${base64}` },
+            { type: "text", text: buildVisionUserPrompt(input) },
+          ],
+        }],
+      });
+
+      this.lastAdviseStep = step;
+      return parseInterventionResponse(text);
+    } catch (error) {
+      console.warn("LLMAdviser vision intervention failed", error);
       return;
     }
   }
@@ -178,4 +247,54 @@ function buildSituationKey(input: LLMAdviserInput): string {
   const badges = input.fullState?.player.badges.count ?? 0;
   const stuckType = input.stuckReasons[0]?.slice(0, 30) ?? "unknown";
   return `map:${mapId}:badges:${badges}:stuck:${stuckType}`;
+}
+
+function buildVisionUserPrompt(input: VisionInterventionInput): string {
+  const state = input.fullState;
+  const mapName = state?.map.mapName ?? "unknown";
+  const x = state?.player.position.x ?? "?";
+  const y = state?.player.position.y ?? "?";
+  const facing = state?.player.facing.direction ?? "?";
+  return `Map: ${mapName}, Position: (${x},${y}), Facing: ${facing}
+Stuck: ${input.stuckReasons.join("; ")}
+Goal: ${input.currentGoal ?? "unknown"}
+Look at the Game Boy screen and output a JSON array of button presses to escape this stuck state.`;
+}
+
+function parseInterventionResponse(text: string): VisionInterventionResult | undefined {
+  const trimmed = text.trim();
+  const jsonMatch = trimmed.match(JSON_ARRAY_PATTERN);
+  if (!jsonMatch) {
+    return;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonMatch[0]);
+  } catch {
+    return;
+  }
+
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    return;
+  }
+
+  const inputs: RawInput[] = [];
+  for (const entry of parsed.slice(0, MAX_INTERVENTION_INPUTS)) {
+    if (typeof entry !== "object" || entry === null) {
+      continue;
+    }
+    const button = String((entry as Record<string, unknown>).button ?? "");
+    const frames = Number((entry as Record<string, unknown>).frames ?? DEFAULT_BUTTON_FRAMES);
+    if (!VALID_BUTTONS.has(button)) {
+      continue;
+    }
+    inputs.push({ button: button as RawInput["button"], frames: Math.min(Math.max(frames, 1), 60) });
+  }
+
+  if (inputs.length === 0) {
+    return;
+  }
+
+  return { inputs, reason: "vision-intervention" };
 }
