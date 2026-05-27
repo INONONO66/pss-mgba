@@ -8,6 +8,7 @@ import type { CapturedFrame } from './FrameCapture.js'
 export class DashboardBroadcast {
   private readonly dashboardClients = new Set<WebSocket>()
   private readonly instanceClients = new Map<string, Set<WebSocket>>()
+  private readonly latestFrames = new Map<string, Buffer>()
   private readonly wss: WebSocketServer
   private readonly registry: InstanceRegistry
   private readonly backpressureLimit: number
@@ -25,6 +26,7 @@ export class DashboardBroadcast {
 
   broadcastFrame(frame: CapturedFrame): void {
     const binary = encodeFrame(frame)
+    this.latestFrames.set(frame.token, binary)
 
     for (const ws of this.dashboardClients) {
       sendWithBackpressure(ws, binary, this.backpressureLimit)
@@ -53,6 +55,11 @@ export class DashboardBroadcast {
       this.dashboardClients.add(ws)
       ws.on('close', () => this.dashboardClients.delete(ws))
       ws.on('error', () => this.dashboardClients.delete(ws))
+      for (const [token, frame] of this.latestFrames) {
+        if (this.registry.has(token)) {
+          sendWithBackpressure(ws, frame, this.backpressureLimit)
+        }
+      }
       return
     }
 
@@ -72,6 +79,8 @@ export class DashboardBroadcast {
       clients.add(ws)
       ws.on('close', () => clients.delete(ws))
       ws.on('error', () => clients.delete(ws))
+      const cached = this.latestFrames.get(token)
+      if (cached) sendWithBackpressure(ws, cached, this.backpressureLimit)
       return
     }
 
@@ -80,10 +89,12 @@ export class DashboardBroadcast {
 }
 
 export function encodeFrame(frame: CapturedFrame): Buffer {
-  const header = Buffer.allocUnsafe(5)
-  header.writeUInt8(frame.instanceIndex % 256, 0)
-  header.writeUInt32LE(frame.timestampMs % 4_294_967_296, 1)
-  return Buffer.concat([header, frame.jpegBuffer])
+  const jpegLen = frame.jpegBuffer.length
+  const buf = Buffer.allocUnsafe(5 + jpegLen)
+  buf[0] = frame.instanceIndex % 256
+  buf.writeUInt32LE(frame.timestampMs % 4_294_967_296, 1)
+  frame.jpegBuffer.copy(buf, 5)
+  return buf
 }
 
 function sendWithBackpressure(ws: WebSocket, data: Buffer, limit: number): void {
