@@ -25,9 +25,12 @@ The core exploration data structure. Each `update()` call reads the 20x18 screen
 
 `walkabilityGrid()` returns a boolean grid for pathfinding:
 - Known walkable/grass tiles → `true`
-- Known wall/water tiles → `false`
+- Known wall tiles → `false`, except door/warp features → `true` (stairs and doors are passable)
+- Known water tiles → `false` (unless `canSurf` capability is set)
 - Unknown (unexplored) tiles → `true` (allows pathfinding through unseen areas; walls are learned on collision)
 - NPC-occupied tiles → `false`
+
+`update()` skips 2x2 screen blocks where any tile is offscreen (`0x10`). This prevents partial offscreen blocks from overwriting previously known walkable tiles with incorrect wall classifications during camera scrolling.
 
 ## Mode Classification
 

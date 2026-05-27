@@ -28,9 +28,9 @@ Post-battle handling in `command-tools.ts` (`handlePostBattleCommand`):
 
 ## Navigation
 
-**Pathfinding**: A* on boolean grid from `MapMemory.walkabilityGrid()`. Unknown (unexplored) tiles are treated as walkable so the pathfinder can route through unseen areas after map transitions. Actual walls are learned on collision and recorded for future pathfinding.
+**Pathfinding**: A* on boolean grid from `MapMemory.walkabilityGrid()`. Unknown (unexplored) tiles are treated as walkable so the pathfinder can route through unseen areas after map transitions. Actual walls are learned on collision. Door/warp wall tiles (stairs, doors) are treated as walkable since the player can stand on and walk through them.
 
-**Warps**: door/stair tiles from `wWarpEntries`. When goal is a warp tile, `resolveNavigationGoal` finds an adjacent walkable tile as the pathfinding target, then `tryPushIntoGoal` steps onto the warp.
+**Warps**: door/stair tiles from `wWarpEntries`. When goal is a warp tile, `resolveNavigationGoal` finds an adjacent walkable tile as the pathfinding target, then `tryPushIntoGoal` steps onto the warp. Warps with `destMapId = 0xFF` (Gen 1's "return to previous map") are filtered out of the map graph.
 
 **Map connections**: outdoor maps connect at edges without warp tiles (e.g., Pallet Town → Route 1). `NavigateMapSource.mapConnections()` provides the connection data. When the player arrives at an edge tile that matches a connection direction, `tryStepOffEdge` walks one step off the edge to trigger the map transition.
 
