@@ -151,6 +151,17 @@ const AUTO_LOOP_LEGACY_LIMITS = new Map<string, number>([
   ["src/agent/command-tools.ts", 8],
 ]);
 
+const TOOL_GATING_ALLOWLIST = new Map<string, string>([
+  [
+    "scripts/check-session-authority.ts",
+    "Guard rule definitions necessarily mention guarded symbols.",
+  ],
+  [
+    "src/template/fragments/tools.ts",
+    "Pure resolveTools authority for mode-specific tool availability.",
+  ],
+]);
+
 const RULES: readonly AuthorityRule[] = [
   {
     name: "low-level-input",
@@ -175,6 +186,12 @@ const RULES: readonly AuthorityRule[] = [
       /\b(?:autoAdvanceDialog|autoAdvanceBattleLoss|advanceDialog|advanceBattleEnd|handlePostBattle|handlePostBattleCommand|handlePostWarp|waitForBattleExit)\b/g,
     allowlist: AUTO_LOOP_ALLOWLIST,
     legacyLimits: AUTO_LOOP_LEGACY_LIMITS,
+  },
+  {
+    name: "tool-gating-authority",
+    pattern:
+      /\b(?:selectToolsForMode|COMMON_TOOL_NAMES|WAIT_TOOL_NAMES|OVERWORLD_TOOL_NAMES|DIALOG_TOOL_NAMES|BATTLE_TOOL_NAMES)\b/g,
+    allowlist: TOOL_GATING_ALLOWLIST,
   },
 ];
 

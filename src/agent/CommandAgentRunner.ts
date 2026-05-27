@@ -33,6 +33,7 @@ import { createMemoryTools } from "./memory-tools";
 import { createSaveLoadTools } from "./saveload-tools";
 import { toObservableState } from "../game/FullGameDetector.js";
 import { syncCommandAgentContext } from "./session-sync.js";
+import { selectToolsForSessionState } from "../template/fragments/tools.js";
 
 const HISTORY_LIMIT = 10;
 const AUTO_CHECKPOINT_SLOT = 8;
@@ -40,20 +41,6 @@ const AUTO_CHECKPOINT_INTERVAL_TURNS = 20;
 const SESSION_DIRECTORY = "agent-sessions";
 const AGENT_SCREENSHOT_NOTE = "command_agent_turn_snapshot";
 
-const COMMON_TOOL_NAMES = [
-  "pokemon_memory_read",
-  "pokemon_memory_write",
-] as const;
-const WAIT_TOOL_NAMES = ["pokemon_wait"] as const;
-const OVERWORLD_TOOL_NAMES = [
-  "pokemon_navigate",
-  "pokemon_interact",
-  "pokemon_save",
-  "pokemon_load",
-  "pokemon_load_rollback",
-] as const;
-const DIALOG_TOOL_NAMES = ["pokemon_dialog"] as const;
-const BATTLE_TOOL_NAMES = ["pokemon_battle"] as const;
 const GAME_ACTION_TOOL_NAMES = new Set([
   "pokemon_navigate",
   "pokemon_interact",
@@ -223,7 +210,10 @@ export class CommandAgentRunner {
       await this.agentMemoryStore.load();
 
       const tools = this.createTools();
-      this.modeContext.tools = selectToolsForMode(this.modeContext.mode, tools);
+      this.modeContext.tools = selectToolsForSessionState(
+        { mode: this.modeContext.mode },
+        tools
+      ) as AgentTools;
 
       const agent = await Agent.create({
         llm: createDynamicLlm({
@@ -721,7 +711,10 @@ export class CommandAgentRunner {
 
   private updateModeContext(mode: GameMode, tools: AgentTools): AgentTools {
     this.modeContext.mode = mode;
-    const activeTools = selectToolsForMode(mode, tools);
+    const activeTools = selectToolsForSessionState(
+      { mode },
+      tools
+    ) as AgentTools;
     this.modeContext.tools = activeTools;
     return activeTools;
   }
@@ -850,35 +843,6 @@ function isCommandResult(value: unknown): value is CommandResult {
 
 function isProgressResult(result: CommandResult): boolean {
   return result.status === "success" || result.status === "partial";
-}
-
-function selectToolsForMode(mode: GameMode, tools: AgentTools): AgentTools {
-  if (mode === "battle") {
-    return pickTools(tools, [
-      ...COMMON_TOOL_NAMES,
-      ...WAIT_TOOL_NAMES,
-      ...BATTLE_TOOL_NAMES,
-    ]);
-  }
-
-  if (mode === "dialog") {
-    return pickTools(tools, [...COMMON_TOOL_NAMES, ...DIALOG_TOOL_NAMES]);
-  }
-
-  return pickTools(tools, [
-    ...COMMON_TOOL_NAMES,
-    ...WAIT_TOOL_NAMES,
-    ...OVERWORLD_TOOL_NAMES,
-  ]);
-}
-
-function pickTools(tools: AgentTools, names: readonly string[]): AgentTools {
-  return Object.fromEntries(
-    names.flatMap((name) => {
-      const tool = tools[name];
-      return tool === undefined ? [] : [[name, tool]];
-    })
-  ) as AgentTools;
 }
 
 function formatSequence(sequence: number): string {

@@ -142,4 +142,42 @@ describe("session authority guard", () => {
       },
     ]);
   });
+
+  it("reports legacy tool-gating authorities outside the template resolver", () => {
+    const violations = findSessionAuthorityViolations([
+      {
+        path: "src/agent/new-tool-gating.ts",
+        text: [
+          "const WAIT_TOOL_NAMES = ['pokemon_wait'];",
+          "const COMMON_TOOL_NAMES = ['pokemon_memory_read'];",
+          "function selectToolsForMode() {}",
+        ].join("\n"),
+      },
+      {
+        path: "src/template/fragments/tools.ts",
+        text: "const WAIT_TOOL_NAMES = ['pokemon_wait'];",
+      },
+    ]);
+
+    expect(violations).toEqual([
+      {
+        file: "src/agent/new-tool-gating.ts",
+        line: 1,
+        match: "WAIT_TOOL_NAMES",
+        rule: "tool-gating-authority",
+      },
+      {
+        file: "src/agent/new-tool-gating.ts",
+        line: 2,
+        match: "COMMON_TOOL_NAMES",
+        rule: "tool-gating-authority",
+      },
+      {
+        file: "src/agent/new-tool-gating.ts",
+        line: 3,
+        match: "selectToolsForMode",
+        rule: "tool-gating-authority",
+      },
+    ]);
+  });
 });
