@@ -6,6 +6,8 @@ import type {
 import { syncCommandAgentContext } from "../../src/agent/session-sync.js";
 import { RED_BLUE_MEMORY_MAP } from "../../src/game/memoryMap.js";
 import { RWY_ADDRESS } from "../../src/game/mode-classification.js";
+import { createMiniState } from "../../src/session/mini-state-reader.js";
+import type { InputResult } from "../../src/session/types.js";
 
 const map = RED_BLUE_MEMORY_MAP;
 
@@ -31,9 +33,12 @@ function createContext(state: CommandAgentGameState): CommandAgentContext {
   const executionContext = {
     mode: "battle",
     fullState: undefined as unknown as CommandAgentGameState["fullState"],
+    inputGate: {
+      press: vi.fn(async (button, frames) => inputResult(button, frames)),
+    },
     mapWidth: 0,
     mapHeight: 0,
-  } as CommandAgentContext["executionContext"];
+  } as unknown as CommandAgentContext["executionContext"];
 
   return {
     client: {
@@ -82,6 +87,33 @@ function createContext(state: CommandAgentGameState): CommandAgentContext {
     mapMemory: {},
     getLastWorld: () => ({ mode: "battle" }),
   } as unknown as CommandAgentContext;
+}
+
+function inputResult(
+  button: InputResult["intent"]["button"],
+  frames: number
+): InputResult {
+  const state = createMiniState({
+    battle: 1,
+    textBoxId: 0,
+    letterDelay: 0,
+    mapId: 1,
+    y: 5,
+    x: 4,
+    partyCount: 1,
+    walkCounter: 0,
+    joyIgnore: 0,
+    namingScreenType: 0,
+    windowY: 144,
+    screenText: "",
+  });
+  return {
+    after: state,
+    before: state,
+    executed: true,
+    intent: { button, frames, source: "test" },
+    transition: { after: state, before: state, kind: "none" },
+  };
 }
 
 describe("syncCommandAgentContext", () => {

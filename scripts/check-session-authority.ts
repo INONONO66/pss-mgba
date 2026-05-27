@@ -60,6 +60,10 @@ const LOW_LEVEL_INPUT_ALLOWLIST = new Map<string, string>([
     "Legacy executor pending session API migration.",
   ],
   [
+    "src/executor/command-router.ts",
+    "Session command router adapts executor controller intents to InputGate.",
+  ],
+  [
     "src/executor/DialogExecutor.ts",
     "Legacy executor pending session API migration.",
   ],

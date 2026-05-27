@@ -11,6 +11,9 @@ import {
 } from "../src/agent/saveload-tools.js";
 import type { GameMode } from "../src/control/CommandTypes.js";
 import type { MgbaButton } from "../src/mgba/MgbaTypes.js";
+import type { InputGateIntentOptions } from "../src/session/input-gate.js";
+import { createMiniState } from "../src/session/mini-state-reader.js";
+import type { InputResult } from "../src/session/types.js";
 
 interface ToolCheckResult {
   readonly inputValid: boolean;
@@ -141,13 +144,24 @@ async function runTool(
 function createCommandContext(mode: GameMode): CommandAgentContext {
   let dialogReads = 0;
   const state = gameState(mode);
+  const controller = {
+    async pressButton(button: MgbaButton, frames?: number) {
+      pressedButtons.push({ button, frames });
+      await Promise.resolve();
+    },
+  };
 
   return {
     executionContext: {
-      controller: {
-        async pressButton(button: MgbaButton, frames?: number) {
-          pressedButtons.push({ button, frames });
-          await Promise.resolve();
+      controller,
+      inputGate: {
+        async press(
+          button: MgbaButton,
+          frames: number,
+          intent: InputGateIntentOptions = {}
+        ) {
+          await controller.pressButton(button, frames);
+          return inputResult(button, frames, intent, mode);
         },
       },
       dialogStateReader: {
@@ -206,6 +220,40 @@ function createCommandContext(mode: GameMode): CommandAgentContext {
     },
     updateMapMemory: async () => undefined,
   } as unknown as CommandAgentContext;
+}
+
+function inputResult(
+  button: MgbaButton,
+  frames: number,
+  intent: InputGateIntentOptions,
+  mode: GameMode
+): InputResult {
+  const state = createMiniState({
+    battle: mode === "battle" ? 1 : 0,
+    textBoxId: mode === "dialog" ? 1 : 0,
+    letterDelay: 0,
+    mapId: 0,
+    y: 3,
+    x: 2,
+    partyCount: 0,
+    walkCounter: 0,
+    joyIgnore: 0,
+    namingScreenType: 0,
+    windowY: mode === "dialog" ? 112 : 144,
+    screenText: mode === "dialog" ? "HELLO" : "",
+  });
+  return {
+    before: state,
+    after: state,
+    executed: true,
+    intent: {
+      ...intent,
+      button,
+      frames,
+      source: intent?.source ?? "test",
+    },
+    transition: { kind: "none", before: state, after: state },
+  };
 }
 
 function gameState(mode: GameMode): CommandAgentGameState {

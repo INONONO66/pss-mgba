@@ -16,6 +16,8 @@ import { MgbaHttpClient } from "../src/mgba/MgbaHttpClient.js";
 import { readGameWorld } from "../src/game/GameWorld.js";
 import { MapMemory } from "../src/game/MapMemory.js";
 import { PokemonStateReader } from "../src/game/PokemonStateReader.js";
+import { InputGate } from "../src/session/input-gate.js";
+import { MiniStateReader } from "../src/session/mini-state-reader.js";
 
 const baseUrl = process.env.MGBA_HTTP_BASE_URL ?? "http://127.0.0.1:5001";
 const settleMs = Number(process.env.LIVE_DIALOG_SETTLE_MS ?? 350);
@@ -122,11 +124,16 @@ async function createLiveContext(
   });
   const fullState = await stateReader.readFullState({ menuText });
   const controller = createUnifiedController(ram);
+  const inputGate = new InputGate({
+    controller,
+    reader: new MiniStateReader(client),
+  });
 
   return {
     controller,
     dialogStateReader: createDialogStateReader(ram),
     fullState,
+    inputGate,
     interactStateReader: createInteractStateReader(ram),
     mapHeight: world.mapLayout.height * 2,
     mapWidth: world.mapLayout.width * 2,
