@@ -7,6 +7,7 @@ import { MGBA_BUTTONS } from "../mgba/MgbaTypes.js";
 import { HarnessActionSchema } from "../control/ActionSchema.js";
 import { loadConfig, type HarnessConfig } from "./config.js";
 import { CommandAgentRunner } from "../agent/CommandAgentRunner.js";
+import { formatSequence } from "../evidence/RunPaths.js";
 import type { CommandAgentGameState } from "../agent/CommandAgentContext.js";
 import type { DynamicReasoningEffort } from "../agent/dynamic-llm.js";
 import { redactSecrets } from "../evidence/redaction.js";
@@ -177,15 +178,22 @@ async function handleRun(options: CliOptions, io: CliIo, factories: CliFactories
   const RECENT_BUFFER_SIZE = 20;
 
   const runnerOptions = { maxTurns: options.maxTurns, reasoning: options.reasoning };
+  const screenshotsDir = `${config.evidenceDir}/${config.harnessRunId}/raw-screenshots`;
   const defaultRunnerOptions = {
     ...runnerOptions,
     adviserHintProvider: () => orchestrator.getAdviserHint(),
+    interventionProvider: () => orchestrator.getStuckIntervention(),
     onTurnStart: (turn: number, state: CommandAgentGameState) => {
       recentStates.push(state.fullState);
       if (recentStates.length > RECENT_BUFFER_SIZE) {
         recentStates.shift();
       }
+      recentActions.push(state.fullState);
+      if (recentActions.length > RECENT_BUFFER_SIZE) {
+        recentActions.shift();
+      }
 
+      orchestrator.setScreenshotPath(`${screenshotsDir}/${formatSequence(turn)}.png`);
       orchestrator.update({
         step: turn,
         fullState: state.fullState,

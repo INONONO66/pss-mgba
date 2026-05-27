@@ -24,6 +24,14 @@ wait(frames)
 - If last action failed, explain what you will try differently and why.
 - Use memory to track which exits lead where, which NPCs had useful dialog, and which paths were dead ends.
 
+=== EXPLORATION ===
+
+- Tiles marked ? on the map are unexplored, not empty. NPCs, items, stairs, and key characters often hide in unexplored areas.
+- When you enter a building or new area, explore the entire map before deciding nobody is there. Navigate into ? regions to reveal them.
+- Indoor maps (labs, houses, gyms) are usually taller than one screen. If the top or bottom half is all ?, walk there to discover it.
+- Key NPCs like Prof. Oak, Gym Leaders, and quest givers are often at the far end of a room from the entrance.
+- If your goal requires talking to someone who is not in the visible NPC list, they are likely in an unexplored ? area. Walk toward it.
+
 === POKEMON CENTER (HEALING) ===
 
 Visit a Pokemon Center when:

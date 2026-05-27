@@ -61,10 +61,16 @@ const GAME_ACTION_TOOL_NAMES = new Set([
   "pokemon_wait",
 ]);
 
+export interface StuckIntervention {
+  readonly inputs: ReadonlyArray<{ button: string; frames: number }>;
+  readonly reason: string;
+}
+
 export interface CommandAgentRunnerOptions {
   readonly adviserHintProvider?: () => Promise<string | undefined>;
   readonly agentMemoryStore?: AgentMemoryStore;
   readonly context?: CommandAgentContext;
+  readonly interventionProvider?: () => Promise<StuckIntervention | undefined>;
   readonly maxTurns?: number;
   readonly model?: LanguageModel;
   readonly now?: () => Date;
@@ -250,6 +256,21 @@ export class CommandAgentRunner {
         const beforeFrame = await this.safeCurrentFrame();
         await this.recordTurnScreenshot(beforeFrame);
         await this.options.onTurnStart?.(this.turn, state);
+
+        const intervention = await this.tryIntervention();
+        if (intervention) {
+          for (const input of intervention.inputs) {
+            await this.context.controller.pressButton(input.button as Parameters<typeof this.context.controller.pressButton>[0], input.frames);
+          }
+          const afterState = await this.refreshState();
+          const afterStatus = this.updateDetector(afterState);
+          await this.options.onTurnEnd?.(this.turn, afterStatus);
+          if (isDetectorComplete(afterStatus)) {
+            status = "completed";
+            break;
+          }
+          continue;
+        }
 
         const observation = buildAgentObservation(
           state,
@@ -519,15 +540,16 @@ export class CommandAgentRunner {
       return state;
     }
 
-    const allFainted = state.fullState.party.members.length > 0
-      && state.fullState.party.members.every((pokemon) => pokemon.hp === 0);
-    if (!allFainted) {
+    const partyAlive = state.fullState.party.members.length === 0
+      || state.fullState.party.members.some((pokemon) => pokemon.hp > 0);
+    const enemyAlive = (state.fullState.battle.enemy?.hp ?? 1) > 0;
+    if (partyAlive && enemyAlive) {
       return state;
     }
 
-    const MAX_LOSS_PRESSES = 60;
+    const MAX_EXIT_PRESSES = 60;
     const PRESS_FRAMES = 16;
-    for (let i = 0; i < MAX_LOSS_PRESSES; i += 1) {
+    for (let i = 0; i < MAX_EXIT_PRESSES; i += 1) {
       await this.context.controller.pressButton("A", PRESS_FRAMES);
       const refreshed = await this.refreshState();
       if (refreshed.mode !== "battle") {
@@ -717,6 +739,17 @@ export class CommandAgentRunner {
 
     await this.context.client.saveStateSlot(AUTO_CHECKPOINT_SLOT);
     await this.options.onAutoCheckpoint?.(this.turn);
+  }
+
+  private async tryIntervention(): Promise<StuckIntervention | undefined> {
+    if (this.options.interventionProvider === undefined) {
+      return;
+    }
+    try {
+      return await this.options.interventionProvider();
+    } catch {
+      return;
+    }
   }
 
   private async readAdviserHint(): Promise<string | undefined> {
