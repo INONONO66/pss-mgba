@@ -51,7 +51,7 @@ describe("DevViewerServer", () => {
       visionImageLimit: 2,
       port: 0,
       tempDir: path.join(root, "tmp"),
-      agentMemoryStore: { snapshot: () => ({ updatedAt: "2026-05-24T00:00:01.000Z", sections: { objectives: [], journal: [], notes: [], strategy: [] } }) },
+      agentMemoryStore: { snapshot: () => ({ updatedAt: "2026-05-24T00:00:01.000Z", sections: { objectives: [], journal: [], notes: [], strategy: [], landmarks: [], lessons: [] } }) },
       client: {
         async screenshot(targetPath) {
           if (targetPath === undefined) { throw new Error("target path required"); }
@@ -75,7 +75,7 @@ describe("DevViewerServer", () => {
       expect(mapMemory).toMatchObject({ runId: "viewer-run", version: 1, maps: { 38: { mapId: 38 } } });
 
       const agentMemory = await fetchJson(`${viewer.url}/api/global/agent-memory`);
-      expect(agentMemory).toMatchObject({ runId: "viewer-run", updatedAt: "2026-05-24T00:00:01.000Z" });
+      expect(agentMemory).toMatchObject({ runId: "viewer-run", updatedAt: "2026-05-24T00:00:01.000Z", sections: { landmarks: [], lessons: [] } });
 
       expect((await fetch(`${viewer.url}/api/events`)).status).toBe(404);
       expect((await fetch(`${viewer.url}/api/run-summary`)).status).toBe(404);

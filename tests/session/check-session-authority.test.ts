@@ -5,19 +5,59 @@ import {
 } from "../../scripts/check-session-authority.js";
 
 describe("session authority guard", () => {
-  it("allows low-level input only in approved owner and legacy files", () => {
+  it("allows low-level input only in approved owner and adapter files", () => {
     const violations = findSessionAuthorityViolations([
       {
         path: "src/session/input-gate.ts",
         text: "await controller.pressButton(button, frames);",
       },
       {
-        path: "src/agent/CommandAgentRunner.ts",
-        text: "await this.context.controller.pressButton('A', 5);",
+        path: "src/executor/command-router.ts",
+        text: "await controller.pressButton(input.button, input.frames);",
       },
     ]);
 
     expect(violations).toEqual([]);
+  });
+
+  it("fails on direct runner or tool input primitives after session migration", () => {
+    const violations = findSessionAuthorityViolations([
+      {
+        path: "src/agent/CommandAgentRunner.ts",
+        text: "await this.context.controller.pressButton('A', 5);",
+      },
+      {
+        path: "src/agent/command-tools.ts",
+        text: "await context.executionContext.controller.pressButton('A', 16);",
+      },
+    ]);
+
+    expect(violations).toEqual([
+      {
+        file: "src/agent/CommandAgentRunner.ts",
+        line: 1,
+        match: ".pressButton",
+        rule: "low-level-input",
+      },
+      {
+        file: "src/agent/CommandAgentRunner.ts",
+        line: 1,
+        match: "context.controller",
+        rule: "agent-controller-bypass",
+      },
+      {
+        file: "src/agent/command-tools.ts",
+        line: 1,
+        match: ".pressButton",
+        rule: "low-level-input",
+      },
+      {
+        file: "src/agent/command-tools.ts",
+        line: 1,
+        match: "context.executionContext.controller",
+        rule: "agent-controller-bypass",
+      },
+    ]);
   });
 
   it("fails on unapproved production input primitives", () => {
@@ -177,6 +217,43 @@ describe("session authority guard", () => {
         line: 3,
         match: "selectToolsForMode",
         rule: "tool-gating-authority",
+      },
+    ]);
+  });
+
+  it("reports agent-layer indirect controller bypasses", () => {
+    const violations = findSessionAuthorityViolations([
+      {
+        path: "src/agent/command-tools.ts",
+        text: [
+          "new DialogExecutor(context.executionContext.controller, reader)",
+          "context.controller",
+        ].join("\n"),
+      },
+      {
+        path: "src/executor/command-router.ts",
+        text: "new DialogExecutor(controller, reader)",
+      },
+    ]);
+
+    expect(violations).toEqual([
+      {
+        file: "src/agent/command-tools.ts",
+        line: 1,
+        match: "new DialogExecutor",
+        rule: "agent-controller-bypass",
+      },
+      {
+        file: "src/agent/command-tools.ts",
+        line: 1,
+        match: "context.executionContext.controller",
+        rule: "agent-controller-bypass",
+      },
+      {
+        file: "src/agent/command-tools.ts",
+        line: 2,
+        match: "context.controller",
+        rule: "agent-controller-bypass",
       },
     ]);
   });
