@@ -4,44 +4,17 @@ import type { Config } from '../src/config.js'
 import type { InstanceRegistry } from '../src/gateway/ApiRouter.js'
 import { InstanceManager } from '../src/instances/InstanceManager.js'
 
-const fsMock = vi.hoisted(() => ({
-  lstat: vi.fn((value: string) => Promise.resolve({
-    isDirectory: () => value.startsWith('/tmp/pss-mgba-captures-test/') && value !== '/tmp/pss-mgba-captures-test/',
-  })),
-  realpath: vi.fn((value: string) => Promise.resolve(value)),
-  rm: vi.fn(() => Promise.resolve()),
-}))
-
-vi.mock('node:fs/promises', () => ({
-  lstat: fsMock.lstat,
-  realpath: fsMock.realpath,
-  rm: fsMock.rm,
-}))
-
-interface CreateContainerOptions {
-  image: string
+interface ProcessCreateOptions {
   instanceId: string
-  token: string
-  romPath?: string
-  networkName: string
-  emulatorPort: number
-  emulatorMemoryBytes: number
-  captureRoot: string
-}
-
-interface ContainerInfo {
-  id: string
-  host: string
+  romPath: string
   port: number
-  captureDirectory: string
+  mgbaBinary: string
+  luaScriptPath: string
+  frameDir: string
 }
 
-interface ManagedContainer {
-  id: string
-  instanceId: string
-  host: string
-  captureDirectory?: string
-  token?: string
+interface MockChildProcess {
+  on(event: string, handler: () => void): MockChildProcess
 }
 
 interface MgbaClientMock {
@@ -55,53 +28,40 @@ interface MgbaClientMock {
   isConnected(): boolean
 }
 
-const dockerMock = vi.hoisted(() => {
-  const createdOptions: CreateContainerOptions[] = []
-  const stoppedContainers: string[] = []
-  const listedContainers: ManagedContainer[] = []
-  const runningContainers = new Map<string, boolean>()
-  const createResponses: ContainerInfo[] = []
+const processMock = vi.hoisted(() => {
+  const spawnOptions: ProcessCreateOptions[] = []
+  const killedPids: number[] = []
+  let nextPid = 10_000
 
-  class DockerDriver {
-    createContainer(opts: CreateContainerOptions): Promise<ContainerInfo> {
-      createdOptions.push(opts)
-      return Promise.resolve(
-        createResponses.shift() ?? {
-          id: `container-${opts.instanceId}`,
-          host: `pss-mgba-${opts.instanceId}`,
-          port: opts.emulatorPort,
-          captureDirectory: `${opts.captureRoot}/${opts.instanceId}`,
+  class ProcessDriver {
+    spawn(opts: ProcessCreateOptions): Promise<{ pid: number; port: number; process: MockChildProcess }> {
+      spawnOptions.push(opts)
+      nextPid += 1
+      return Promise.resolve({
+        pid: nextPid,
+        port: opts.port,
+        process: {
+          on() {
+            return this
+          },
         },
-      )
+      })
     }
 
-    stopContainer(containerId: string): Promise<void> {
-      stoppedContainers.push(containerId)
+    kill(pid: number): Promise<void> {
+      killedPids.push(pid)
       return Promise.resolve()
-    }
-
-    listManagedContainers(): Promise<ManagedContainer[]> {
-      return Promise.resolve([...listedContainers])
-    }
-
-    inspectContainer(containerId: string): Promise<{ running: boolean }> {
-      return Promise.resolve({ running: runningContainers.get(containerId) ?? false })
     }
   }
 
   return {
-    DockerDriver,
-    createdOptions,
-    stoppedContainers,
-    listedContainers,
-    runningContainers,
-    createResponses,
+    ProcessDriver,
+    spawnOptions,
+    killedPids,
     reset() {
-      createdOptions.length = 0
-      stoppedContainers.length = 0
-      listedContainers.length = 0
-      runningContainers.clear()
-      createResponses.length = 0
+      spawnOptions.length = 0
+      killedPids.length = 0
+      nextPid = 10_000
     },
   }
 })
@@ -152,8 +112,8 @@ const mgbaMock = vi.hoisted(() => {
   }
 })
 
-vi.mock('../src/instances/DockerDriver.js', () => ({
-  DockerDriver: dockerMock.DockerDriver,
+vi.mock('../src/instances/ProcessDriver.js', () => ({
+  ProcessDriver: processMock.ProcessDriver,
 }))
 
 vi.mock('../src/mgba/MgbaSocketClient.js', () => ({
@@ -162,67 +122,46 @@ vi.mock('../src/mgba/MgbaSocketClient.js', () => ({
 
 describe('InstanceManager', () => {
   beforeEach(() => {
-    dockerMock.reset()
-    fsMock.lstat.mockClear()
-    fsMock.realpath.mockClear()
-    fsMock.rm.mockClear()
+    processMock.reset()
     mgbaMock.reset()
     vi.useRealTimers()
   })
 
-  it('create() starts a Docker container, waits for mGBA, and adds the instance to the registry', async () => {
+  it('create() spawns mGBA, waits for Lua socket, and adds the instance to the registry', async () => {
     const registry: InstanceRegistry = new Map()
     const manager = new InstanceManager(createConfig(), registry)
 
     const info = await manager.create('/rom/custom.gb')
 
     expect(info.status).toBe('running')
-    expect(info.containerId).toBe(`container-${info.id}`)
-    expect(dockerMock.createdOptions).toEqual([
+    expect(info.pid).toBe(10_001)
+    expect(info.port).toBe(8888)
+    expect(info.framePath).toBe(`/tmp/frames/${info.id}`)
+    expect(processMock.spawnOptions).toEqual([
       {
-        image: 'pss-mgba-emulator',
         instanceId: info.id,
-        token: info.token,
         romPath: '/rom/custom.gb',
-        networkName: 'pss-mgba-net',
-        emulatorPort: 8888,
-        emulatorMemoryBytes: 805_306_368,
-        captureRoot: '/tmp/pss-mgba-captures-test',
+        port: 8888,
+        mgbaBinary: 'mgba-sdl',
+        luaScriptPath: '/app/mGBASocketServer.lua',
+        frameDir: '/tmp/frames',
       },
     ])
-    expect(mgbaMock.clients[0]?.connectCalls).toEqual([{ host: info.containerHost, port: 8888 }])
+    expect(mgbaMock.clients[0]?.connectCalls).toEqual([{ host: '127.0.0.1', port: 8888 }])
     expect(registry.get(info.token)?.info).toBe(info)
     expect(manager.getByToken(info.token)).toBe(info)
   })
 
-  it('cleans up the container and capture directory when socket readiness fails', async () => {
-    vi.useFakeTimers()
-    mgbaMock.defaultPingResponses.length = 0
-    mgbaMock.defaultPingResponses.push(...Array.from({ length: 100 }, () => false))
-    const registry: InstanceRegistry = new Map()
-    const manager = new InstanceManager(createConfig(), registry)
-
-    const createPromise = manager.create()
-    const rejection = expect(createPromise).rejects.toThrow('Lua socket not ready')
-    await vi.advanceTimersByTimeAsync(31_000)
-
-    await rejection
-    expect(dockerMock.stoppedContainers).toHaveLength(1)
-    expect(fsMock.rm).toHaveBeenCalledWith(expect.stringContaining('/tmp/pss-mgba-captures-test/'), { force: true, recursive: true })
-    expect(registry.size).toBe(0)
-  })
-
-  it('destroy() stops the container, disconnects the client, and removes the registry entry', async () => {
+  it('destroy() kills the process, disconnects the client, and removes the registry entry', async () => {
     const registry: InstanceRegistry = new Map()
     const manager = new InstanceManager(createConfig(), registry)
     const info = await manager.create()
 
     await manager.destroy(info.id)
 
-    expect(dockerMock.stoppedContainers).toEqual([info.containerId])
+    expect(processMock.killedPids).toEqual([info.pid])
     expect(mgbaMock.clients[0]?.disconnectCalls).toBe(1)
     expect(registry.has(info.token)).toBe(false)
-    expect(fsMock.rm).toHaveBeenCalledWith(info.captureDirectory, { force: true, recursive: true })
     expect(manager.get(info.id)).toBeUndefined()
   })
 
@@ -253,65 +192,15 @@ describe('InstanceManager', () => {
     manager.stopHealthChecks()
   })
 
-  it('skips reconstructed containers with capture directories outside captureRoot', async () => {
-    dockerMock.listedContainers.push({
-      id: 'container-escaped',
-      instanceId: 'instance-escaped',
-      host: 'pss-mgba-instance-escaped',
-      captureDirectory: '/tmp/outside/instance-escaped',
-    })
-    dockerMock.runningContainers.set('container-escaped', true)
+  it('reconstruct() is a process-based no-op', async () => {
     const registry: InstanceRegistry = new Map()
     const manager = new InstanceManager(createConfig(), registry)
 
     await manager.reconstruct()
 
-    expect(manager.get('instance-escaped')).toBeUndefined()
-    expect(dockerMock.stoppedContainers).toEqual(['container-escaped'])
+    expect(manager.list()).toEqual([])
     expect(registry.size).toBe(0)
-    expect(mgbaMock.clients).toHaveLength(0)
-  })
-
-
-  it('stops legacy managed containers that do not have a capture directory label', async () => {
-    dockerMock.listedContainers.push({
-      id: 'container-legacy',
-      instanceId: 'instance-legacy',
-      host: 'pss-mgba-instance-legacy',
-    })
-    dockerMock.runningContainers.set('container-legacy', true)
-    const registry: InstanceRegistry = new Map()
-    const manager = new InstanceManager(createConfig(), registry)
-
-    await manager.reconstruct()
-
-    expect(manager.get('instance-legacy')).toBeUndefined()
-    expect(dockerMock.stoppedContainers).toEqual(['container-legacy'])
-    expect(registry.size).toBe(0)
-  })
-
-  it('reconstructs running managed containers from Docker on startup', async () => {
-    dockerMock.listedContainers.push({
-      id: 'container-existing',
-      instanceId: 'instance-existing',
-      host: 'pss-mgba-instance-existing',
-      captureDirectory: '/tmp/pss-mgba-captures-test/instance-existing',
-      token: 'existing-token',
-    })
-    dockerMock.runningContainers.set('container-existing', true)
-    const registry: InstanceRegistry = new Map()
-    const manager = new InstanceManager(createConfig(), registry)
-
-    await manager.reconstruct()
-
-    const info = manager.get('instance-existing')
-    expect(info?.containerId).toBe('container-existing')
-    expect(info?.token).toBe('existing-token')
-    expect(info?.containerHost).toBe('pss-mgba-instance-existing')
-    expect(info?.captureDirectory).toBe('/tmp/pss-mgba-captures-test/instance-existing')
-    expect(info?.status).toBe('running')
-    expect(registry.size).toBe(1)
-    expect(mgbaMock.clients[0]?.connectCalls).toEqual([{ host: 'pss-mgba-instance-existing', port: 8888 }])
+    expect(processMock.spawnOptions).toEqual([])
   })
 })
 
@@ -320,16 +209,13 @@ function createConfig(): Config {
     port: 8787,
     adminToken: 'admin-token',
     maxInstances: 10,
-    emulatorImage: 'pss-mgba-emulator',
-    emulatorPort: 8888,
-    emulatorMemoryBytes: 805_306_368,
-    captureIntervalMs: 16,
-    sourceCaptureIntervalMs: 250,
-    captureRoot: '/tmp/pss-mgba-captures-test',
-    streamKeyframeInterval: 60,
-    streamTileSize: 16,
+    baseLuaPort: 8888,
+    mgbaBinary: 'mgba-sdl',
+    luaScriptPath: '/app/mGBASocketServer.lua',
+    frameDir: '/tmp/frames',
+    captureIntervalMs: 100,
+    jpegQuality: 60,
     wsBackpressureLimit: 262_144,
-    networkName: 'pss-mgba-net',
     romPath: '/rom/default.gb',
   }
 }

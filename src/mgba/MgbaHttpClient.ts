@@ -24,7 +24,8 @@ export class MgbaHttpClient {
   private readonly timeoutMs: number;
 
   constructor(options: MgbaHttpClientOptions) {
-    this.baseUrl = new URL(options.baseUrl);
+    const raw = String(options.baseUrl);
+    this.baseUrl = new URL(raw.endsWith("/") ? raw : raw + "/");
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.screenshotDir = options.screenshotDir ?? DEFAULT_SCREENSHOT_DIR;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -130,7 +131,8 @@ export class MgbaHttpClient {
   }
 
   private buildUrl(path: string, query: Record<string, string>): string {
-    const url = new URL(path, this.baseUrl);
+    const relative = path.startsWith("/") ? path.slice(1) : path;
+    const url = new URL(relative, this.baseUrl);
     const params = new URLSearchParams(query);
     url.search = params.toString();
     return url.toString();

@@ -4,28 +4,24 @@ services:
   gateway:
     build:
       context: ..
-      dockerfile: docker/gateway/Dockerfile
+      dockerfile: docker/Dockerfile
     ports:
       - "8787:8787"
     environment:
       - PORT=8787
       - ADMIN_TOKEN=${ADMIN_TOKEN:-dev-admin-token}
       - MAX_INSTANCES=${MAX_INSTANCES:-10}
-      - EMULATOR_IMAGE=${EMULATOR_IMAGE:-pss-mgba-emulator}
-      - NETWORK_NAME=pss-mgba-net
-      - ROM_PATH=${ROM_PATH:-}
+      - ROM_PATH=${ROM_PATH:-/rom/game.gb}
+      - BASE_LUA_PORT=${BASE_LUA_PORT:-8888}
+      - LUA_SCRIPT_PATH=/app/mGBASocketServer.lua
+      - FRAME_DIR=/tmp/frames
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      - pss-mgba-net
+      - ${ROM_PATH:-.}/roms:/rom:ro
+    tmpfs:
+      - /tmp/frames:size=256m
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8787/health"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8787/health').then(r=>{process.exit(r.ok?0:1)})"]
       interval: 10s
       timeout: 5s
       retries: 3
-
-networks:
-  pss-mgba-net:
-    name: pss-mgba-net
-    driver: bridge

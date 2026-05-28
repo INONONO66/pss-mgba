@@ -1,66 +1,123 @@
-# mGBA Multi-Instance Gateway
+# pss-mgba Multi-Instance Gateway
 
-`multi/` hosts the Docker-managed mGBA gateway and dashboard stream fan-out used for local multi-instance runs. The performance target is intentionally strict and measurable: 10 active instances for at least 60 seconds, every stream/display-equivalent p95 FPS at or above 60, dropped/late frames at or below 1%, and total gateway plus emulator RAM at or below 16 GiB.
+A single-container gateway server that manages up to 10 mGBA emulator processes, providing a mGBA-http-compatible REST API and a real-time dashboard.
 
-## Headless performance benchmark
+## Architecture
 
-Start the gateway in one shell, then run the benchmark from this directory. The default `CAPTURE_INTERVAL_MS=8` provides scheduler headroom above 60fps for the strict local benchmark:
+```text
+Single Docker Container:
+  Gateway (Node.js) HTTP :8787
+    ├── child_process.spawn('mgba-sdl', ...) × N
+    ├── TCP connections to localhost:888N
+    └── fs.readFile('/tmp/frames/<id>/*.png')
 
-```bash
-pnpm run benchmark:headless -- \
-  --base-url http://127.0.0.1:8787 \
-  --admin-token "$ADMIN_TOKEN" \
-  --instances 10 \
-  --duration-ms 60000 \
-  --gateway-pid "$GATEWAY_PID" \
-  --output benchmark-report.json \
-  --summary-output benchmark-summary.txt
+  Xvfb :99
+  /tmp/frames tmpfs
 ```
 
-Useful options:
+- **Gateway**: Node.js/TypeScript REST API + WebSocket dashboard.
+- **mGBA processes**: spawned directly by the gateway with per-instance Lua loader files.
+- **Lua sockets**: one localhost port per instance, starting at `BASE_LUA_PORT`.
+- **Screenshots**: written by mGBA into `/tmp/frames/<instance-id>/` and read directly by Node.js.
 
-- `--instances N` creates or validates up to the supported 10-instance target. Values above 10 are rejected. Strict acceptance only passes with exactly `10`.
-- `--duration-ms N` controls the sustained measurement window. Strict acceptance only passes at `60000` or higher.
-- `--warmup-ms N` discards initial stream samples before the measured window.
-- `--late-frame-threshold-ms N` sets the late/drop threshold. The default is 1.5x a 60fps frame interval.
-- `--no-create` requires existing running instances instead of creating missing ones.
-- `--cleanup-created` destroys instances that the benchmark created before exiting.
-- `--gateway-pid PID` includes gateway process RSS in the RAM total. Strict acceptance fails when gateway RSS is missing, preventing false PASS reports that only count emulator containers.
-- `--allow-reduced-target` marks a local/dev run as non-strict so smaller instance counts, shorter durations, or incomplete gateway RAM coverage cannot be confused with the strict acceptance benchmark.
+No Docker socket, Docker API, `docker exec`, or sidecar emulator containers are required at runtime.
 
-See `docs/strict-sustained-validation.md` for the captured passing 10-instance report and exact validation assumptions.
+## Quick Start
 
-The command writes standalone machine-readable JSON and a human-readable summary. It exits non-zero when any pass/fail target is missed, so it can be used from CI or a server shell without opening the dashboard UI.
+### Prerequisites
 
-## Runtime performance path
+- Docker
+- A legal Game Boy ROM file
 
-The gateway now mounts a per-instance host capture directory into each emulator container at `/capture`. Streaming and REST screenshots ask mGBA to write into that bind mount and then read the PNG from the host filesystem, avoiding `docker exec cat` readback on source refreshes. Runtime knobs:
+### Build and start
 
-- `CAPTURE_ROOT` controls the host root for per-instance capture directories. Default: `/tmp/pss-mgba-captures`.
-- `CAPTURE_INTERVAL_MS` controls the emitted stream cadence. Default: `8` ms.
-- `SOURCE_CAPTURE_INTERVAL_MS` controls how often mGBA screenshot/PNG/decode refreshes the source frame between repeated deltas. Default: `60000` ms for strict transport stability; repeated frames are encoded as valid compressed zero-tile deltas.
-- `EMULATOR_MEMORY_BYTES` sets the Docker memory and swap cap per emulator. Default: `805306368` bytes, keeping ten emulators well below the 16 GiB strict RAM target before gateway/process overhead.
-- Emulator containers use small tmpfs mounts, a 32 MiB shm segment, pids limit, dummy audio, and a compact `XVFB_SCREEN=320x240x16` display by default.
+```bash
+ROM_PATH=/absolute/path/to/roms docker compose -f docker/docker-compose.yml up -d --build
+curl http://localhost:8787/health
+```
 
-## Stream protocol
+The compose file mounts `${ROM_PATH:-.}/roms` at `/rom`. By default new instances load `/rom/game.gb`; override `ROM_PATH` in the service environment if your mounted filename differs.
 
-Dashboard and per-instance WebSocket clients receive binary `pss-mgba-stream/v1` frames, not legacy JPEG image messages. The gateway captures the emulator screenshot as RGBA pixels, emits zlib-compressed keyframes, and then emits zlib-compressed tile deltas with per-instance sequence numbers. New subscribers receive the latest keyframe first; per-instance subscribers can request another keyframe with `{ "type": "keyframe" }`. Viewer/client metric deltas can be posted back with `{ "type": "client-metrics", "metrics": { ... } }` and are included in `/admin/metrics/streams`.
+### Create an emulator instance
 
-Transport tuning is exposed with `CAPTURE_INTERVAL_MS`, `STREAM_KEYFRAME_INTERVAL`, `STREAM_TILE_SIZE`, and `WS_BACKPRESSURE_LIMIT`. The defaults target the strict 10-instance/60fps benchmark path without enabling more than ten instances. See `docs/stream-protocol.md` for the wire format.
+```bash
+curl -X POST -H "X-Admin-Token: your-secret-token" \
+  -H "Content-Type: application/json" \
+  http://localhost:8787/admin/instances
+```
 
-## Report contents
+Example response:
 
-The JSON report uses schema `pss-mgba-headless-benchmark/v1` and includes:
+```json
+{"id":"...","token":"<32-char-hex>","status":"running"}
+```
 
-- per-instance displayed/render-equivalent FPS distribution: p50, p95, p99, min, max, and average
-- per-instance frame interval distribution with the same fields; strict sustained FPS is gated by p95 frame interval, so leading/trailing silence counts as a miss
-- expected frame count, dropped/late frame count, ratio, threshold, duration, reconnect count, and keyframe-recovery count
-- benchmark-window server stream production/drop deltas when exposed by the gateway
-- resource samples with per-container RAM/CPU and required gateway process RSS for strict acceptance
-- aggregate peak/average RAM and CPU, memory coverage, measurement window, plus final `PASS`/`FAIL` verdict
+### Connect harness
 
-## Current limitations
+Set in your `.env`:
 
-The current benchmark measures frames received from the gateway WebSocket as the headless display-equivalent signal. It does not require manual dashboard inspection. Browser-side rendering/WebCodecs instrumentation can feed the same report schema later when the dashboard renderer is upgraded.
+```text
+MGBA_HTTP_BASE_URL=http://localhost:8787/api/v1/<token>
+```
 
-The benchmark does not bundle ROM assets, does not modify gameplay/LLM policy, does not fork mGBA, and does not target more than 10 concurrent instances.
+### Dashboard
+
+Open `http://localhost:8787/` in your browser.
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `8787` | Gateway HTTP port |
+| `ADMIN_TOKEN` | `dev-admin-token` | Admin API secret |
+| `MAX_INSTANCES` | `10` | Maximum emulator processes |
+| `BASE_LUA_PORT` | `8888` | First localhost Lua socket port |
+| `MGBA_BINARY` | `mgba-sdl` | mGBA executable used by the gateway |
+| `LUA_SCRIPT_PATH` | `/app/mGBASocketServer.lua` | Main Lua socket server script path |
+| `FRAME_DIR` | `/tmp/frames` | Per-instance screenshot root |
+| `ROM_PATH` | _(none)_ | Default ROM path for new instances |
+| `CAPTURE_INTERVAL_MS` | `100` | Dashboard screenshot interval (ms) |
+| `JPEG_QUALITY` | `60` | Dashboard JPEG quality (1-100) |
+| `WS_BACKPRESSURE_LIMIT` | `262144` | WebSocket buffered-byte cutoff |
+
+## API Reference
+
+### Admin API (requires `X-Admin-Token` header)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/admin/instances` | Create new emulator instance |
+| `GET` | `/admin/instances` | List all instances |
+| `GET` | `/admin/instances/:id` | Get instance details |
+| `DELETE` | `/admin/instances/:id` | Destroy instance |
+
+### Game API (token in URL path)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/:token/core/currentframe` | Current frame number |
+| `GET` | `/api/v1/:token/core/read8?address=0xADDR` | Read byte from RAM |
+| `GET` | `/api/v1/:token/core/read16?address=0xADDR` | Read 16-bit from RAM |
+| `GET` | `/api/v1/:token/core/readrange?address=0xADDR&length=N` | Read byte range |
+| `POST` | `/api/v1/:token/mgba-http/button/tap?button=A` | Tap button |
+| `POST` | `/api/v1/:token/mgba-http/button/hold?button=A&duration=15` | Hold button |
+| `POST` | `/api/v1/:token/core/screenshot` | Capture screenshot (returns PNG) |
+| `POST` | `/api/v1/:token/core/savestateslot?slot=N` | Save state |
+| `POST` | `/api/v1/:token/core/loadstateslot?slot=N` | Load state |
+
+### WebSocket
+
+| Path | Description |
+|------|-------------|
+| `/ws/dashboard` | All instances binary JPEG frames |
+| `/ws/instance/:token` | Single instance binary JPEG frames |
+
+Binary frame format: `[1 byte: instance_index][4 bytes: timestamp_ms LE][rest: JPEG bytes]`
+
+## Verification
+
+```bash
+pnpm install
+pnpm typecheck
+pnpm test
+```
