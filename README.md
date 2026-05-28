@@ -8,101 +8,158 @@ Grok plays Pokemon Red from emulator state alone.
 
 No guides, no scripts, no web search.
 
-This repository started from the original `pss-mgba` harness and now keeps that lineage explicit while moving the concept toward a Grok-only self-playing run.
+Grokemon started from the original `pss-mgba` harness and now focuses on one constraint: beat Pokemon Red by reading emulator state and pressing only normal Game Boy buttons.
 
-No ROM bundled. No emulator memory writes. Safe Game Boy inputs only.
+No ROM is bundled. No emulator memory writes are used. The agent can only press A, B, Start, Select, and the D-pad.
 
-## What it does
+## How it works
 
-- Reads Pokemon Red RAM and screen-derived map state through mGBA-http.
-- Builds a compact per-turn observation for Grok.
-- Lets Grok choose one safe game command per turn.
-- Executes only normal Game Boy inputs: A, B, Start, Select, and D-pad.
-- Records evidence logs and screenshots for debugging failed runs.
-- Uses local state, prompt memory, and supervisor feedback instead of web search.
+```text
+Grok
+  ↓ OpenAI-compatible chat model
+CommandAgentRunner
+  ↓ session observation + mode-filtered tools
+CommandExecutor
+  ↓ InputGate-settled button presses
+mGBA-http / grokemon multi gateway
+  ↓ RAM, screenshots, frames
+Pokemon Red
+```
 
-## Setup
+Each turn follows the same loop:
+
+1. Wait until input is safe (`wJoyIgnore`, walk animation, text window state).
+2. Read RAM-backed game state, mini-state, map memory, party, battle, dialog, and progress detector state.
+3. Render a compact session observation with current mode, available tools, events, memory, history, and supervisor hints.
+4. Let Grok call exactly one game-action tool for the current mode.
+5. Route that command through executors that translate it into safe button presses.
+6. Auto-handle immediate dialog, battle narration, and input settling where the code can prove it is safe.
+7. Record turn logs, screenshots, session events, map memory, and command history under `runs/<run-id>/`.
+
+## Runtime invariants
+
+- **No web search:** the policy is driven by RAM state, prompt rules, local memory, and supervisor feedback.
+- **No memory writes:** all game interaction goes through Game Boy inputs.
+- **One game action per turn:** the runner interrupts after the first game-action tool result.
+- **Mode-gated tools:** overworld, battle, and dialog expose different tool sets.
+- **Input-gated buttons:** every press waits for the emulator to settle before the next action.
+- **Recoverable runs:** evidence, screenshots, map memory, agent memory, and savestate tooling make failures inspectable.
+
+## Quick start
 
 ```bash
 pnpm install
 cp .env.example .env
-# Edit .env with your mGBA-http URL and OpenAI-compatible Grok API key
 ```
 
-Start mGBA with mGBA-http and your Pokemon Red ROM loaded, then:
-
-```bash
-pnpm run harness preflight          # verify mGBA connection
-pnpm run harness run --max-turns 100 # start agent
-pnpm run harness:full-game           # full game attempt (1500 turns)
-pnpm run dev                         # standby dev viewer at :8787
-```
-
-## Environment
+Edit `.env` with:
 
 ```text
 MGBA_HTTP_BASE_URL=http://127.0.0.1:5001
 POKEMON_VERSION=red
+HARNESS_MODE=full-game
 OPENAI_BASE_URL=https://api.x.ai/v1
 OPENAI_API_KEY=your-key-in-dotenv-only
 OPENAI_MODEL=grok-4.3
 OPENAI_TEMPERATURE=0.2
 ```
 
-## Architecture
+Then start either:
 
-See [AGENTS.md](./AGENTS.md) for full architecture, module map, and Pokemon domain knowledge.
+- mGBA with mGBA-http enabled and a legal Pokemon Red ROM loaded, or
+- the local multi-instance gateway in `multi/`.
 
-```
-Grok → CommandAgentRunner → CommandExecutor → mGBA-http
-         ↕                    ↕
-      MapMemory           RAM readers
-      Supervisor          Button presses
-      Evidence
-```
-
-The agent loop: read game state → build observation → Grok picks a tool → execute command → auto-advance dialog/narration → record evidence → repeat.
-
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `pnpm run harness preflight` | Check mGBA connection |
-| `pnpm run harness run` | Start agent loop |
-| `pnpm run harness:full-game` | Full game attempt |
-| `pnpm run harness press A` | Single button press |
-| `pnpm run dev` | Dev viewer without auto-starting the agent |
-
-Options: `--max-turns N`, `--run-id ID`, `--reasoning MODE`
-
-## Testing
+Run:
 
 ```bash
-pnpm run check          # secrets + typecheck + test + smoke
-pnpm test               # unit tests only
-pnpm run typecheck      # TypeScript
+pnpm run harness preflight              # verify emulator connectivity
+pnpm run harness run --max-turns 100    # start a bounded run
+pnpm run harness:full-game              # full-game attempt, 1500 turns
+pnpm run dev                            # dev viewer in standby mode
 ```
 
-Integration tests require a running mGBA instance:
+Useful options:
+
+```bash
+pnpm run harness run --run-id run-a --max-turns 200 --reasoning medium
+pnpm run harness run --load-slot 8      # resume from auto-checkpoint slot
+pnpm run harness press A --frames 5     # manual safe button press
+```
+
+## Multi-instance gateway
+
+`multi/` runs a single Docker container that spawns up to 10 local `mgba-sdl` processes. It exposes:
+
+- admin APIs for creating and destroying emulator instances,
+- mGBA-http-compatible per-instance game APIs,
+- dashboard and per-instance WebSocket frame streams.
+
+```bash
+cd multi
+pnpm install
+ROM_PATH=/absolute/path/to/roms docker compose -f docker/docker-compose.yml up -d --build
+curl http://localhost:8787/health
+```
+
+Create an instance, then point `MGBA_HTTP_BASE_URL` at the returned token URL:
+
+```text
+MGBA_HTTP_BASE_URL=http://localhost:8787/api/v1/<token>
+```
+
+See `multi/README.md` for the gateway API and environment variables.
+
+## Main commands
+
+| Command | Purpose |
+|---------|---------|
+| `pnpm run harness --help` | Show CLI usage |
+| `pnpm run harness preflight` | Check mGBA/mGBA-http connectivity |
+| `pnpm run harness run` | Start the Grok agent loop |
+| `pnpm run harness agent` | Alias for `run` |
+| `pnpm run harness:full-game` | Run `run --max-turns 1500` |
+| `pnpm run harness press BUTTON` | Send one safe manual button press |
+| `pnpm run dev` | Start the dev viewer; agent is controlled over WebSocket |
+
+## Code map
+
+| Path | Role |
+|------|------|
+| `src/agent/` | Runner, tool factory, observation builder, persistent memory, session bridge |
+| `src/session/` | Mini-state, input gate, transition detector, session state contracts |
+| `src/template/` | Tagged session observation renderer and tool/memory/history fragments |
+| `src/executor/` | Command router and overworld/dialog/battle executors |
+| `src/game/` | RAM readers, detector, map memory, map graph, Pokemon catalogs |
+| `src/supervisor/` | Stuck detection, goal ledger, adviser hints, intervention loop |
+| `src/evidence/` | Run folders, turn JSON, screenshots, redaction |
+| `src/viewer/` | Dev viewer HTTP/WebSocket server |
+| `multi/` | Single-container multi-emulator gateway and dashboard |
+| `scripts/` | Build, safety, smoke, and live-test utilities |
+
+## Verification
+
+```bash
+pnpm run check:secrets
+pnpm run check:session-authority
+pnpm run typecheck
+pnpm test
+pnpm run smoke:memory-map-build
+```
+
+Full check:
+
+```bash
+pnpm run check
+```
+
+Live integration tests require a running emulator or gateway:
 
 ```bash
 RUN_MGBA_INTEGRATION=1 MGBA_HTTP_BASE_URL=http://127.0.0.1:5001 pnpm run test:integration
 ```
 
-## Project Structure
+## Notes
 
-```
-src/
-  agent/       Agent runner, Grok tools, observation builder
-  ai/prompts/  Markdown prompt fragments (world rules, battle, dialog)
-  cli/         CLI entry, config, dev launcher
-  control/     Command/action type definitions
-  evidence/    Turn-based JSON logs and screenshots
-  executor/    Command → button press translation + RAM detection
-  game/        RAM readers, map memory, tile classification, text codec
-  mgba/        mGBA-http client
-  supervisor/  Stuck detection and no-web-search recovery feedback
-  viewer/      Dev viewer HTTP server
-scripts/       Build utilities and live test scripts
-tests/         Unit tests (no network required)
-```
+- Keep ROMs out of git. Provide your own legal Pokemon Red or Blue ROM.
+- Use savestate slot `1` for a clean reset point and slot `8` for the runner's auto-checkpoint.
+- Public branding is Grokemon; internal protocol/schema names may still mention `pss-mgba` where compatibility matters.
