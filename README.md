@@ -12,6 +12,8 @@ Grokemon started from the original `pss-mgba` harness and now focuses on one con
 
 No ROM is bundled. No emulator memory writes are used. The agent can only press A, B, Start, Select, and the D-pad.
 
+**Keywords:** Grok agent, Pokemon Red AI, autonomous Game Boy agent, mGBA automation, mGBA-http, LLM game agent, TypeScript emulator harness.
+
 ## How it works
 
 ```text
@@ -163,3 +165,10 @@ RUN_MGBA_INTEGRATION=1 MGBA_HTTP_BASE_URL=http://127.0.0.1:5001 pnpm run test:in
 - Keep ROMs out of git. Provide your own legal Pokemon Red or Blue ROM.
 - Use savestate slot `1` for a clean reset point and slot `8` for the runner's auto-checkpoint.
 - Public branding is Grokemon; internal protocol/schema names may still mention `pss-mgba` where compatibility matters.
+
+## Brand assets
+
+- README banner: `assets/grokemon.png` (`2048x500`).
+- Social preview image: `assets/grokemon-social.png` (`1280x640`, 2:1).
+
+Use `assets/grokemon-social.png` as the GitHub repository social preview image so links unfurl with the Grokemon banner.
