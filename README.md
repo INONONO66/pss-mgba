@@ -6,7 +6,7 @@
 
 Grok plays Pokemon Red from emulator state alone.
 
-No guides, no scripts, no web search.
+Default harness: no guides, no scripts, no web-search tool.
 
 Grokemon started from the original `pss-mgba` harness and now focuses on one constraint: beat Pokemon Red by reading emulator state and pressing only normal Game Boy buttons.
 
@@ -38,7 +38,7 @@ Each turn follows the same loop:
 
 ## Runtime invariants
 
-- **No web search:** the policy is driven by RAM state, prompt rules, local memory, and supervisor feedback.
+- **No normal-run web search:** the agent tool surface is driven by RAM state, prompt rules, local memory, and supervisor feedback. Optional supervisor integrations can be configured separately, but the game-action loop does not browse or search.
 - **No memory writes:** all game interaction goes through Game Boy inputs.
 - **One game action per turn:** the runner interrupts after the first game-action tool result.
 - **Mode-gated tools:** overworld, battle, and dialog expose different tool sets.
