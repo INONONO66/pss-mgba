@@ -1,4 +1,4 @@
-# pss-mgba Multi-Instance Gateway
+# grokemon Multi-Instance Gateway
 
 A single-container gateway server that manages up to 10 mGBA emulator processes, providing a mGBA-http-compatible REST API and a real-time dashboard.
 

@@ -63,7 +63,7 @@ export async function startDevViewerServer(options: DevViewerServerOptions): Pro
 
 function createDevViewerServer(options: DevViewerServerOptions): Server {
   const paths = buildRunPaths(options.evidenceDir, options.runId);
-  const tempDir = options.tempDir ?? path.join(os.tmpdir(), "pss-mgba-dev-viewer", options.runId);
+  const tempDir = options.tempDir ?? path.join(os.tmpdir(), "grokemon-dev-viewer", options.runId);
   const visionImageLimit = options.visionImageLimit ?? 3;
 
   return http.createServer(async (request, response) => {
