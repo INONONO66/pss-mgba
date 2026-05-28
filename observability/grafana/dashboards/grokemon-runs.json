@@ -984,7 +984,7 @@
   ],
   "refresh": "5s",
   "schemaVersion": 40,
-  "tags": ["pss-mgba", "pokemon", "tokens"],
+  "tags": ["grokemon", "pokemon", "tokens"],
   "templating": {
     "list": []
   },
@@ -994,8 +994,8 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "pss-mgba Run Iterations",
-  "uid": "pss-mgba-runs",
+  "title": "grokemon Run Iterations",
+  "uid": "grokemon-runs",
   "version": 3,
   "weekStart": ""
 }

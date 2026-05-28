@@ -1,9 +1,9 @@
 apiVersion: 1
 
 providers:
-  - name: pss-mgba
+  - name: grokemon
     orgId: 1
-    folder: pss-mgba
+    folder: grokemon
     type: file
     disableDeletion: false
     updateIntervalSeconds: 10

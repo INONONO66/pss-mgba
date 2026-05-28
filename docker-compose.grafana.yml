@@ -9,7 +9,7 @@ services:
       - "9090:9090"
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - pss-mgba-prometheus:/prometheus
+      - grokemon-prometheus:/prometheus
 
   grafana:
     image: grafana/grafana:11.4.0
@@ -22,10 +22,10 @@ services:
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
-      - pss-mgba-grafana:/var/lib/grafana
+      - grokemon-grafana:/var/lib/grafana
     depends_on:
       - prometheus
 
 volumes:
-  pss-mgba-prometheus:
-  pss-mgba-grafana:
+  grokemon-prometheus:
+  grokemon-grafana:
