@@ -1,7 +1,6 @@
 packages:
   - .
   - viewer
-  - multi
 allowBuilds:
   cpu-features: true
   esbuild: true
