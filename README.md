@@ -23,7 +23,7 @@ CommandAgentRunner
   ↓ session observation + mode-filtered tools
 CommandExecutor
   ↓ InputGate-settled button presses
-mGBA-http / grokemon multi gateway
+mGBA-http
   ↓ RAM, screenshots, frames
 Pokemon Red
 ```
@@ -66,10 +66,7 @@ OPENAI_MODEL=grok-4.3
 OPENAI_TEMPERATURE=0.2
 ```
 
-Then start either:
-
-- mGBA with mGBA-http enabled and a legal Pokemon Red ROM loaded, or
-- the local multi-instance gateway in `multi/`.
+Then start mGBA with mGBA-http enabled and a legal Pokemon Red ROM loaded.
 
 Run:
 
@@ -87,29 +84,6 @@ pnpm run harness run --run-id run-a --max-turns 200 --reasoning medium
 pnpm run harness run --load-slot 8      # resume from auto-checkpoint slot
 pnpm run harness press A --frames 5     # manual safe button press
 ```
-
-## Multi-instance gateway
-
-`multi/` runs a single Docker container that spawns up to 10 local `mgba-sdl` processes. It exposes:
-
-- admin APIs for creating and destroying emulator instances,
-- mGBA-http-compatible per-instance game APIs,
-- dashboard and per-instance WebSocket frame streams.
-
-```bash
-cd multi
-pnpm install
-ROM_PATH=/absolute/path/to/roms docker compose -f docker/docker-compose.yml up -d --build
-curl http://localhost:8787/health
-```
-
-Create an instance, then point `MGBA_HTTP_BASE_URL` at the returned token URL:
-
-```text
-MGBA_HTTP_BASE_URL=http://localhost:8787/api/v1/<token>
-```
-
-See `multi/README.md` for the gateway API and environment variables.
 
 ## Main commands
 
@@ -135,7 +109,6 @@ See `multi/README.md` for the gateway API and environment variables.
 | `src/supervisor/` | Stuck detection, goal ledger, adviser hints, intervention loop |
 | `src/evidence/` | Run folders, turn JSON, screenshots, redaction |
 | `src/viewer/` | Dev viewer HTTP/WebSocket server |
-| `multi/` | Single-container multi-emulator gateway and dashboard |
 | `scripts/` | Build, safety, smoke, and live-test utilities |
 
 ## Verification
