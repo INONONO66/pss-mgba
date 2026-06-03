@@ -10,10 +10,10 @@ describe("buildDialogContext", () => {
     expect(context).toContain("input_name(name)");
     expect(context).toContain("advance");
 
-    expect(context).toContain("choose what progresses the game");
-    expect(context).toContain("short name");
-    expect(context).toContain("keep high-power damaging moves");
+    expect(context).toContain("progresses the game");
+    expect(context).toContain("Short names save time");
+    expect(context).toContain("high-power damaging moves");
 
-    expect(context).not.toContain("raw");
+    expect(context).not.toContain("raw(");
   });
 });

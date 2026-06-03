@@ -9,12 +9,9 @@ describe("buildOverworldContext", () => {
     expect(context).toContain("interact(direction?)");
     expect(context).toContain("wait(frames)");
 
-    expect(context).toContain("warp tiles (W)");
-    expect(context).toContain("Talk to NPCs");
-    expect(context).toContain("retry same target");
-    expect(context).toContain("map graph");
-    expect(context).toContain("POKEMON CENTER");
-    expect(context).toContain("POKE MART");
+    expect(context).toContain("Warp tiles (W on the map)");
+    expect(context).toContain("<exploration>");
+    expect(context).toContain("<shopping_and_healing>");
 
     expect(context).not.toContain("raw");
   });

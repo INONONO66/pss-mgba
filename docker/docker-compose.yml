@@ -1,0 +1,54 @@
+name: grokemon-headless
+
+services:
+  emulator:
+    build:
+      context: ../multi
+      dockerfile: docker/emulator/Dockerfile
+    volumes:
+      - ${ROM_PATH:?ROM_PATH must be set}:/rom/game.gb:ro
+    environment:
+      - XVFB_SCREEN=320x240x16
+      - SDL_AUDIODRIVER=dummy
+    networks:
+      - harness-net
+    restart: unless-stopped
+    shm_size: "32m"
+    mem_limit: 768m
+    pids_limit: 64
+    healthcheck:
+      test: ["CMD-SHELL", "(exec 3<>/dev/tcp/127.0.0.1/8888) 2>/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  harness:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.harness
+    ports:
+      - "${VIEWER_PORT:-8787}:8787"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - MGBA_HTTP_BASE_URL=http://emulator:8888
+      - DEV_VIEWER_PORT=8787
+      - DEV_VIEWER_HOST=0.0.0.0
+      - EVIDENCE_DIR=/app/runs
+    volumes:
+      - harness-runs:/app/runs
+    depends_on:
+      emulator:
+        condition: service_healthy
+    networks:
+      - harness-net
+    restart: unless-stopped
+
+volumes:
+  harness-runs:
+
+networks:
+  harness-net:
+    driver: bridge

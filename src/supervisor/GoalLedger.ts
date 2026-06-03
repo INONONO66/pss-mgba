@@ -9,7 +9,7 @@ import type {
   SupervisorStuckPayload,
 } from "./SupervisorTypes.js";
 
-export interface SupervisorImprovementRecord {
+interface SupervisorImprovementRecord {
   readonly id: string;
   readonly stuckReason: string;
   readonly hypothesis: string;
@@ -99,7 +99,7 @@ export class GoalLedger {
   }
 }
 
-export function supervisorEvent<TPayload extends Record<string, unknown>>(
+function supervisorEvent<TPayload extends Record<string, unknown>>(
   type: SupervisorEvent<TPayload>["type"],
   metadata: SupervisorEventMetadata,
   payload: TPayload

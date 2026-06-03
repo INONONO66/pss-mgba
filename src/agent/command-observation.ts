@@ -6,6 +6,7 @@ import { AGENT_MEMORY_SECTIONS, type AgentMemoryEntry, type AgentMemoryFile } fr
 import type { MapGraph } from "../game/MapGraph.js";
 import type { KnownNpc, MapMemory } from "../game/MapMemory.js";
 import type { FullGameState } from "../game/PokemonTypes.js";
+import type { PersistentMemoryEntry } from "../supervisor/PersistentMemory.js";
 
 const HISTORY_LIMIT = 10;
 
@@ -47,6 +48,7 @@ interface AgentObservationOptions {
   readonly detectorStatus?: unknown;
   readonly lastResult?: CommandResult;
   readonly objective?: string;
+  readonly persistentMemories?: readonly PersistentMemoryEntry[];
   readonly step?: number;
 }
 
@@ -67,6 +69,7 @@ export function buildAgentObservation(
   const text = [
     buildTurnSection(state, opts),
     buildMemorySection(opts.agentMemory),
+    buildPersistentMemorySection(opts.persistentMemories),
     buildUserMessage(policyInput),
     buildAvailableToolsSection(opts.availableTools),
   ].filter((section) => section.trim().length > 0).join("\n\n");
@@ -147,7 +150,6 @@ const CHECKPOINT_LABELS: Record<string, string> = {
 
 function buildTurnSection(state: AgentObservationState, opts: AgentObservationOptions): string {
   const lines = [
-    "[AGENT TURN]",
     `Mode: ${state.mode}. Step ${opts.step ?? 0}.`,
     `Map: ${state.fullState.map.mapName} (map ${state.mapId}), size ${state.mapWidth}x${state.mapHeight}.`,
   ];
@@ -161,7 +163,7 @@ function buildTurnSection(state: AgentObservationState, opts: AgentObservationOp
     lines.push(milestones);
   }
 
-  return lines.join("\n");
+  return `<turn>\n${lines.join("\n")}\n</turn>`;
 }
 
 function buildMilestoneSection(detectorStatus: unknown): string {
@@ -191,7 +193,17 @@ function buildMilestoneSection(detectorStatus: unknown): string {
 
 function buildAvailableToolsSection(tools: AgentObservationOptions["availableTools"]): string {
   const lines = formatAvailableTools(tools);
-  return `[AVAILABLE TOOLS]\n${lines.join("\n")}`;
+  return `<available_tools>\n${lines.join("\n")}\n</available_tools>`;
+}
+
+function buildPersistentMemorySection(memories: readonly PersistentMemoryEntry[] | undefined): string {
+  if (memories === undefined || memories.length === 0) {
+    return "";
+  }
+  const lines = memories.map((entry) =>
+    `- [${entry.mapName}] ${entry.situation} → ${entry.resolution}`,
+  );
+  return `<past_lessons>\n${lines.join("\n")}\n</past_lessons>`;
 }
 
 function buildMemorySection(memory: AgentMemoryFile | undefined): string {
@@ -210,7 +222,7 @@ function buildMemorySection(memory: AgentMemoryFile | undefined): string {
   if (sections.length === 0) {
     return "";
   }
-  return `[AGENT MEMORY]\n${sections.join("\n\n")}`;
+  return `<agent_memory>\n${sections.join("\n\n")}\n</agent_memory>`;
 }
 
 function formatAvailableTools(tools: AgentObservationOptions["availableTools"]): string[] {

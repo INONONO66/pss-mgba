@@ -8,7 +8,7 @@ import { buildOverworldContext } from "./prompts/overworld.js";
 import { GEN1_SPRITE_NAMES } from "../game/data/Gen1Names.js";
 
 export function buildSystemPrompt(mode: GameMode): string {
-  return buildGameKnowledge() + "\n\n" + buildModeContext(mode);
+  return buildGameKnowledge(mode) + "\n\n" + buildModeContext(mode);
 }
 
 function buildModeContext(mode: GameMode): string {
@@ -43,12 +43,12 @@ export function buildUserMessage(input: PolicyInput): string {
 function buildProgressSection(input: PolicyInput): string {
   const badges = getBadgeProgress(input);
   const names = badges.names.length > 0 ? ` (${badges.names.join(", ")})` : "";
-  return `[PROGRESS]\nBadges: ${badges.count}/8${names}. Step ${input.step ?? 0}.`;
+  return `<progress>\nBadges: ${badges.count}/8${names}. Step ${input.step ?? 0}.\n</progress>`;
 }
 
 function buildAdviserHintSection(input: PolicyInput): string | undefined {
   if (input.adviserHint === undefined || input.adviserHint.trim().length === 0) return undefined;
-  return `[ADVISER HINT]\n${input.adviserHint}`;
+  return `<adviser_hint>\n${input.adviserHint}\n</adviser_hint>`;
 }
 
 function buildLastResultSection(input: PolicyInput): string | undefined {
@@ -56,7 +56,7 @@ function buildLastResultSection(input: PolicyInput): string | undefined {
   const latestCommand = input.commandHistory === undefined || input.commandHistory.length === 0
     ? undefined
     : input.commandHistory[input.commandHistory.length - 1].command;
-  return `[LAST RESULT]\n${formatCommandOrUnknown(latestCommand)} → ${formatResult(input.lastResult)}`;
+  return `<last_result>\n${formatCommandOrUnknown(latestCommand)} → ${formatResult(input.lastResult)}\n</last_result>`;
 }
 
 function buildStateSection(input: PolicyInput, mode: GameMode): string {
@@ -65,7 +65,7 @@ function buildStateSection(input: PolicyInput, mode: GameMode): string {
     : mode === "dialog"
       ? buildDialogState(input)
       : buildOverworldState(input);
-  return `[STATE: ${mode.toUpperCase()}]\n${body}`;
+  return `<state mode="${mode}">\n${body}\n</state>`;
 }
 
 function buildOverworldState(input: PolicyInput): string {
@@ -146,10 +146,10 @@ function buildFallbackBattleState(state: PokemonStateSnapshot | undefined): stri
 function buildMapSections(input: PolicyInput): string[] {
   const sections: string[] = [];
   if (input.mapGraph !== undefined && input.mapGraph.trim().length > 0) {
-    sections.push(withHeader("[MAP GRAPH]", input.mapGraph));
+    sections.push(`<map_graph>\n${input.mapGraph.trim()}\n</map_graph>`);
   }
   if (input.currentMapFull !== undefined && input.currentMapFull.trim().length > 0) {
-    sections.push(withHeader("[CURRENT MAP]", input.currentMapFull));
+    sections.push(`<current_map>\n${input.currentMapFull.trim()}\n</current_map>`);
   }
   if (input.microContext !== undefined) {
     const adjacent = Object.entries(input.microContext.adjacent)
@@ -168,14 +168,14 @@ function buildMapSections(input: PolicyInput): string[] {
         return `#${n.slot} "${spriteName}" at (${n.mapX},${n.mapY}) facing ${n.facing} [${n.movementType}]`;
       }).join(", ")}`);
     }
-    sections.push(lines.join("\n"));
+    sections.push(`<micro_context>\n${lines.join("\n")}\n</micro_context>`);
   }
   return sections;
 }
 
 function buildHistorySection(history: CommandHistoryEntry[] | undefined): string | undefined {
   if (history === undefined || history.length === 0) return undefined;
-  return `[HISTORY]\n${history.slice(-10).map(formatHistoryEntry).join("\n")}`;
+  return `<history>\n${history.slice(-10).map(formatHistoryEntry).join("\n")}\n</history>`;
 }
 
 function formatHistoryEntry(entry: CommandHistoryEntry): string {
@@ -348,11 +348,6 @@ function getChoices(input: PolicyInput): string[] {
     if (choices.length > 0) return choices;
   }
   return [];
-}
-
-function withHeader(header: string, value: string): string {
-  const trimmed = value.trim();
-  return trimmed.startsWith("[") ? trimmed : `${header}\n${trimmed}`;
 }
 
 function capitalize(value: string): string {

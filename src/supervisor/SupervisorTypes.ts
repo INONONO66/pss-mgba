@@ -13,7 +13,7 @@ export type SupervisorGoalKind =
   | "reach-ending"
   | "complete";
 
-export type SupervisorGoalStatus = "active" | "pending" | "complete";
+type SupervisorGoalStatus = "active" | "pending" | "complete";
 
 export interface SupervisorGoal {
   readonly id: string;
@@ -43,7 +43,7 @@ export interface SupervisorPlan {
   readonly citations: readonly string[];
 }
 
-export type SupervisorEventType =
+type SupervisorEventType =
   | "supervisor.goal.updated"
   | "supervisor.stuck.detected"
   | "supervisor.improvement.recorded";

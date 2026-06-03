@@ -15,7 +15,7 @@ describe("buildBattleContext", () => {
     expect(context).toContain("PP");
     expect(context).toContain("Potion");
     expect(context).toContain("Poke Ball");
-    expect(context).toContain("CATCHING WILD POKEMON");
+    expect(context).toContain("<catching>");
 
     expect(context).not.toContain("raw");
   });

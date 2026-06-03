@@ -63,7 +63,7 @@ export interface LLMAdviserInput {
   readonly walkthroughContext?: string;
 }
 
-export interface LLMAdviserResult {
+interface LLMAdviserResult {
   readonly advice: string;
   readonly situationKey: string;
 }

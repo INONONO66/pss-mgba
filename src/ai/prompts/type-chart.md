@@ -1,22 +1,38 @@
-Gen 1 Type Effectiveness (Super-Effective matchups only):
-- Normal: no super-effective targets.
-- Fire → Grass, Ice, Bug. Resisted by Fire, Water, Rock, Dragon.
-- Water → Fire, Ground, Rock. Resisted by Water, Grass, Dragon.
-- Electric → Water, Flying. Resisted by Electric, Grass, Dragon. No effect on Ground.
-- Grass → Water, Ground, Rock. Resisted by Fire, Grass, Poison, Flying, Bug, Dragon.
-- Ice → Grass, Ground, Flying, Dragon. Resisted by Fire, Water, Ice.
-- Fighting → Normal, Rock, Ice. Resisted by Poison, Flying, Psychic, Bug. No effect on Ghost.
-- Poison → Grass, Bug. Resisted by Poison, Ground, Rock, Ghost.
-- Ground → Fire, Electric, Poison, Rock. Resisted by Grass, Bug. No effect on Flying.
-- Flying → Grass, Fighting, Bug. Resisted by Electric, Rock.
-- Psychic → Fighting, Poison. Resisted by Psychic. No effect on none (Bug is supposed to be super-effective on Psychic, but in Gen 1 no Bug moves are strong enough to matter; Psychic has no real counter in Gen 1).
-- Bug → Grass, Psychic, Poison. Resisted by Fire, Fighting, Flying, Ghost.
-- Rock → Fire, Ice, Flying, Bug. Resisted by Fighting, Ground.
-- Ghost → Ghost. Resisted by Normal (immune). No effect on Normal. In Gen 1, Ghost moves do NOT affect Psychic (bug in game).
-- Dragon → Dragon. Resisted by none except it only has fixed-damage Dragon Rage in Gen 1.
+<type_effectiveness>
+Use this to choose moves in battle. Always prefer a 2x effective move over raw power.
 
-Key Gen 1 quirks:
-- Psychic type is overpowered; only weak to Bug (no strong Bug moves exist) and Ghost (bugged to do nothing to Psychic).
-- Critical hit rate is based on Speed stat, not a flat percentage.
-- Special stat governs both Sp.Atk and Sp.Def (no split).
-- Freeze has no thaw chance except being hit by a Fire move.
+<move_selection_priority>
+1. Super-effective move (2x damage) — always best, even if low base power.
+2. STAB move (Same Type Attack Bonus, 1.5x) — a 60-power STAB move beats a 75-power non-STAB.
+3. Highest base power damaging move available.
+4. If all moves are resisted, switch to a Pokemon with better coverage.
+5. PP = 0 means unusable. Check before selecting.
+</move_selection_priority>
+
+<quick_reference>
+Strong against → Weak to:
+- Fire → Grass, Ice, Bug | Weak to: Water, Ground, Rock
+- Water → Fire, Ground, Rock | Weak to: Electric, Grass
+- Electric → Water, Flying | Weak to: Ground (immune!)
+- Grass → Water, Ground, Rock | Weak to: Fire, Ice, Poison, Flying
+- Ice → Grass, Ground, Flying, Dragon | Weak to: Fire, Fighting, Rock
+- Fighting → Normal, Rock, Ice | Weak to: Flying, Psychic
+- Psychic → Fighting, Poison | Very strong offensively, few counters
+- Ground → Fire, Electric, Poison, Rock | Weak to: Water, Grass, Ice
+- Flying → Grass, Fighting, Bug | Weak to: Electric, Ice, Rock
+- Rock → Fire, Ice, Flying, Bug | Weak to: Water, Grass, Fighting, Ground
+- Ghost → Ghost | No effect on Normal (immune)
+- Poison → Grass, Bug | Weak to: Ground, Psychic
+- Normal → nothing super-effective | Weak to: Fighting
+- Bug → Grass, Psychic, Poison | Weak to: Fire, Flying, Rock
+- Dragon → Dragon | Only fixed-damage moves exist
+</quick_reference>
+
+<special_interactions>
+- Ground-type Pokemon are immune to Electric moves. Do not use Electric attacks against them.
+- Normal and Ghost are mutually immune. Normal moves cannot hit Ghost, Ghost moves cannot hit Normal.
+- Psychic type is very strong offensively. If you have a Psychic-type move, it is almost always worth using.
+- Poison does not drain HP in battle (only outside battle while walking). Status poison reduces opponent effectiveness over time.
+- Freeze is extremely powerful — a frozen Pokemon cannot act until thawed by a Fire move.
+</special_interactions>
+</type_effectiveness>

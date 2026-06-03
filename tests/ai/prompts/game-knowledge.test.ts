@@ -3,28 +3,48 @@ import { describe, expect, it } from "vitest";
 import { buildGameKnowledge } from "../../../src/ai/prompts/game-knowledge.js";
 
 describe("buildGameKnowledge", () => {
-  it("includes core game-knowledge sections", () => {
-    const prompt = buildGameKnowledge();
+  it("overworld includes full knowledge set", () => {
+    const prompt = buildGameKnowledge("overworld");
 
-    expect(prompt).toContain("World");
-    expect(prompt).toContain("Progression");
-    expect(prompt).toContain("NPC");
-    expect(prompt).toContain("Stuck");
+    expect(prompt).toContain("<identity>");
+    expect(prompt).toContain("<world_model>");
+    expect(prompt).toContain("<stuck_recovery>");
+    expect(prompt).toContain("<npc_rules>");
+    expect(prompt).toContain("<party_building>");
+    expect(prompt).not.toContain("<type_effectiveness>");
   });
 
-  it("preserves required output rules", () => {
-    const prompt = buildGameKnowledge();
+  it("battle includes types but omits NPC and stuck", () => {
+    const prompt = buildGameKnowledge("battle");
 
-    expect(prompt).toContain("exactly one game-action tool call");
-    expect(prompt).toContain("note tools alone are invalid");
-    expect(prompt).toContain("currently exposed tools");
-    expect(prompt).toContain("Do not answer with a JSON command in plain text");
-    expect(prompt).toContain("No emulator/RAM memory writes or emulator manipulation");
-    expect(prompt).toContain("Base decisions on observed state only");
+    expect(prompt).toContain("<identity>");
+    expect(prompt).toContain("<type_effectiveness>");
+    expect(prompt).toContain("<party_building>");
+    expect(prompt).not.toContain("<npc_rules>");
+    expect(prompt).not.toContain("<stuck_recovery>");
+  });
+
+  it("dialog includes type chart for move learning but omits NPC, stuck, resources", () => {
+    const prompt = buildGameKnowledge("dialog");
+
+    expect(prompt).toContain("<identity>");
+    expect(prompt).toContain("<type_effectiveness>");
+    expect(prompt).not.toContain("<npc_rules>");
+    expect(prompt).not.toContain("<stuck_recovery>");
+    expect(prompt).not.toContain("<party_building>");
+  });
+
+  it("preserves required output rules in all modes", () => {
+    for (const mode of ["overworld", "battle", "dialog"] as const) {
+      const prompt = buildGameKnowledge(mode);
+      expect(prompt).toContain("<constraints>");
+      expect(prompt).toContain("<action_plan_format>");
+      expect(prompt).toContain("<memory_rules>");
+    }
   });
 
   it("does not include explicit objectives", () => {
-    const prompt = buildGameKnowledge().toLowerCase();
+    const prompt = buildGameKnowledge("overworld").toLowerCase();
 
     expect(prompt).not.toContain("go to");
     expect(prompt).not.toContain("get starter");

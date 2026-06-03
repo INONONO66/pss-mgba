@@ -1,6 +1,14 @@
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { FullGameState } from "../../src/game/PokemonTypes.js";
 import { SupervisorOrchestrator } from "../../src/supervisor/index.js";
+
+const TMP_BASE = "/var/folders/70/44j59lmn1x95z003s9fg4qlm0000gn/T/opencode";
+
+function uniqueDir(prefix: string): string {
+  return path.join(TMP_BASE, `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+}
 
 describe("SupervisorOrchestrator", () => {
   it("constructs with valid config", () => {
@@ -178,6 +186,108 @@ describe("SupervisorOrchestrator", () => {
 
     expect(kb.size).toBe(1);
     expect(kb.entries[0]?.advice).toBe("Head south to Route 1 and battle trainers.");
+  });
+
+  it("auto-records to persistent memory when stuck resolves", async () => {
+    const dir = uniqueDir("orch-pm");
+    await mkdir(dir, { recursive: true });
+    const pmPath = path.join(dir, "persistent-memory.json");
+
+    const orchestrator = new SupervisorOrchestrator({
+      evidenceDir: "runs",
+      runId: "test-run",
+      persistentMemoryPath: pmPath,
+    });
+    await orchestrator.init();
+
+    const stuckActions = Array.from({ length: 5 }, () => ({
+      action: { type: "press", button: "A", frames: 5 },
+    }));
+    const stuckStates = Array.from({ length: 6 }, (_v, i) => ({
+      step: i, mapId: 38, y: 3, x: 3,
+    }));
+
+    orchestrator.update({
+      step: 10,
+      fullState: fullState(),
+      recentActions: stuckActions,
+      recentStates: stuckStates,
+    });
+
+    const planAfterStuck = orchestrator.getLastPlan();
+    expect(planAfterStuck?.assessment.state).toBe("stuck");
+
+    orchestrator.update({
+      step: 18,
+      fullState: fullState({
+        map: { ...fullState().map, mapId: 1, mapName: "Pallet Town" },
+        player: { ...fullState().player, position: { ...fullState().player.position, mapId: 1, y: 5, x: 5 } },
+      }),
+      recentActions: [],
+      recentStates: [],
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const pm = orchestrator.getPersistentMemory();
+    expect(pm.size).toBe(1);
+
+    const entry = pm.entries[0];
+    expect(entry?.kind).toBe("mistake_resolved");
+    expect(entry?.mapId).toBe(38);
+    expect(entry?.mapName).toBe("Reds House 2f");
+    expect(entry?.situation).toContain("loop");
+    expect(entry?.resolution).toContain("Resolved after 8 turns");
+    expect(entry?.resolution).toContain("Pallet Town");
+    expect(entry?.tags).toContain("map:38");
+  });
+
+  it("does not record to persistent memory when not previously stuck", async () => {
+    const dir = uniqueDir("orch-pm-no-stuck");
+    await mkdir(dir, { recursive: true });
+    const pmPath = path.join(dir, "persistent-memory.json");
+
+    const orchestrator = new SupervisorOrchestrator({
+      evidenceDir: "runs",
+      runId: "test-run",
+      persistentMemoryPath: pmPath,
+    });
+    await orchestrator.init();
+
+    orchestrator.update({ step: 1, fullState: fullState() });
+    orchestrator.update({ step: 2, fullState: fullState() });
+
+    const pm = orchestrator.getPersistentMemory();
+    expect(pm.size).toBe(0);
+  });
+
+  it("queryRelevantMemories returns matching entries", async () => {
+    const dir = uniqueDir("orch-pm-query");
+    await mkdir(dir, { recursive: true });
+    const pmPath = path.join(dir, "persistent-memory.json");
+
+    const orchestrator = new SupervisorOrchestrator({
+      evidenceDir: "runs",
+      runId: "test-run",
+      persistentMemoryPath: pmPath,
+    });
+    await orchestrator.init();
+
+    const pm = orchestrator.getPersistentMemory();
+    await pm.record({
+      runId: "old-run",
+      kind: "mistake_resolved",
+      mapId: 38,
+      mapName: "Reds House 2f",
+      badges: 0,
+      situation: "Past mistake",
+      resolution: "Past resolution",
+      tags: ["map:38"],
+    });
+
+    const results = orchestrator.queryRelevantMemories(38, 0);
+    expect(results.length).toBe(1);
+    expect(results[0]?.situation).toBe("Past mistake");
   });
 });
 

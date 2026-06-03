@@ -74,6 +74,10 @@ export interface CommandAgentRunnerOptions {
     turn: number,
     state: CommandAgentGameState
   ) => void | Promise<void>;
+  readonly persistentMemoryProvider?: (
+    mapId: number,
+    badges: number,
+  ) => readonly import("../supervisor/PersistentMemory.js").PersistentMemoryEntry[];
   readonly reasoning?: DynamicReasoningEffort;
   readonly sessionKey?: string;
   readonly sleep?: (ms: number) => Promise<void>;
@@ -281,6 +285,7 @@ export class CommandAgentRunner {
             detectorStatus,
             lastResult: this.lastResult,
             objective: this.objective,
+            persistentMemories: this.queryPersistentMemories(state),
             step: this.turn,
           }
         );
@@ -765,6 +770,18 @@ export class CommandAgentRunner {
 
     const hint = await this.options.adviserHintProvider();
     return hint === undefined ? undefined : hint.slice(0, 500);
+  }
+
+  private queryPersistentMemories(
+    state: CommandAgentGameState,
+  ): readonly import("../supervisor/PersistentMemory.js").PersistentMemoryEntry[] {
+    if (this.options.persistentMemoryProvider === undefined) {
+      return [];
+    }
+    return this.options.persistentMemoryProvider(
+      state.mapId,
+      state.fullState.player.badges.count,
+    );
   }
 
   private detectorStatus(): DetectorStatus {

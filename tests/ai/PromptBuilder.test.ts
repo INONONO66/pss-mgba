@@ -2,14 +2,6 @@ import { describe, expect, it } from "vitest";
 import { buildSystemPrompt, buildUserMessage } from "../../src/ai/PromptBuilder.js";
 import type { FullGameState } from "../../src/game/PokemonTypes.js";
 
-const gameKnowledgeLines = [
-  "World Rules",
-  "Progression Model",
-  "NPC Rules",
-  "Stuck Patterns",
-  "Output Rules"
-];
-
 describe("PromptBuilder", () => {
   it("buildSystemPrompt for overworld contains overworld commands only", () => {
     const prompt = buildSystemPrompt("overworld");
@@ -32,14 +24,20 @@ describe("PromptBuilder", () => {
     expect(prompt).not.toContain("navigate(x, y)");
   });
 
-  it("all system prompts contain game knowledge instead of legacy identity", () => {
+  it("all system prompts contain core XML-structured game knowledge", () => {
     for (const mode of ["overworld", "battle", "dialog"] as const) {
       const prompt = buildSystemPrompt(mode);
-      for (const line of gameKnowledgeLines) {
-        expect(prompt).toContain(line);
-      }
+      expect(prompt).toContain("<identity>");
+      expect(prompt).toContain("<world_model>");
+      expect(prompt).toContain("<constraints>");
       expect(prompt).not.toContain("You are a Pokemon Red/Blue game controller AI");
     }
+  });
+
+  it("overworld system prompt includes npc_rules, battle does not", () => {
+    expect(buildSystemPrompt("overworld")).toContain("<npc_rules>");
+    expect(buildSystemPrompt("battle")).not.toContain("<npc_rules>");
+    expect(buildSystemPrompt("dialog")).not.toContain("<npc_rules>");
   });
 
   it("buildUserMessage with overworld state includes map graph and current map", () => {
@@ -56,11 +54,12 @@ describe("PromptBuilder", () => {
       }
     });
 
-    expect(message).toContain("[STATE: OVERWORLD]");
+    expect(message).toContain('<state mode="overworld">');
     expect(message).toContain("Location: Route 1 (map 12), pos (15,22), facing down");
-    expect(message).toContain("[MAP GRAPH]");
+    expect(message).toContain("<map_graph>");
     expect(message).toContain("* Route 1 (map 12) — you are here");
-    expect(message).toContain("[CURRENT MAP]");
+    expect(message).toContain("<current_map>");
+    expect(message).toContain("<micro_context>");
     expect(message).toContain("Position: (15,22), facing down");
   });
 
@@ -70,7 +69,7 @@ describe("PromptBuilder", () => {
       fullState: fullState({ battle: true })
     });
 
-    expect(message).toContain("[STATE: BATTLE]");
+    expect(message).toContain('<state mode="battle">');
     expect(message).toContain("Type: wild");
     expect(message).toContain("Enemy: Rattata Lv3 (Normal) HP 12/12");
     expect(message).toContain("- Scratch (Normal, PP 0/35) ← EMPTY");
@@ -85,7 +84,7 @@ describe("PromptBuilder", () => {
       state: { choices: ["YES", "NO"] }
     });
 
-    expect(message).toContain("[STATE: DIALOG]");
+    expect(message).toContain('<state mode="dialog">');
     expect(message).toContain("Screen text: \"Would you like to nickname it?\"");
     expect(message).toContain("Choices: [YES, NO]");
   });
@@ -112,7 +111,7 @@ describe("PromptBuilder", () => {
       ]
     });
 
-    expect(message).toContain("[HISTORY]");
+    expect(message).toContain("<history>");
     expect(message).toContain("[1] navigate(5,3) → success: arrived (4 tiles)");
     expect(message).toContain("[2] interact(up) → interrupted: dialog started");
     expect(message).toContain("[3] battle(fight:\"Ember\") → success: enemy fainted");
@@ -125,37 +124,39 @@ describe("PromptBuilder", () => {
       lastResult: { status: "partial", reason: "reached edge", details: "unexplored ahead" }
     });
 
-    expect(message).toContain("[LAST RESULT]");
+    expect(message).toContain("<last_result>");
     expect(message).toContain("navigate(4,0) → partial: reached edge (unexplored ahead)");
   });
 
   it("buildUserMessage includes adviser hint section when present", () => {
     const message = buildUserMessage({ adviserHint: "Try going north" });
 
-    expect(message).toContain("[ADVISER HINT]\nTry going north");
+    expect(message).toContain("<adviser_hint>");
+    expect(message).toContain("Try going north");
+    expect(message).toContain("</adviser_hint>");
   });
 
   it("buildUserMessage omits adviser hint section when absent", () => {
     const message = buildUserMessage({});
 
-    expect(message).not.toContain("[ADVISER HINT]");
+    expect(message).not.toContain("<adviser_hint>");
   });
 
   it("buildUserMessage omits adviser hint section when empty", () => {
     const message = buildUserMessage({ adviserHint: "" });
 
-    expect(message).not.toContain("[ADVISER HINT]");
+    expect(message).not.toContain("<adviser_hint>");
   });
 
   it("buildUserMessage handles empty optional fields gracefully", () => {
     const message = buildUserMessage({ mode: "overworld" });
 
-    expect(message).toContain("[PROGRESS]");
-    expect(message).toContain("[STATE: OVERWORLD]");
+    expect(message).toContain("<progress>");
+    expect(message).toContain('<state mode="overworld">');
     expect(message).toContain("Location: Unknown (map ?), pos (?,?), facing unknown");
     expect(message).not.toContain("undefined");
-    expect(message).not.toContain("[HISTORY]");
-    expect(message).not.toContain("[LAST RESULT]");
+    expect(message).not.toContain("<history>");
+    expect(message).not.toContain("<last_result>");
   });
 });
 

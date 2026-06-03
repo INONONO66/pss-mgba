@@ -87,7 +87,7 @@ describe("buildAgentObservation memory injection", () => {
       agentMemory: populatedMemory(),
     });
     const text = result[0].type === "text" ? result[0].text : "";
-    expect(text).toContain("[AGENT MEMORY]");
+    expect(text).toContain("<agent_memory>");
     expect(text).toContain("objectives:");
     expect(text).toContain("- Beat the Elite Four");
     expect(text).toContain("journal:");
@@ -98,18 +98,18 @@ describe("buildAgentObservation memory injection", () => {
     expect(text).not.toContain("notes:");
   });
 
-  it("omits [AGENT MEMORY] section when memory is empty", () => {
+  it("omits agent_memory section when memory is empty", () => {
     const result = buildAgentObservation(stubState(), stubMapMemory(), stubMapGraph(), {
       agentMemory: emptyMemory(),
     });
     const text = result[0].type === "text" ? result[0].text : "";
-    expect(text).not.toContain("[AGENT MEMORY]");
+    expect(text).not.toContain("<agent_memory>");
   });
 
-  it("omits [AGENT MEMORY] section when agentMemory is undefined", () => {
+  it("omits agent_memory section when agentMemory is undefined", () => {
     const result = buildAgentObservation(stubState(), stubMapMemory(), stubMapGraph(), {});
     const text = result[0].type === "text" ? result[0].text : "";
-    expect(text).not.toContain("[AGENT MEMORY]");
+    expect(text).not.toContain("<agent_memory>");
   });
 
   it("renders only non-empty sections", () => {
@@ -119,7 +119,7 @@ describe("buildAgentObservation memory injection", () => {
       agentMemory: memory,
     });
     const text = result[0].type === "text" ? result[0].text : "";
-    expect(text).toContain("[AGENT MEMORY]");
+    expect(text).toContain("<agent_memory>");
     expect(text).toContain("journal:");
     expect(text).toContain("- Only journal entry");
     expect(text).not.toContain("objectives:");

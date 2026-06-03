@@ -3,6 +3,7 @@ import type { LanguageModel } from "ai";
 import { GoalLedger } from "./GoalLedger.js";
 import { KnowledgeBase } from "./KnowledgeBase.js";
 import { LLMAdviser, type VisionInterventionResult } from "./LLMAdviser.js";
+import { PersistentMemory, type PersistentMemoryEntry } from "./PersistentMemory.js";
 import { buildPokemonSupervisorPlan } from "./PokemonSupervisor.js";
 import { StuckEscalator } from "./StuckEscalator.js";
 import { renderSupervisorPlan } from "./SupervisorSummary.js";
@@ -16,13 +17,27 @@ export interface OrchestratorConfig {
   readonly adviserCooldownTurns?: number;
   readonly exaApiKey?: string;
   readonly escalationThreshold?: number;
+  readonly persistentMemoryPath?: string;
   readonly onEscalation?: (result: { issueNumber: number; issueUrl: string; situationKey: string }) => void;
+}
+
+interface StuckContext {
+  readonly startStep: number;
+  readonly mapId: number;
+  readonly mapName: string;
+  readonly badges: number;
+  readonly reasons: readonly string[];
+  readonly goalKind: string;
+  readonly goalTitle: string;
+  readonly adviserHintUsed: boolean;
+  readonly interventionUsed: boolean;
 }
 
 export class SupervisorOrchestrator {
   private readonly config: OrchestratorConfig;
   private readonly goalLedger: GoalLedger;
   private readonly knowledgeBase: KnowledgeBase;
+  private readonly persistentMemory: PersistentMemory;
   private readonly llmAdviser: LLMAdviser | undefined;
   private readonly stuckEscalator: StuckEscalator;
   private readonly walkthroughSearcher: WalkthroughSearcher;
@@ -31,12 +46,16 @@ export class SupervisorOrchestrator {
   private lastPlan: SupervisorPlan | undefined;
   private lastInput: SupervisorInput | undefined;
   private screenshotPath: string | undefined;
+  private stuckContext: StuckContext | undefined;
 
   constructor(config: OrchestratorConfig) {
     this.config = config;
     this.goalLedger = new GoalLedger();
     this.knowledgeBase = new KnowledgeBase(
       path.join(config.evidenceDir, "global", "adviser-knowledge.json"),
+    );
+    this.persistentMemory = new PersistentMemory(
+      config.persistentMemoryPath ?? path.join("data", "persistent-memory.json"),
     );
     this.stuckEscalator = new StuckEscalator({
       evidenceDir: config.evidenceDir,
@@ -56,6 +75,7 @@ export class SupervisorOrchestrator {
 
   async init(): Promise<void> {
     await this.knowledgeBase.load();
+    await this.persistentMemory.load();
   }
 
   update(input: SupervisorInput): SupervisorPlan {
@@ -73,6 +93,22 @@ export class SupervisorOrchestrator {
     this.goalLedger.updatePlan(plan, metadata);
     if (plan.assessment.state === "stuck") {
       this.goalLedger.recordStuckDetection(plan.assessment, metadata, plan.activeGoal);
+
+      // Capture stuck context on first detection
+      if (this.stuckContext === undefined && input.fullState) {
+        this.stuckContext = {
+          startStep: input.step ?? 0,
+          mapId: input.fullState.player.position.mapId,
+          mapName: input.fullState.map.mapName,
+          badges: input.fullState.player.badges.count,
+          reasons: [...plan.assessment.reasons],
+          goalKind: plan.activeGoal.kind,
+          goalTitle: plan.activeGoal.title,
+          adviserHintUsed: false,
+          interventionUsed: false,
+        };
+      }
+
       const snapshot = {
         step: input.step ?? 0,
         assessment: plan.assessment,
@@ -89,6 +125,13 @@ export class SupervisorOrchestrator {
         }
       }).catch(() => { /* escalation is best-effort */ });
     } else {
+      // Stuck → resolved transition: auto-record to persistent memory
+      if (this.stuckContext !== undefined) {
+        this.recordStuckResolution(input, plan).catch(() => {
+          /* persistent memory recording is best-effort */
+        });
+        this.stuckContext = undefined;
+      }
       this.stuckEscalator.reportProgress();
     }
 
@@ -115,6 +158,7 @@ export class SupervisorOrchestrator {
       const cached = this.knowledgeBase.lookup(situationKey);
       if (cached) {
         this.adviserHintGivenThisCycle = true;
+        this.markStuckContextAdviserUsed();
         return truncate(`[Cached advice] ${cached.advice}`, 500);
       }
 
@@ -140,6 +184,7 @@ export class SupervisorOrchestrator {
           });
           await this.knowledgeBase.save();
           this.adviserHintGivenThisCycle = true;
+          this.markStuckContextAdviserUsed();
           return truncate(`[Expert advice] ${result.advice}`, 500);
         }
       }
@@ -174,6 +219,7 @@ export class SupervisorOrchestrator {
     }
 
     this.interventionAttemptedThisCycle = true;
+    this.markStuckContextInterventionUsed();
     return this.llmAdviser.intervene(
       {
         screenshotPath: this.screenshotPath,
@@ -187,6 +233,66 @@ export class SupervisorOrchestrator {
 
   getStuckEscalator(): StuckEscalator {
     return this.stuckEscalator;
+  }
+
+  getPersistentMemory(): PersistentMemory {
+    return this.persistentMemory;
+  }
+
+  queryRelevantMemories(
+    mapId: number,
+    badges: number,
+    tags?: readonly string[],
+  ): readonly PersistentMemoryEntry[] {
+    return this.persistentMemory.query({ mapId, badges, tags });
+  }
+
+  private async recordStuckResolution(
+    input: SupervisorInput,
+    plan: SupervisorPlan,
+  ): Promise<void> {
+    const ctx = this.stuckContext;
+    if (ctx === undefined) {
+      return;
+    }
+
+    const currentStep = input.step ?? 0;
+    const turnsStuck = currentStep - ctx.startStep;
+    const resolvedMapName = input.fullState?.map.mapName ?? ctx.mapName;
+
+    const resolution = buildResolutionDescription(ctx, plan, turnsStuck, resolvedMapName);
+
+    await this.persistentMemory.record({
+      runId: this.config.runId,
+      kind: "mistake_resolved",
+      mapId: ctx.mapId,
+      mapName: ctx.mapName,
+      badges: ctx.badges,
+      situation: truncate(
+        `[${ctx.goalTitle}] ${ctx.reasons.join("; ")}`,
+        400,
+      ),
+      resolution: truncate(resolution, 400),
+      tags: [
+        `map:${ctx.mapId}`,
+        `goal:${ctx.goalKind}`,
+        `badges:${ctx.badges}`,
+        ...(ctx.adviserHintUsed ? ["adviser_hint"] : []),
+        ...(ctx.interventionUsed ? ["vision_intervention"] : []),
+      ],
+    });
+  }
+
+  private markStuckContextAdviserUsed(): void {
+    if (this.stuckContext !== undefined) {
+      this.stuckContext = { ...this.stuckContext, adviserHintUsed: true };
+    }
+  }
+
+  private markStuckContextInterventionUsed(): void {
+    if (this.stuckContext !== undefined) {
+      this.stuckContext = { ...this.stuckContext, interventionUsed: true };
+    }
   }
 
   private extractVisitedMapIds(): number[] {
@@ -254,6 +360,31 @@ function hasSignificantState(input: SupervisorInput | undefined, plan: Superviso
     plan.guidance.length > 2 ||
     plan.assessment.reasons.some((reason) => reason !== "No stall signal detected.")
   );
+}
+
+function buildResolutionDescription(
+  ctx: StuckContext,
+  plan: SupervisorPlan,
+  turnsStuck: number,
+  resolvedMapName: string,
+): string {
+  const parts: string[] = [];
+  parts.push(`Resolved after ${turnsStuck} turns.`);
+
+  if (ctx.adviserHintUsed) {
+    parts.push("Adviser hint was used.");
+  }
+  if (ctx.interventionUsed) {
+    parts.push("Vision intervention was used.");
+  }
+
+  const newGoal = plan.activeGoal.title;
+  if (resolvedMapName !== ctx.mapName) {
+    parts.push(`Moved from ${ctx.mapName} to ${resolvedMapName}.`);
+  }
+  parts.push(`Now pursuing: ${newGoal}.`);
+
+  return parts.join(" ");
 }
 
 function truncate(text: string, maxLength: number): string {

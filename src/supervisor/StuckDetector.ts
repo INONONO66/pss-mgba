@@ -23,7 +23,7 @@ export interface StuckDetection {
   readonly stableContextSignature?: string;
 }
 
-export type StuckSeverity = "none" | "soft" | "hard";
+type StuckSeverity = "none" | "soft" | "hard";
 
 export interface StuckDetectionV2 extends StuckDetection {
   readonly severity: StuckSeverity;
@@ -36,7 +36,7 @@ export interface StuckDetectionV2 extends StuckDetection {
   };
 }
 
-export const defaultStuckDetectorThresholds: StuckDetectorThresholds = {
+const defaultStuckDetectorThresholds: StuckDetectorThresholds = {
   repeatedActionCount: 4,
   stableLocationCount: 5,
 };

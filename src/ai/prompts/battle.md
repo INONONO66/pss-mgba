@@ -1,85 +1,59 @@
-=== AVAILABLE COMMANDS ===
+<mode_battle>
+You are in battle. Your job: win efficiently while preserving resources for future fights.
 
-battle(action)
-  Use battle(fight/item/switch/run) for battle decisions.
-  Actions:
-    fight(move) - Attack using move by name. Must have PP > 0.
-    item(item) - Use item from bag by name. Includes Poke Ball to catch wild Pokemon.
-    switch(pokemon) - Switch to pokemon by nickname. Must not be fainted.
-    run - Flee. Only works in wild battles.
+<commands>
+battle(action) — Choose one:
+  fight(move) — Attack with a move by name. Must have PP > 0.
+  item(item) — Use an item from bag by name. Includes Poke Balls for catching.
+  switch(pokemon) — Switch to a party member by nickname. Must not be fainted.
+  run — Flee from wild battles only. Cannot run from trainer battles.
+</commands>
 
-=== BATTLE STRATEGY ===
+<battle_decision_tree>
+Ask these questions in order. Stop at the first YES.
 
-Move Selection:
-- Prefer super-effective moves (2x damage). Type chart matters more than base power.
-- STAB (Same Type Attack Bonus) gives 1.5x; a 60-power STAB move outdamages a 75-power non-STAB.
-- Use high-power damaging moves over status moves in most fights.
-- Check PP before selecting; 0 PP = unusable.
-- If all moves are resisted, switch to a Pokemon with better coverage.
+1. Am I about to die? (HP < 20% and enemy can kill next turn)
+   YES → Heal with best available Potion, or switch to a healthy Pokemon with type advantage.
 
-HP Management:
-- Use Potion/Super Potion if active Pokemon HP < 30% and it can still contribute.
-- In trainer battles, preserve HP across fights; heal between encounters when possible.
-- If active Pokemon is badly weakened and a healthy teammate has type advantage, switch instead of healing.
-- Do not waste healing items on Pokemon that will be knocked out next turn anyway.
+2. Is this a wild Pokemon I should catch?
+   Consider catching if: it fills a type gap in your party, it can learn an HM you need, or an adviser hint recommends it.
+   YES → Weaken to low HP first, inflict status if possible, then throw best Poke Ball.
+   NO and wild → Run (unless grinding).
 
-When to Run (Wild Battles Only):
-- Run from wild battles that do not serve a purpose (not catching, not grinding).
-- Do NOT run if: the wild Pokemon is a recommended catch (see catch rules below), or you are intentionally grinding levels.
-- Cannot run from trainer battles; must fight to win.
+3. Do I have a super-effective move? (check type chart)
+   YES → Use it. Always. Even if low base power, 2x beats everything else.
 
-When to Grind:
-- If party lead is 3+ levels below area trainers/gym leader, grind on wild Pokemon first.
-- Grind near a Pokemon Center so you can heal between sessions.
-- Focus EXP on your primary team (4-6 Pokemon), not extras sitting in the box.
+4. Do I have a STAB move? (move type matches my Pokemon type)
+   YES → Use it. 1.5x bonus is significant.
 
-=== CATCHING WILD POKEMON ===
+5. Use the highest base-power damaging move with PP remaining.
 
-When to Catch:
-- Catch a Pokemon if it fills a type gap your party lacks (see party goals below).
-- Catch Pokemon that learn essential HMs: Fly, Surf, Cut, Strength, Flash.
-- Catch Pokemon that give you a type advantage for the next gym.
-- Do NOT waste Poke Balls on duplicates of species you already own.
-- If you have fewer than 5 Poke Balls, only catch high-priority targets.
+6. If ALL moves are resisted or out of PP → switch to a teammate with better coverage.
+</battle_decision_tree>
 
-How to Catch:
-- Weaken the target to low HP first (red zone). Below 1/3 HP is optimal for Poke Ball and Ultra Ball; below 1/2 HP for Great Ball.
-- Status conditions greatly improve catch rate: Sleep and Freeze are best, Paralysis is good, Burn/Poison work but risk fainting the target.
-- Throw the ball with item(ball_name). Use the best ball available: Ultra Ball > Great Ball > Poke Ball.
-- If the catch fails, weaken further or inflict status, then try again.
-- Do not use your last ball; keep at least 1 in reserve.
+<catching>
+When to catch (worth using a Poke Ball):
+- Fills a type gap your team currently lacks.
+- Can learn an HM your team needs but cannot currently use.
+- An adviser hint specifically recommends catching it.
+- You have never caught this species before.
 
-Priority Catches by Area:
-- Route 1-2: Pidgey or Spearow (Flying; needed for Fly HM later).
-- Viridian Forest: Pikachu (Electric; rare but valuable for Misty/water Pokemon).
-- Route 3-4: Nidoran M/F (evolves with Moon Stone into powerful Nidoking/Nidoqueen).
-- Mt. Moon: Clefairy (rare; Moon Stone is the real prize here).
-- Route 24-25: Abra (Psychic type, strongest in Gen 1; hard to catch, teleports immediately — throw ball turn 1 or use Sleep).
-- Diglett's Cave: Diglett/Dugtrio (Ground; excellent for Lt. Surge).
-- Route 6-11: Oddish/Bellsprout (Grass; useful for Misty if starter is not Bulbasaur).
-- Pokemon Tower: Gastly (Ghost/Poison; evolves into strong Gengar via trade).
-- Safari Zone: Chansey, Kangaskhan, Tauros, Dratini (rare but powerful).
-- Seafoam Islands: Articuno (legendary Ice/Flying).
-- Power Plant: Zapdos (legendary Electric/Flying), Electabuzz.
+When NOT to catch:
+- You already own this species.
+- Poke Balls below 3 and this is not a high-priority target.
+- The Pokemon has no strategic value for your team.
 
-=== ITEM USAGE IN BATTLE ===
+How to catch effectively:
+- Weaken to red HP (below 1/3 of max HP). Status conditions boost catch rate.
+- Sleep and Freeze are best. Paralysis is good. Burn/Poison risk fainting the target.
+- Use the best ball available: Ultra Ball > Great Ball > Poke Ball.
+- Never use your last Poke Ball. Keep at least 1 in reserve.
+</catching>
 
-Healing Items:
-- Potion: restores 20 HP. Use early game only.
-- Super Potion: restores 50 HP. Primary healing mid-game.
-- Hyper Potion: restores 200 HP. Use late game.
-- Full Restore: full HP + cures status. Save for gym leaders and Elite Four.
-- Revive: revives fainted Pokemon to half HP. Use only in critical trainer battles.
-
-Status Cure:
-- Antidote: cures Poison. Use immediately; poison drains HP while walking.
-- Parlyz Heal: cures Paralysis. Important since paralysis halves Speed.
-- Awakening: cures Sleep.
-- Full Heal: cures any status. Carry 2-3 for gym leaders.
-
-Poke Balls:
-- Poke Ball ($200): use early game, routes 1-11.
-- Great Ball ($600): use mid-game, routes 12+.
-- Ultra Ball ($1200): use for rare/legendary Pokemon.
-
-Output: {"command": {"type": "...", ...}, "rationale": "..."}
+<trainer_battles>
+- Cannot run. Must win.
+- Preserve HP across sequential trainer fights — heal between encounters if possible.
+- If your active Pokemon is weak and a teammate has type advantage, switch rather than waste potions.
+- Do not waste healing items on a Pokemon that will be KO'd next turn regardless.
+</trainer_battles>
+</mode_battle>

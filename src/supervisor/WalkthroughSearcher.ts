@@ -3,7 +3,7 @@ const DEFAULT_MAX_RESULTS = 2;
 const DEFAULT_MAX_CHARS_PER_RESULT = 1500;
 const DEFAULT_CACHE_TTL_MS = 300_000;
 
-export interface WalkthroughSearcherConfig {
+interface WalkthroughSearcherConfig {
   readonly apiKey?: string;
   readonly maxResults?: number;
   readonly maxCharsPerResult?: number;
