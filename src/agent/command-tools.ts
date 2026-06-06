@@ -265,9 +265,9 @@ async function runCommandTool(
 
   return capToolResult({
     ok:
-      result.status === "success" ||
-      result.status === "partial" ||
-      result.status === "interrupted",
+      postCommand.result.status === "success" ||
+      postCommand.result.status === "partial" ||
+      postCommand.result.status === "interrupted",
     command,
     result: capCommandResult(postCommand.result),
     before: summarizeState(beforeState),
@@ -289,6 +289,7 @@ interface PostCommandResult {
 }
 
 const MAX_POST_BATTLE_DIALOG_ROUNDS = 5;
+const MAX_POST_COMMAND_DIALOG_ROUNDS = 5;
 const INTERRUPTING_REASONS = new Set([
   "choice_appeared",
   "naming_screen",
@@ -314,6 +315,18 @@ function mergeDialogResult(
       ...base,
       status: "interrupted",
       reason: dialogResult.reason,
+      details: combineDetails(base.details, dialogResult.details),
+    };
+  }
+  if (
+    dialogResult.status === "failed" ||
+    dialogResult.status === "rejected" ||
+    dialogResult.status === "interrupted"
+  ) {
+    return {
+      ...base,
+      status: dialogResult.status,
+      reason: dialogResult.reason ?? base.reason,
       details: combineDetails(base.details, dialogResult.details),
     };
   }
@@ -401,11 +414,28 @@ async function handlePostCommand(
   let state = await refreshState(context);
   let result = { ...originalResult };
 
-  if (state.mode === "dialog" && command.type !== "dialog") {
+  if (command.type === "dialog") {
+    return { result, transcript, finalState: state };
+  }
+
+  for (
+    let round = 0;
+    round < MAX_POST_COMMAND_DIALOG_ROUNDS && state.mode === "dialog";
+    round += 1
+  ) {
     const dialogResult = await advanceDialog(context);
     transcript.push(...parseTranscript(dialogResult.details));
     result = mergeDialogResult(result, dialogResult);
     state = await refreshState(context);
+
+    if (
+      (dialogResult.reason !== undefined &&
+        INTERRUPTING_REASONS.has(dialogResult.reason)) ||
+      (dialogResult.status !== "success" &&
+        dialogResult.status !== "partial")
+    ) {
+      break;
+    }
   }
 
   return { result, transcript, finalState: state };

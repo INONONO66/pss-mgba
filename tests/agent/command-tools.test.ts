@@ -252,6 +252,144 @@ describe("command tools", () => {
       result: { status: "success", reason: "battle_ended" },
     });
   });
+
+  // Regression for docs/debugging/018 chained-script dialog Open Risk:
+  // When a non-battle command triggers a dialog, advancing that dialog can
+  // immediately produce a new dialog (script chained NPC speech, scripted
+  // event trigger). Pre-fix, handlePostCommand only advanced once, leaving
+  // the chained dialog active for the next agent turn (turn 16 symptom in
+  // run 2026-06-06T07-07-32-442Z). The fix loops up to
+  // MAX_POST_COMMAND_DIALOG_ROUNDS dialog rounds, breaking on interrupts.
+  //
+  // States consumed (one shift() per refreshState call):
+  //   [0] overworld   — initial refresh in runCommandTool (beforeState)
+  //   [1] dialog      — refresh in handlePostCommand after the command
+  //   [2] dialog      — refresh after first advance (chained dialog visible)
+  //   [3] overworld   — refresh after second advance (chained dialog ended)
+  //
+  // CURRENT BUG: post-handler exits after first advance, finalState mode is
+  //              "dialog", executeCommandMock called 2 times (interact + 1 advance).
+  // FIX EXPECTATION: loop continues, finalState mode is "overworld",
+  //                  executeCommandMock called 3 times (interact + 2 advances).
+  it("loops post-command dialog rounds when a chained dialog appears after the first advance", async () => {
+    const context = createContext({
+      states: [
+        gameState({ mode: "overworld" }),
+        gameState({ mode: "dialog" }),
+        gameState({ mode: "dialog" }),
+        gameState({ mode: "overworld" }),
+      ],
+    });
+    executeCommandMock
+      .mockResolvedValueOnce({
+        status: "success",
+        reason: "interacted",
+      } satisfies CommandResult)
+      .mockResolvedValueOnce({
+        status: "success",
+        reason: "dialog_ended",
+        details: 'transcript=["dialog A page"]',
+      } satisfies CommandResult)
+      .mockResolvedValueOnce({
+        status: "success",
+        reason: "dialog_ended",
+        details: 'transcript=["dialog B page"]',
+      } satisfies CommandResult);
+
+    const result = await executeTool(
+      createCommandTools(context).pokemon_interact,
+      {}
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      after: { mode: "overworld" },
+    });
+    expect(executeCommandMock).toHaveBeenCalledTimes(3);
+    expect(result.transcript).toEqual(
+      expect.arrayContaining(["dialog A page", "dialog B page"])
+    );
+  });
+
+  // Oracle reviewer round 2 required regression: prior fix added a 5-round
+  // loop to handlePostCommand but did not break on dialog_stuck or surface
+  // the failure. Without this guard, one stuck dialog would consume the
+  // full round budget while reporting the original command's success.
+  it("stops post-command dialog loop and surfaces dialog_stuck when executor fails to end dialog", async () => {
+    const context = createContext({
+      states: [
+        gameState({ mode: "overworld" }),
+        gameState({ mode: "dialog" }),
+        gameState({ mode: "dialog" }),
+        gameState({ mode: "dialog" }),
+        gameState({ mode: "dialog" }),
+        gameState({ mode: "dialog" }),
+        gameState({ mode: "dialog" }),
+      ],
+    });
+    executeCommandMock
+      .mockResolvedValueOnce({
+        status: "success",
+        reason: "interacted",
+      } satisfies CommandResult)
+      .mockResolvedValueOnce({
+        status: "failed",
+        reason: "dialog_stuck",
+        details: "max_presses=120; pages=0",
+      } satisfies CommandResult);
+
+    const result = await executeTool(
+      createCommandTools(context).pokemon_interact,
+      {}
+    );
+
+    expect(executeCommandMock).toHaveBeenCalledTimes(2);
+    expect(result.result).toMatchObject({
+      status: "failed",
+      reason: "dialog_stuck",
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("stops post-command dialog loop on choice_appeared for chained dialog", async () => {
+    const context = createContext({
+      states: [
+        gameState({ mode: "overworld" }),
+        gameState({ mode: "dialog" }),
+        gameState({ mode: "dialog" }),
+        gameState({ mode: "dialog" }),
+        gameState({ mode: "dialog" }),
+        gameState({ mode: "dialog" }),
+        gameState({ mode: "dialog" }),
+      ],
+    });
+    executeCommandMock
+      .mockResolvedValueOnce({
+        status: "success",
+        reason: "interacted",
+      } satisfies CommandResult)
+      .mockResolvedValueOnce({
+        status: "success",
+        reason: "dialog_ended",
+        details: 'transcript=["first page"]',
+      } satisfies CommandResult)
+      .mockResolvedValueOnce({
+        status: "success",
+        reason: "choice_appeared",
+        details: 'transcript=["YES NO Continue?"]',
+      } satisfies CommandResult);
+
+    const result = await executeTool(
+      createCommandTools(context).pokemon_interact,
+      {}
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      result: { status: "interrupted", reason: "choice_appeared" },
+    });
+    expect(executeCommandMock).toHaveBeenCalledTimes(3);
+  });
 });
 
 interface ExecutableTool {
