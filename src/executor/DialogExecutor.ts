@@ -79,6 +79,8 @@ export class DialogExecutor {
         if (state.screenText === previousText) {
           this.recordPage(transcript, state.screenText);
         }
+      } else if (state.screenText.trim().length > 0) {
+        windowHiddenStreak = 0;
       } else {
         windowHiddenStreak += 1;
         if (windowHiddenStreak >= WINDOW_HIDDEN_CONFIRM_COUNT) {
@@ -146,6 +148,8 @@ export class DialogExecutor {
         if (state.screenText === previousText) {
           this.recordPage(transcript, state.screenText);
         }
+      } else if (state.screenText.trim().length > 0) {
+        windowHiddenStreak = 0;
       } else {
         windowHiddenStreak += 1;
         if (windowHiddenStreak >= WINDOW_HIDDEN_CONFIRM_COUNT) {

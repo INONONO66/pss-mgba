@@ -6,6 +6,7 @@ const AUTO_PRESS_BUTTON: MgbaButton = "A";
 const AUTO_PRESS_FRAMES = 16;
 const DIALOG_HIDDEN_CONFIRM_COUNT = 2;
 const MAX_DIALOG_PRESSES = 120;
+const MAX_DIALOG_FLICKER_POLLS = 10;
 const MAX_BATTLE_EXIT_PRESSES = 60;
 const MAX_LOCK_POLLS = 20;
 const LOCK_POLL_INTERVAL_MS = 50;
@@ -28,6 +29,7 @@ export interface AutoHandlerBattleReader {
 
 export interface AutoHandlerOptions {
   readonly battleExitPresses?: number;
+  readonly dialogFlickerPolls?: number;
   readonly dialogHiddenConfirmCount?: number;
   readonly dialogPresses?: number;
   readonly lockPollIntervalMs?: number;
@@ -61,6 +63,7 @@ export interface AutoHandlerResult {
 export class AutoHandler {
   private readonly battleExitPresses: number;
   private readonly battleReader?: AutoHandlerBattleReader;
+  private readonly dialogFlickerPolls: number;
   private readonly dialogHiddenConfirmCount: number;
   private readonly dialogPresses: number;
   private readonly dialogReader: AutoHandlerDialogReader;
@@ -85,6 +88,8 @@ export class AutoHandler {
     this.stateReader = input.stateReader;
     this.battleExitPresses =
       input.options?.battleExitPresses ?? MAX_BATTLE_EXIT_PRESSES;
+    this.dialogFlickerPolls =
+      input.options?.dialogFlickerPolls ?? MAX_DIALOG_FLICKER_POLLS;
     this.dialogHiddenConfirmCount =
       input.options?.dialogHiddenConfirmCount ?? DIALOG_HIDDEN_CONFIRM_COUNT;
     this.dialogPresses = input.options?.dialogPresses ?? MAX_DIALOG_PRESSES;
@@ -212,6 +217,7 @@ export class AutoHandler {
     const inputs: InputResult[] = [];
     const transcript: string[] = [];
     let hiddenReads = 0;
+    let flickerPolls = 0;
     let presses = 0;
     let state = initialState;
 
@@ -243,6 +249,23 @@ export class AutoHandler {
       }
 
       if (!isDialogVisible(state)) {
+        if (state.screenText.trim().length > 0) {
+          hiddenReads = 0;
+          flickerPolls += 1;
+          if (flickerPolls >= this.dialogFlickerPolls) {
+            return createAutoResult(
+              "blocked",
+              "dialog_stuck",
+              state,
+              inputs,
+              transcript
+            );
+          }
+          await this.sleep(this.lockPollIntervalMs);
+          state = await this.stateReader.read();
+          continue;
+        }
+        flickerPolls = 0;
         hiddenReads += 1;
         if (hiddenReads >= this.dialogHiddenConfirmCount) {
           return createAutoResult(
@@ -259,6 +282,7 @@ export class AutoHandler {
       }
 
       hiddenReads = 0;
+      flickerPolls = 0;
       const stop = await this.stopDialogAdvance(state, transcript);
       if (stop !== undefined) {
         return createAutoResult(

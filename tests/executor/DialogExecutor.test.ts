@@ -119,6 +119,64 @@ describe("DialogExecutor", () => {
     expect(transcript).toEqual(["Same text"]);
   });
 
+  // Regression for docs/debugging/018: dialog-end false positive during a
+  // page transition where rWY momentarily reads >= 144 but the tilemap still
+  // holds the previous page's text. Reproduces the failure class documented
+  // in docs/debugging/013-dialog-mode-mismatch-after-battle.md.
+  //
+  // Sequence (counter increments per A press):
+  //   0-1: window visible, screenText="page 1 text"     → record page 1
+  //   2-3: window HIDDEN, screenText="page 1 text"      ← flicker (text retained)
+  //   4-5: window visible, screenText="page 2 text"     → record page 2
+  //   6+:  window HIDDEN, screenText=""                 → true end (CloseTextDisplay)
+  //
+  // CURRENT BUG: streak hits 2 at counter=3 with non-empty text on tilemap →
+  //              returns dialog_ended prematurely with transcript=["page 1 text"].
+  // FIX EXPECTATION: while text is non-empty, hidden reads do NOT advance the
+  //                  streak; executor presses past the flicker and ends only when
+  //                  rWY hidden AND tilemap cleared.
+  it("advance keeps pressing A on mid-page flicker when tilemap still shows dialog text", async () => {
+    const { controller, presses } = createController();
+    const counter = { value: 0 };
+    const stateReader = createStateReader({
+      readScreenText: vi.fn(async () => {
+        const c = counter.value;
+        if (c < 4) {
+          return "page 1 text";
+        }
+        if (c < 6) {
+          return "page 2 text";
+        }
+        return "";
+      }),
+      isWindowVisible: vi.fn(async () => {
+        const c = counter.value;
+        if (c === 2 || c === 3) {
+          return false;
+        }
+        if (c >= 6) {
+          return false;
+        }
+        return true;
+      }),
+    });
+    trackAPresses(controller, presses, counter);
+
+    const executor = new DialogExecutor(controller, stateReader);
+    const result = await executor.execute(dialogCommand({ kind: "advance" }));
+
+    expect(result.status).toBe("success");
+    expect(result.reason).toBe("dialog_ended");
+
+    const details = result.details ?? "";
+    expect(details).toContain("page 1 text");
+    // BUG GUARD: page 2 is never recorded if executor exits at the flicker.
+    expect(details).toContain("page 2 text");
+    // BUG GUARD: under current code presses === 3 (stops at counter=3); the fix
+    // must press through the flicker and at least past read 4 (page 2).
+    expect(presses.length).toBeGreaterThan(4);
+  });
+
   it("advance stops when a choice appears", async () => {
     const { controller, presses } = createController();
     const counter = { value: 0 };

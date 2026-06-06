@@ -152,6 +152,140 @@ describe("AutoHandler", () => {
     );
   });
 
+  // Regression mirror of DialogExecutor S2 (see docs/debugging/018):
+  // the mode classifier flips to overworld when rWY transiently bounces to
+  // 144 during a page transition, but the tilemap still shows the previous
+  // page's text. The auto-handler must not call this "dialog_ended" and lose
+  // subsequent pages.
+  //
+  // States (consumed by independent readIndex and pressIndex; see createHarness):
+  //   [0] dialog,    windowY=120, screenText="page 1"   ← initial read; recorded
+  //   [1] overworld, windowY=144, screenText="page 1"   ← flicker (tilemap retains)
+  //   [2] overworld, windowY=144, screenText="page 1"   ← flicker continues
+  //   [3] dialog,    windowY=120, screenText="page 2"   ← next page appears
+  //   [4] overworld, windowY=144, screenText=""         ← true end starts
+  //   [5] overworld, windowY=144, screenText=""         ← true end confirmed
+  //
+  // CURRENT BUG: hiddenReads hits 2 at state [2] → returns dialog_ended with
+  //              transcript=["page 1"] only and inputGate.press called once.
+  // FIX EXPECTATION: hidden reads with non-empty screenText do NOT increment
+  //                  hiddenReads; auto-handler reads through the flicker and
+  //                  records page 2 before the true (empty) end fires.
+  // Oracle reviewer required regression (docs/debugging/018 Open Risk #2):
+  // Without a poll cap, the mid-flicker branch (sleep+read+continue) could
+  // spin forever if RAM gets stuck reporting window-hidden + non-empty
+  // tilemap text. The cap returns blocked/dialog_stuck after
+  // dialogFlickerPolls reads instead of hanging.
+  it("returns blocked/dialog_stuck when state stays hidden with non-empty tilemap forever", async () => {
+    const dialog = mini({
+      mode: "dialog",
+      screenText: "page 1",
+      windowY: 120,
+    });
+    const stuckFlicker = mini({
+      mode: "overworld",
+      screenText: "still showing page 1",
+      windowY: WINDOW_HIDDEN_Y,
+    });
+    let readIndex = 0;
+    let pressIndex = 0;
+    const states = [dialog, stuckFlicker];
+    const inputGate = {
+      press: vi.fn((button, frames, intentOptions) => {
+        const before = states[Math.min(pressIndex, states.length - 1)];
+        pressIndex += 1;
+        const after = states[Math.min(pressIndex, states.length - 1)];
+        const intent = {
+          button,
+          frames,
+          allowDialog: intentOptions?.allowDialog,
+          reason: intentOptions?.reason,
+          source: intentOptions?.source ?? "auto",
+        } satisfies InputIntent;
+        return Promise.resolve(inputResult(before, after, intent));
+      }),
+    };
+    const handler = new AutoHandler({
+      dialogReader: {
+        isChoiceActive: vi.fn(async () => false),
+        isNamingScreenActive: vi.fn(async () => false),
+      },
+      inputGate,
+      stateReader: {
+        read(): Promise<MiniState> {
+          const state = states[Math.min(readIndex, states.length - 1)];
+          readIndex += 1;
+          return Promise.resolve(state);
+        },
+      },
+      options: {
+        dialogFlickerPolls: 3,
+        dialogHiddenConfirmCount: 2,
+        dialogPresses: 50,
+        lockPollIntervalMs: 0,
+        sleep: async () => undefined,
+      },
+    });
+
+    const result = await handler.advanceDialog();
+
+    expect(result.status).toBe("blocked");
+    expect(result.reason).toBe("dialog_stuck");
+    expect(inputGate.press).toHaveBeenCalledTimes(1);
+  });
+
+  it("advances dialog through mid-page flicker when tilemap retains text", async () => {
+    const dialog1 = mini({
+      mode: "dialog",
+      screenText: "page 1",
+      windowY: 120,
+    });
+    const flicker1 = mini({
+      mode: "overworld",
+      screenText: "page 1",
+      windowY: WINDOW_HIDDEN_Y,
+    });
+    const flicker2 = mini({
+      mode: "overworld",
+      screenText: "page 1",
+      windowY: WINDOW_HIDDEN_Y,
+    });
+    const dialog2 = mini({
+      mode: "dialog",
+      screenText: "page 2",
+      windowY: 120,
+    });
+    const trueEnd1 = mini({
+      mode: "overworld",
+      screenText: "",
+      windowY: WINDOW_HIDDEN_Y,
+    });
+    const trueEnd2 = mini({
+      mode: "overworld",
+      screenText: "",
+      windowY: WINDOW_HIDDEN_Y,
+    });
+    const { handler, inputGate } = createHarness([
+      dialog1,
+      flicker1,
+      flicker2,
+      dialog2,
+      trueEnd1,
+      trueEnd2,
+    ]);
+
+    const result = await handler.advanceDialog();
+
+    expect(result.status).toBe("success");
+    expect(result.reason).toBe("dialog_ended");
+    expect(result.transcript).toContain("page 1");
+    // BUG GUARD: page 2 is missing if executor exits at flicker before [3].
+    expect(result.transcript).toContain("page 2");
+    // BUG GUARD: under current code press is called once; fix must press twice
+    // (once for page 1 → flicker, once for page 2 → true end).
+    expect(inputGate.press).toHaveBeenCalledTimes(2);
+  });
+
   it("stops dialog advance on choices and naming screens", async () => {
     const dialog = mini({ mode: "dialog", screenText: "YES NO", windowY: 120 });
     const choice = createHarness([dialog], { choice: true });
