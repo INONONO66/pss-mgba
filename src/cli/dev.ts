@@ -55,12 +55,10 @@ export async function runDev(args: readonly string[] = process.argv.slice(2), io
     }
   }
 
-  // Standby mode: server stays up, agent controlled via WebSocket
-  io.stdout("Agent standby. Send agent:start via WebSocket to begin.");
-
   const controller = createAgentController({
     baseConfig,
     baseArgs: normalizedArgs,
+    baseRunId,
     mgbaClient,
     io,
     dependencies,
@@ -76,7 +74,11 @@ export async function runDev(args: readonly string[] = process.argv.slice(2), io
   });
   hub.attachToServer(viewer.server);
 
-  hub.publish("agent:status", { status: "standby", runId: undefined });
+  controller.start("new", {
+    maxTurns: optionalNumber(normalizedArgs, "--max-turns"),
+    loadSlot: optionalNumber(normalizedArgs, "--load-slot"),
+  });
+  hub.publish("agent:status", controller.getStatus());
 
   return new Promise<number>((resolve) => {
     const shutdown = async () => {
@@ -108,13 +110,14 @@ export function formatDevRunBanner(config: Pick<HarnessConfig, "aiProvider">): s
 interface AgentControllerConfig {
   readonly baseConfig: HarnessConfig;
   readonly baseArgs: readonly string[];
-  readonly mgbaClient: MgbaHttpClient;
+  readonly baseRunId: string;
+  readonly mgbaClient: Pick<MgbaHttpClient, "loadStateSlot">;
   readonly io: CliIo;
   readonly dependencies: DevDependencies;
   readonly now?: () => Date;
 }
 
-function createAgentController(cfg: AgentControllerConfig): AgentController {
+export function createAgentController(cfg: AgentControllerConfig): AgentController {
   let status: AgentSessionStatus = "standby";
   let activeRunId: string | undefined;
   let abortController: AbortController | undefined;
@@ -126,7 +129,7 @@ function createAgentController(cfg: AgentControllerConfig): AgentController {
         return;
       }
 
-      const runId = createRunId(cfg.now?.() ?? new Date());
+      const runId = cfg.baseRunId;
       activeRunId = runId;
       status = "running";
 
@@ -267,6 +270,15 @@ function optionValue(args: readonly string[], name: string): string | undefined 
     return;
   }
   return args[index + 1];
+}
+
+function optionalNumber(args: readonly string[], name: string): number | undefined {
+  const raw = optionValue(args, name);
+  if (raw === undefined) {
+    return;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function stripSeparator(args: readonly string[]): readonly string[] {

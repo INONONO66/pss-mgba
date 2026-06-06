@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDevHarnessArgs, formatDevRunBanner, runDev } from "../src/cli/dev.js";
+import { buildDevHarnessArgs, createAgentController, formatDevRunBanner, runDev } from "../src/cli/dev.js";
 import type { AiProvider, HarnessConfig, HarnessMode } from "../src/cli/config.js";
 
 describe("dev command", () => {
@@ -118,6 +118,37 @@ describe("dev command", () => {
     expect(formatDevRunBanner(fakeConfig({
       aiProvider: "openai",
     }))).toBe("Policy: openai");
+  });
+
+  it("controller-path start('new') uses baseRunId so viewer and agent agree on the run folder (S1)", async () => {
+    let resolveArgs!: (args: readonly string[]) => void;
+    const argsPromise = new Promise<readonly string[]>((resolve) => {
+      resolveArgs = resolve;
+    });
+
+    const controller = createAgentController({
+      baseConfig: fakeConfig({ harnessRunId: "dev-base" }),
+      baseArgs: [],
+      baseRunId: "dev-base",
+      mgbaClient: { loadStateSlot: async () => undefined },
+      io: createIo(),
+      dependencies: {
+        runCli: async (args) => {
+          resolveArgs([...args]);
+          return 0;
+        },
+      },
+      now: () => new Date("2099-01-01T00:00:00.000Z"),
+    });
+
+    controller.start("new");
+    const observedArgs = await argsPromise;
+
+    const runIdIndex = observedArgs.indexOf("--run-id");
+    expect(runIdIndex).toBeGreaterThanOrEqual(0);
+    const observedRunId = observedArgs[runIdIndex + 1];
+    expect(observedRunId).toBe("dev-base");
+    expect(observedRunId).not.toBe("2099-01-01T00-00-00-000Z");
   });
 });
 
