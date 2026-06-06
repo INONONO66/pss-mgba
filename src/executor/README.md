@@ -48,4 +48,4 @@ Post-battle handling in `command-tools.ts` (`handlePostBattleCommand`):
 
 ## Dialog Detection
 
-`WINDOW_HIDDEN_CONFIRM_COUNT = 2`: requires 2 consecutive `rWY >= 144` reads to confirm dialog end. Prevents false positives from momentary page transitions where `rWY` flickers during text rendering.
+`WINDOW_HIDDEN_CONFIRM_COUNT = 2`: dialog end requires 2 consecutive reads where `rWY >= 144` AND the decoded tilemap (`readScreenText`) is empty after `.trim()`. When the window is hidden but the tilemap still holds text, the read is a mid-page transition flicker — the streak is reset and the executor keeps pressing A. Per the `pret/pokered` disassembly, `CloseTextDisplay` (true end) restores the overworld tilemap and sets `hWY = $90` atomically, so both conditions hold together at a real end. Page transitions inside a single `PrintText` call (`PromptText`/`PageChar`/`_ContText`) do not invoke `CloseTextDisplay`, so the tilemap stays populated and the predicate correctly says "not ended". Mirrored in `src/session/auto-handler.ts` `advanceDialogFrom`. See `docs/debugging/018-dialog-end-false-positive-mid-page.md`.

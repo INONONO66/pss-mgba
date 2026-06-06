@@ -36,3 +36,5 @@ One wasted turn. The agent recovered by moving to overworld commands on the next
 ## Workaround
 
 The agent naturally recovers — overworld commands trigger the auto-dialog handler, which advances the pending dialog.
+
+See also: `docs/debugging/018-dialog-end-false-positive-mid-page.md` — addresses the dialog-end side of the same `rWY` page-flicker class (executor + auto-handler termination predicate hardened). The single-shot `readGameWorld()` limitation described above is still open.
